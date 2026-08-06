@@ -1,0 +1,36 @@
+{
+  "version": 2,
+  "dgSpecHash": "MLs35L6Midk=",
+  "success": true,
+  "projectFilePath": "/Users/chetanchohan/Projects/inspired-poc/TestRunnerSolution/src/TestDataService/TestDataService.csproj",
+  "expectedPackageFiles": [
+    "/Users/chetanchohan/.nuget/packages/dapper/2.1.79/dapper.2.1.79.nupkg.sha512",
+    "/Users/chetanchohan/.nuget/packages/microsoft.aspnetcore.openapi/10.0.10/microsoft.aspnetcore.openapi.10.0.10.nupkg.sha512",
+    "/Users/chetanchohan/.nuget/packages/microsoft.data.sqlite/10.0.10/microsoft.data.sqlite.10.0.10.nupkg.sha512",
+    "/Users/chetanchohan/.nuget/packages/microsoft.data.sqlite.core/10.0.10/microsoft.data.sqlite.core.10.0.10.nupkg.sha512",
+    "/Users/chetanchohan/.nuget/packages/microsoft.extensions.apidescription.server/10.0.0/microsoft.extensions.apidescription.server.10.0.0.nupkg.sha512",
+    "/Users/chetanchohan/.nuget/packages/microsoft.openapi/2.7.5/microsoft.openapi.2.7.5.nupkg.sha512",
+    "/Users/chetanchohan/.nuget/packages/sqlitepclraw.bundle_e_sqlite3/2.1.11/sqlitepclraw.bundle_e_sqlite3.2.1.11.nupkg.sha512",
+    "/Users/chetanchohan/.nuget/packages/sqlitepclraw.core/2.1.11/sqlitepclraw.core.2.1.11.nupkg.sha512",
+    "/Users/chetanchohan/.nuget/packages/sqlitepclraw.lib.e_sqlite3/2.1.11/sqlitepclraw.lib.e_sqlite3.2.1.11.nupkg.sha512",
+    "/Users/chetanchohan/.nuget/packages/sqlitepclraw.provider.e_sqlite3/2.1.11/sqlitepclraw.provider.e_sqlite3.2.1.11.nupkg.sha512",
+    "/Users/chetanchohan/.nuget/packages/swashbuckle.aspnetcore/10.2.3/swashbuckle.aspnetcore.10.2.3.nupkg.sha512",
+    "/Users/chetanchohan/.nuget/packages/swashbuckle.aspnetcore.swagger/10.2.3/swashbuckle.aspnetcore.swagger.10.2.3.nupkg.sha512",
+    "/Users/chetanchohan/.nuget/packages/swashbuckle.aspnetcore.swaggergen/10.2.3/swashbuckle.aspnetcore.swaggergen.10.2.3.nupkg.sha512",
+    "/Users/chetanchohan/.nuget/packages/swashbuckle.aspnetcore.swaggerui/10.2.3/swashbuckle.aspnetcore.swaggerui.10.2.3.nupkg.sha512"
+  ],
+  "logs": [
+    {
+      "code": "NU1903",
+      "level": "Warning",
+      "message": "Package 'SQLitePCLRaw.lib.e_sqlite3' 2.1.11 has a known high severity vulnerability, https://github.com/advisories/GHSA-2m69-gcr7-jv3q",
+      "projectPath": "/Users/chetanchohan/Projects/inspired-poc/TestRunnerSolution/src/TestDataService/TestDataService.csproj",
+      "warningLevel": 1,
+      "filePath": "/Users/chetanchohan/Projects/inspired-poc/TestRunnerSolution/src/TestDataService/TestDataService.csproj",
+      "libraryId": "SQLitePCLRaw.lib.e_sqlite3",
+      "targetGraphs": [
+        "net10.0"
+      ]
+    }
+  ]
+}

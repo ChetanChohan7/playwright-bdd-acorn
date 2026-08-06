@@ -1,0 +1,27 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "ignoreDeprecations": "6.0",
+    "types": ["node", "@playwright/test"],
+    "resolveJsonModule": true,
+    "esModuleInterop": true,
+    "strict": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "outDir": "dist"
+  },
+  "include": [
+    "features/**/*.ts",
+    "steps/**/*.ts",
+    "api/**/*.ts",
+    "clients/**/*.ts",
+    "contracts/**/*.ts",
+    "fixtures/**/*.ts",
+    "support/**/*.ts",
+    "utils/**/*.ts",
+    "pages/**/*.ts",
+    "playwright.config.ts"
+  ]
+}

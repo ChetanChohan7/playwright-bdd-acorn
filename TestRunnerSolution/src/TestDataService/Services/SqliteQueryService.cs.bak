@@ -1,0 +1,47 @@
+using Dapper;
+using Microsoft.Data.Sqlite;
+using System.Text.RegularExpressions;
+
+namespace TestDataService.Services;
+
+public class SqliteQueryService
+{
+    private static readonly Regex SafeName = new("^[A-Za-z0-9_]+$", RegexOptions.Compiled);
+    private readonly IConfiguration _configuration;
+
+    public SqliteQueryService(IConfiguration configuration)
+    {
+        _configuration = configuration;
+    }
+
+    public async Task<IEnumerable<IDictionary<string, object?>>> GetRowsAsync(string tableName, int limit = 25)
+    {
+        if (string.IsNullOrWhiteSpace(tableName) || !SafeName.IsMatch(tableName))
+        {
+            throw new ArgumentException("Invalid table name.");
+        }
+
+        if (limit < 1 || limit > 200)
+        {
+            throw new ArgumentOutOfRangeException(nameof(limit), "Limit must be between 1 and 200.");
+        }
+
+        var connectionString = _configuration.GetConnectionString("TestRunner");
+        await using var connection = new SqliteConnection(connectionString);
+        await connection.OpenAsync();
+
+        var sql = $"SELECT * FROM [{tableName}] LIMIT {limit};";
+        var rows = await connection.QueryAsync(sql);
+        return rows.Select(row => (IDictionary<string, object?>)row);
+    }
+
+    public async Task<IEnumerable<string>> GetTableNamesAsync()
+    {
+        var connectionString = _configuration.GetConnectionString("TestRunner");
+        await using var connection = new SqliteConnection(connectionString);
+        await connection.OpenAsync();
+
+        const string sql = "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name;";
+        return await connection.QueryAsync<string>(sql);
+    }
+}
