@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("TestDataService")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+4950c38a6f2f8083fb401bc896e4cdc99e5fdb5e")]
 [assembly: System.Reflection.AssemblyProductAttribute("TestDataService")]
 [assembly: System.Reflection.AssemblyTitleAttribute("TestDataService")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

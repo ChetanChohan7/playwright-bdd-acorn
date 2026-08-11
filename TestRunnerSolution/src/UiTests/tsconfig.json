@@ -1,9 +1,8 @@
 {
   "compilerOptions": {
     "target": "ES2020",
-    "module": "commonjs",
-    "moduleResolution": "node",
-    "ignoreDeprecations": "6.0",
+    "module": "node16",
+    "moduleResolution": "node16",
     "types": ["node", "@playwright/test"],
     "resolveJsonModule": true,
     "esModuleInterop": true,
@@ -22,6 +21,7 @@
     "support/**/*.ts",
     "utils/**/*.ts",
     "pages/**/*.ts",
+    "db/**/*.ts",
     "playwright.config.ts"
   ]
 }

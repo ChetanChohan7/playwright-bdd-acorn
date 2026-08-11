@@ -1,6 +1,8 @@
-import { expect } from '@playwright/test';
+// src/UiTests/steps/testData.steps.ts
+import { expect, type APIRequestContext } from '@playwright/test';
 import { createBdd } from 'playwright-bdd';
-import { getTableNames, getTableRows } from '../api/testDataClient';
+import { TestDataClient } from '../clients/testDataClient';
+import { getRows, getRowById } from '../db/repositories/testDataRepository';
 import {
   TestPlanArraySchema,
   IncompatibleTestPlanArraySchema
@@ -10,154 +12,314 @@ import {
   IncompatibleBugArraySchema
 } from '../contracts/bugs.schema';
 import { validateWithConciseLogging } from '../support/zod-logger';
+import { normaliseRows } from '../support/normalisers/testData.normaliser';
 
 const { Given, When, Then } = createBdd();
 
-let tableNames: string[] = [];
-let selectedTableName = '';
-let responseRows: unknown = [];
+type TestDataWorld = {
+  tableNames?: string[];
+  tableName?: string;
+  limit?: number;
+  requestedId?: string;
+  responseStatus?: number;
+  apiResponseBody?: unknown;
+};
 
-When('I request the list of test data tables', async ({ request }) => {
-  tableNames = await getTableNames(request);
-});
+type StepFixtures = {
+  request: APIRequestContext;
+};
 
-Then('the test data tables response should contain at least one table', async () => {
-  expect(tableNames.length).toBeGreaterThan(0);
-});
+async function getAvailableTableNames(request: APIRequestContext): Promise<string[]> {
+  const client = new TestDataClient(request);
+  const response = await client.getTables();
 
-Given('I know an available test data table', async ({ request }) => {
-  tableNames = await getTableNames(request);
-  expect(tableNames.length).toBeGreaterThan(0);
-  selectedTableName = tableNames[0];
-});
+  expect(response.ok()).toBeTruthy();
 
-When('I request test data for that table', async ({ request }) => {
-  responseRows = await getTableRows(request, selectedTableName, 5);
-});
+  const body = await response.json();
+  expect(Array.isArray(body)).toBeTruthy();
 
-Then('the test data rows response should be successful', async () => {
-  expect(Array.isArray(responseRows)).toBeTruthy();
-});
+  return body as string[];
+}
 
-Given('the test data API is available', async ({ request }) => {
-  tableNames = await getTableNames(request);
-  expect(tableNames.length).toBeGreaterThan(0);
-});
+Then(
+  'the response status should be {int}',
+  async function (this: TestDataWorld, {}: StepFixtures, statusCode: number) {
+    expect(this.responseStatus).toBe(statusCode);
+  }
+);
 
-When('I request rows from table {string}', async ({ request }, tableName: string) => {
-  responseRows = await getTableRows(request, tableName, 25);
-});
+When(
+  'I request the list of test data tables',
+  async function (this: TestDataWorld, { request }: StepFixtures) {
+    this.tableNames = await getAvailableTableNames(request);
+  }
+);
 
-When('I request {int} row from table {string}', async ({ request }, limit: number, tableName: string) => {
-  responseRows = await getTableRows(request, tableName, limit);
-});
+Then(
+  'the test data tables response should contain at least one table',
+  async function (this: TestDataWorld) {
+    expect(this.tableNames?.length ?? 0).toBeGreaterThan(0);
+  }
+);
 
-Then('the response matches the test plan schema', async () => {
-  const parsed = validateWithConciseLogging(TestPlanArraySchema, responseRows, {
-    label: 'TestPlanArraySchema',
-    sampleLimit: 4,
-  });
+Given(
+  'I know an available test data table',
+  async function (this: TestDataWorld, { request }: StepFixtures) {
+    this.tableNames = await getAvailableTableNames(request);
+    expect(this.tableNames.length).toBeGreaterThan(0);
 
-  expect(parsed.length).toBeGreaterThan(0);
-});
+    this.tableName = this.tableNames[0];
+  }
+);
 
-Then('the response should fail the incompatible schema validation', async () => {
-  const result = IncompatibleTestPlanArraySchema.safeParse(responseRows);
+Given(
+  'the test data API is available',
+  async function (this: TestDataWorld, { request }: StepFixtures) {
+    this.tableNames = await getAvailableTableNames(request);
+    expect(this.tableNames.length).toBeGreaterThan(0);
+  }
+);
 
-  if (result.success) {
-    console.error('Unexpected success:', result.data);
-  } else {
-    const seen = new Set<string>();
+When(
+  'I request test data for that table',
+  async function (this: TestDataWorld, { request }: StepFixtures) {
+    expect(this.tableName).toBeTruthy();
 
-    console.error('Expected schema failure:');
+    this.limit = 5;
+    this.requestedId = undefined;
 
-    for (const issue of result.error.issues) {
-      const field = String(issue.path[1] ?? issue.path[0] ?? '(root)');
-      const summary = `${field} -> ${issue.message}`;
+    const client = new TestDataClient(request);
+    const response = await client.getRows(this.tableName!, this.limit);
 
-      if (!seen.has(summary)) {
-        seen.add(summary);
-        console.error(`- ${summary}`);
+    this.responseStatus = response.status();
+    this.apiResponseBody = await response.json();
+  }
+);
+
+When(
+  'I request rows from table {string}',
+  async function (this: TestDataWorld, { request }: StepFixtures, tableName: string) {
+    this.tableName = tableName;
+    this.limit = 25;
+    this.requestedId = undefined;
+
+    const client = new TestDataClient(request);
+    const response = await client.getRows(tableName, this.limit);
+
+    this.responseStatus = response.status();
+    this.apiResponseBody = await response.json();
+  }
+);
+
+When(
+  'I request {int} row from table {string}',
+  async function (
+    this: TestDataWorld,
+    { request }: StepFixtures,
+    limit: number,
+    tableName: string
+  ) {
+    this.tableName = tableName;
+    this.limit = limit;
+    this.requestedId = undefined;
+
+    const client = new TestDataClient(request);
+    const response = await client.getRows(tableName, limit);
+
+    this.responseStatus = response.status();
+    this.apiResponseBody = await response.json();
+  }
+);
+
+When(
+  'I request {int} rows from table {string}',
+  async function (
+    this: TestDataWorld,
+    { request }: StepFixtures,
+    limit: number,
+    tableName: string
+  ) {
+    this.tableName = tableName;
+    this.limit = limit;
+    this.requestedId = undefined;
+
+    const client = new TestDataClient(request);
+    const response = await client.getRows(tableName, limit);
+
+    this.responseStatus = response.status();
+    this.apiResponseBody = await response.json();
+  }
+);
+
+When(
+  'I request row {string} from table {string}',
+  async function (
+    this: TestDataWorld,
+    { request }: StepFixtures,
+    id: string,
+    tableName: string
+  ) {
+    this.tableName = tableName;
+    this.requestedId = id;
+    this.limit = undefined;
+
+    const client = new TestDataClient(request);
+    const response = await client.getRowById(tableName, id);
+
+    this.responseStatus = response.status();
+    this.apiResponseBody = await response.json();
+  }
+);
+
+Then(
+  'the test data rows response should be successful',
+  async function (this: TestDataWorld) {
+    expect(this.responseStatus).toBe(200);
+    expect(Array.isArray(this.apiResponseBody)).toBeTruthy();
+  }
+);
+
+Then(
+  'the API response should match the database',
+  async function (this: TestDataWorld) {
+    expect(this.tableName).toBeTruthy();
+
+    let dbResult: unknown;
+
+    if (this.requestedId !== undefined) {
+      dbResult = await getRowById(this.tableName!, this.requestedId);
+    } else {
+      dbResult = await getRows(this.tableName!, this.limit ?? 1);
+    }
+
+    expect(normaliseRows(this.apiResponseBody)).toEqual(normaliseRows(dbResult));
+  }
+);
+
+Then(
+  'the response matches the test plan schema',
+  async function (this: TestDataWorld) {
+    const parsed = validateWithConciseLogging(TestPlanArraySchema, this.apiResponseBody, {
+      label: 'TestPlanArraySchema',
+      sampleLimit: 4,
+    });
+
+    expect(parsed.length).toBeGreaterThan(0);
+  }
+);
+
+Then(
+  'the response should fail the incompatible schema validation',
+  async function (this: TestDataWorld) {
+    const result = IncompatibleTestPlanArraySchema.safeParse(this.apiResponseBody);
+
+    if (result.success) {
+      console.error('Unexpected success:', result.data);
+    } else {
+      const seen = new Set<string>();
+
+      console.error('Expected schema failure:');
+
+      for (const issue of result.error.issues) {
+        const field = String(issue.path[1] ?? issue.path[0] ?? '(root)');
+        const summary = `${field} -> ${issue.message}`;
+
+        if (!seen.has(summary)) {
+          seen.add(summary);
+          console.error(`- ${summary}`);
+        }
       }
     }
+
+    expect(result.success).toBeFalsy();
   }
+);
 
-  expect(result.success).toBeFalsy();
-});
+Then(
+  'the response incorrectly matches the incompatible schema',
+  async function (this: TestDataWorld) {
+    const result = IncompatibleTestPlanArraySchema.safeParse(this.apiResponseBody);
 
-Then('the response incorrectly matches the incompatible schema', async () => {
-  const result = IncompatibleTestPlanArraySchema.safeParse(responseRows);
+    if (!result.success) {
+      const seen = new Set<string>();
 
-  if (!result.success) {
-    const seen = new Set<string>();
+      console.error('Intentional visible failure: incompatible schema mismatch');
 
-    console.error('Intentional visible failure: incompatible schema mismatch');
+      for (const issue of result.error.issues) {
+        const field = String(issue.path[1] ?? issue.path[0] ?? '(root)');
+        const summary = `${field} -> ${issue.message}`;
 
-    for (const issue of result.error.issues) {
-      const field = String(issue.path[1] ?? issue.path[0] ?? '(root)');
-      const summary = `${field} -> ${issue.message}`;
-
-      if (!seen.has(summary)) {
-        seen.add(summary);
-        console.error(`- ${summary}`);
+        if (!seen.has(summary)) {
+          seen.add(summary);
+          console.error(`- ${summary}`);
+        }
       }
     }
+
+    expect(result.success).toBeTruthy();
   }
+);
 
-  expect(result.success).toBeTruthy();
-});
+Then(
+  'the response matches the bug schema',
+  async function (this: TestDataWorld) {
+    const parsed = validateWithConciseLogging(BugArraySchema, this.apiResponseBody, {
+      label: 'BugArraySchema',
+      sampleLimit: 1,
+    });
 
-Then('the response matches the bug schema', async () => {
-  const parsed = validateWithConciseLogging(BugArraySchema, responseRows, {
-    label: 'BugArraySchema',
-    sampleLimit: 1,
-  });
+    expect(parsed.length).toBe(1);
+  }
+);
 
-  expect(parsed.length).toBe(1);
-});
+Then(
+  'the bug response should fail the incompatible schema validation',
+  async function (this: TestDataWorld) {
+    const result = IncompatibleBugArraySchema.safeParse(this.apiResponseBody);
 
-Then('the bug response should fail the incompatible schema validation', async () => {
-  const result = IncompatibleBugArraySchema.safeParse(responseRows);
+    if (result.success) {
+      console.error('Unexpected success:', result.data);
+    } else {
+      const seen = new Set<string>();
 
-  if (result.success) {
-    console.error('Unexpected success:', result.data);
-  } else {
-    const seen = new Set<string>();
+      console.error('Expected bug schema failure:');
 
-    console.error('Expected bug schema failure:');
+      for (const issue of result.error.issues) {
+        const field = String(issue.path[1] ?? issue.path[0] ?? '(root)');
+        const summary = `${field} -> ${issue.message}`;
 
-    for (const issue of result.error.issues) {
-      const field = String(issue.path[1] ?? issue.path[0] ?? '(root)');
-      const summary = `${field} -> ${issue.message}`;
-
-      if (!seen.has(summary)) {
-        seen.add(summary);
-        console.error(`- ${summary}`);
+        if (!seen.has(summary)) {
+          seen.add(summary);
+          console.error(`- ${summary}`);
+        }
       }
     }
+
+    expect(result.success).toBeFalsy();
   }
+);
 
-  expect(result.success).toBeFalsy();
-});
+Then(
+  'the bug response incorrectly matches the incompatible schema',
+  async function (this: TestDataWorld) {
+    const result = IncompatibleBugArraySchema.safeParse(this.apiResponseBody);
 
-Then('the bug response incorrectly matches the incompatible schema', async () => {
-  const result = IncompatibleBugArraySchema.safeParse(responseRows);
+    if (!result.success) {
+      const seen = new Set<string>();
 
-  if (!result.success) {
-    const seen = new Set<string>();
+      console.error('Intentional visible failure: incompatible bug schema mismatch');
 
-    console.error('Intentional visible failure: incompatible bug schema mismatch');
+      for (const issue of result.error.issues) {
+        const field = String(issue.path[1] ?? issue.path[0] ?? '(root)');
+        const summary = `${field} -> ${issue.message}`;
 
-    for (const issue of result.error.issues) {
-      const field = String(issue.path[1] ?? issue.path[0] ?? '(root)');
-      const summary = `${field} -> ${issue.message}`;
-
-      if (!seen.has(summary)) {
-        seen.add(summary);
-        console.error(`- ${summary}`);
+        if (!seen.has(summary)) {
+          seen.add(summary);
+          console.error(`- ${summary}`);
+        }
       }
     }
-  }
 
-  expect(result.success).toBeTruthy();
-});
+    expect(result.success).toBeTruthy();
+  }
+);

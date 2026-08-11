@@ -3,6 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 API_URL="http://localhost:5111"
+UITESTS_DIR="$ROOT_DIR/src/UiTests"
 
 (cd "$ROOT_DIR/src/TestDataService" && dotnet run) &
 API_PID=$!
@@ -13,7 +14,7 @@ cleanup() {
 trap cleanup EXIT
 
 printf 'Waiting for TestDataService to start'
-for _ in {1..20}; do
+for _ in {1..30}; do
   if curl -sf "$API_URL/health" >/dev/null 2>&1; then
     break
   fi
@@ -22,4 +23,7 @@ for _ in {1..20}; do
 done
 printf '\n'
 
-(cd "$ROOT_DIR/src/UiTests" && cp -n .env.example .env && npm test)
+cd "$UITESTS_DIR"
+cp -n .env.example .env || true
+npm install
+npm test
