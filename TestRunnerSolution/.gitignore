@@ -1,0 +1,8 @@
+## .NET build output (repo-wide)
+bin/
+obj/
+
+## User-specific / IDE
+.vs/
+*.user
+.idea/

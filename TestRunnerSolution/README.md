@@ -5,6 +5,7 @@ Proof-of-concept solution using a C# .NET TestDataService over SQLite and a Type
 ## Structure
 - `src/TestDataService`: .NET Web API exposing SQLite-backed test data.
 - `src/UiTests`: TypeScript Playwright-BDD automation suite.
+- `src/DependencyInjectionDemo`: minimal TypeScript project proving dependency injection works — see its [README](src/DependencyInjectionDemo/README.md).
 - `data/test-runner.db`: Example SQLite database.
 - `scripts/run-all.sh`: macOS/Linux helper to run the API and then the tests.
 
