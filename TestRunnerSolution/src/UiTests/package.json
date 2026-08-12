@@ -9,7 +9,8 @@
     "test:headed": "npm run bddgen && playwright test --headed",
     "test:ui": "npm run bddgen && playwright test --ui",
     "test:debug": "npm run bddgen && playwright test --debug",
-    "report": "playwright show-report"
+    "report": "playwright show-report",
+    "verify-di": "ts-node support/dependencyInjectionDemo.ts"
   },
   "devDependencies": {
     "@playwright/test": "^1.62.1",
@@ -23,6 +24,7 @@
     "typescript": "^5.6.0"
   },
   "dependencies": {
+    "dependency-injection-demo": "file:../../../DependencyInjectionDemo",
     "fast-xml-parser": "^5.10.1",
     "fast-xml-validator": "^1.4.0",
     "knex": "^3.3.0",
