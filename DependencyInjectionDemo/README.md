@@ -18,6 +18,16 @@ playwright-bdd-acorn/
     └── src/UiTests/           <- consumes it as a local npm dependency
 ```
 
+## Quick reference
+
+| Command (run from this folder unless noted) | What it does |
+|---|---|
+| `npm install` | Installs this solution's own dependencies. |
+| `npm run build` | Compiles `src/**/*.ts` to `dist/`. **Required** before another project can consume this package — `package.json`'s `main`/`types` point at the compiled output. |
+| `npm start` | Runs `src/index.ts` — prints Proof 1 and Proof 2 (below). |
+| `npm test` | Runs `tests/testRunReporter.test.ts` — see [Running the tests](#running-the-tests-di-without-a-container-at-all). |
+| `cd ../TestRunnerSolution/src/UiTests && npm run verify-di` | Runs [Proof 3](#proof-3-a-separate-solution-consumes-this-one-and-still-injects-its-own-dependency) from the *consuming* solution. |
+
 ## The shape of the example
 
 - **[`src/services/types.ts`](src/services/types.ts)** — the abstractions:
@@ -72,21 +82,39 @@ the results it reports now land in an in-memory array instead of the
 console, because the container is what decided which concrete class
 `TestRunReporter` received.
 
-## Run the tests (DI without a container at all)
+## Running the tests (DI without a container at all)
+
+No test framework is installed — the suite runs on Node's built-in test
+runner (`node:test` + `node:assert/strict`), loaded through `ts-node/register`
+so it can execute the `.ts` file directly:
 
 ```bash
-npm test
+cd DependencyInjectionDemo
+npm install        # first time only
+npm test           # -> node -r ts-node/register --test tests/testRunReporter.test.ts
 ```
 
-`tests/testRunReporter.test.ts` constructs `TestRunReporter` directly
-(`new TestRunReporter(fakeRunIdProvider, fakeNotifier)`) — no `Container` in
-sight. This is only possible because `TestRunReporter` depends on
-interfaces, not concrete classes: the tests hand it disposable fakes
-(`FixedRunIdProvider`, `InMemoryTestResultNotifier`) instead of the real
-console-writing implementation, proving the same decoupling that makes
-Proof 2 above possible also makes the class trivially unit-testable.
+Expected output:
 
-## Proof 3 — a *separate* solution consumes this one and still injects its own dependency
+```
+✔ report() passes the runId from the injected provider to the injected notifier
+✔ report() uses whichever notifier was injected, not a hardcoded one
+✔ report() called multiple times forwards each result in order
+ℹ tests 3
+ℹ pass 3
+ℹ fail 0
+```
+
+[`tests/testRunReporter.test.ts`](tests/testRunReporter.test.ts) constructs
+`TestRunReporter` directly (`new TestRunReporter(fakeRunIdProvider,
+fakeNotifier)`) — no `Container` in sight. This is only possible because
+`TestRunReporter` depends on interfaces, not concrete classes: the tests
+hand it disposable fakes (`FixedRunIdProvider`, `InMemoryTestResultNotifier`)
+instead of the real console-writing implementation, proving the same
+decoupling that makes Proof 2 above possible also makes the class trivially
+unit-testable.
+
+## Proof 3: a separate solution consumes this one and still injects its own dependency
 
 `TestRunnerSolution/src/UiTests` depends on this package the same way it
 depends on `axios` or `zod` — via `package.json`:
@@ -107,7 +135,9 @@ builds its *own* container, and injects its *own* choice of
 compiled itself:
 
 ```bash
+npm run build                        # from DependencyInjectionDemo/, if not already built
 cd ../TestRunnerSolution/src/UiTests
+npm install                          # first time only — symlinks in dependency-injection-demo
 npm run verify-di
 ```
 

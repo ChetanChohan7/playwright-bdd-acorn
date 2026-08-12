@@ -30,18 +30,18 @@ cd TestRunnerSolution
 
 ## macOS setup
 
--# 1. Start the API
+-# 1. Start the API (keep this terminal running)
 
     cd src/TestDataService
     dotnet run
 
--# 2. Build the DependencyInjectionDemo solution (once, or after changing it)
+-# 2. In a **new terminal**, starting again from `TestRunnerSolution/`, build the DependencyInjectionDemo solution (once, or after changing it)
 
     cd ../DependencyInjectionDemo
     npm install
     npm run build
 
--# 3. Install UI test dependencies
+-# 3. Install UI test dependencies (continuing in the same terminal as step 2)
 
 The service is configured to run on http://localhost:5111.
 
@@ -50,7 +50,7 @@ The service is configured to run on http://localhost:5111.
     npx playwright install
     copy .env.example .env
 
--# 4. Run the tests
+-# 4. Run the tests — see [Running the tests](#running-the-tests) below for what each command does
 
     npm test
 
@@ -71,18 +71,18 @@ After completing setup, you can run the API and tests together with:
 
 ## Windows setup
 
--# 1. Start the API
+-# 1. Start the API (keep this terminal running)
 
     cd src/TestDataService
     dotnet run
 
--# 2. Build the DependencyInjectionDemo solution (once, or after changing it)
+-# 2. In a **new terminal**, starting again from `TestRunnerSolution/`, build the DependencyInjectionDemo solution (once, or after changing it)
 
     cd ../DependencyInjectionDemo
     npm install
     npm run build
 
--# 3. Install UI test dependencies
+-# 3. Install UI test dependencies (continuing in the same terminal as step 2)
 
 The service is configured to run on http://localhost:5111.
 
@@ -91,7 +91,7 @@ The service is configured to run on http://localhost:5111.
     npx playwright install
     cp .env.example .env
 
--# 4. Run the tests
+-# 4. Run the tests — see [Running the tests](#running-the-tests) below for what each command does
 
     npm test
 
@@ -102,3 +102,26 @@ The service is configured to run on http://localhost:5111.
     npm run test:debug
     npm run report
     npm run verify-di
+
+## Running the tests
+
+There are three independent test/verification commands in this repo. `npm test` (Playwright-BDD) is the main one; the other two exist to prove the dependency-injection example works.
+
+| Command | Run from | What it does |
+|---|---|---|
+| `npm test` | `src/UiTests` | Generates step definitions (`bddgen`) and runs the Playwright-BDD suite against the running `TestDataService` API (`http://localhost:5111`). Needs step 1 running first. |
+| `npm run verify-di` | `src/UiTests` | Imports `Container`/`TestRunReporter` from the separate `DependencyInjectionDemo` solution (installed as a local dependency), wires its own container, and proves DI still works across the solution boundary. No API needed. Requires `DependencyInjectionDemo` to have been built first (setup step 2). See its [README](../DependencyInjectionDemo/README.md#proof-3-a-separate-solution-consumes-this-one-and-still-injects-its-own-dependency). |
+| `npm test` | `../DependencyInjectionDemo` | Runs that solution's own unit tests (Node's built-in `node:test` runner) — constructs `TestRunReporter` with hand-written fakes, no container involved. See its [README](../DependencyInjectionDemo/README.md#running-the-tests-di-without-a-container-at-all). |
+
+Each block below is independent (uses a subshell) and assumes you start from `TestRunnerSolution/` — safe to paste and run in order:
+
+```bash
+# Playwright-BDD suite (needs TestDataService running, see setup step 1)
+(cd src/UiTests && npm test)
+
+# DI proof — TestRunnerSolution calling into the separate solution
+(cd src/UiTests && npm run verify-di)
+
+# DI demo's own unit tests, run from the separate solution
+(cd ../DependencyInjectionDemo && npm test)
+```
