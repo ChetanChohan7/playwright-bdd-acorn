@@ -1,0 +1,28 @@
+{
+  "name": "twilio-payment-link-reader",
+  "version": "1.0.0",
+  "description": "Twilio SMS reader that extracts payment URLs from SMS messages",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "ts-node src/index.ts",
+    "dev": "ts-node src/index.ts"
+  },
+  "keywords": [
+    "twilio",
+    "sms",
+    "payment",
+    "url-extractor"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "dotenv": "^16.3.1",
+    "twilio": "^4.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.8.0",
+    "typescript": "^5.2.2",
+    "ts-node": "^10.9.1"
+  }
+}
