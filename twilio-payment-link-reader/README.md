@@ -155,7 +155,10 @@ twilio-payment-link-reader/
 │
 ├── src/
 │   ├── twilio/
-│   │   └── TwilioSmsReader.ts      # Twilio API integration and SMS polling
+│   │   ├── TwilioSmsReader.ts      # Twilio API integration and SMS polling
+│   │   ├── TwilioSmsSender.ts      # Twilio API integration for sending SMS
+│   │   └── __tests__/
+│   │       └── TwilioSmsRoundTrip.test.ts  # Sends + reads back an SMS via the API
 │   │
 │   ├── utils/
 │   │   └── UrlExtractor.ts          # URL extraction using regex
@@ -167,10 +170,36 @@ twilio-payment-link-reader/
 ├── .env.example                     # Environment variables template
 ├── .env                             # Environment variables (not committed)
 ├── .gitignore                       # Git ignore rules
+├── jest.config.js                   # Jest test runner configuration
 ├── package.json                     # Project metadata and dependencies
 ├── tsconfig.json                    # TypeScript configuration
 └── README.md                        # This file
 ```
+
+## Testing
+
+The project includes a Jest integration test that exercises the real Twilio API end to end:
+
+```bash
+npm test
+```
+
+**What it does (`src/twilio/__tests__/TwilioSmsRoundTrip.test.ts`):**
+1. Sends an SMS from `TWILIO_PHONE_NUMBER` to itself via `TwilioSmsSender`, with a unique token embedded in the body
+2. Polls the Twilio API via `TwilioSmsReader.waitForLatestSms` for a message received after the send
+3. Prints the received SMS text to the console
+4. Asserts the received body contains the unique token, confirming Twilio received what was sent
+
+This test requires live Twilio credentials (`TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_PHONE_NUMBER`) in your `.env` file and will incur real SMS usage on your Twilio account. If credentials are missing, the test is skipped automatically (useful for CI without secrets configured).
+
+**Requires an upgraded (non-trial) Twilio account.** Trial accounts stack several restrictions that make this test impossible to run as-is:
+- Sends are only allowed to numbers verified as Caller IDs, and a number can't verify itself
+- The message `body` must be one of Twilio's predefined trial templates, not custom text
+- Trial `from`/`to` number pairings are restricted to your one assigned trial number
+
+Upgrading removes all of these at once. Without upgrading, `TwilioSmsSender.waitForDeliveryStatus` is available as a fallback for confirming a send reached a terminal delivery status (sent/delivered/failed/undelivered) via the API, without relying on custom body content.
+
+**Note:** the test sends a number to itself. Depending on your Twilio number/carrier configuration, self-addressed SMS may be rejected or may not always produce a distinct inbound record. If that happens in your account, use two Twilio numbers instead (one to send from, one to receive on) and adjust the test accordingly.
 
 ## Code Quality
 
@@ -200,6 +229,21 @@ constructor(accountSid: string, authToken: string, phoneNumber: string)
   - Polls every 5 seconds until a message is found or timeout is reached
   - Returns the SMS body text
   - Throws an error if no SMS is received within the timeout period
+
+### TwilioSmsSender
+
+Handles sending outbound SMS messages via the Twilio API.
+
+**Constructor:**
+```typescript
+constructor(accountSid: string, authToken: string)
+```
+
+**Methods:**
+- `sendSms(from: string, to: string, body: string): Promise<string>`
+  - Sends an SMS message via the Twilio API
+  - Returns the SID of the created message
+  - Throws an error if the Twilio API call fails
 
 ### UrlExtractor
 
