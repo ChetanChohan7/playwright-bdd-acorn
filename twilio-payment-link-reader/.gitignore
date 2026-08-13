@@ -12,6 +12,11 @@ yarn.lock
 dist/
 build/
 
+# Playwright / playwright-bdd
+.features-gen/
+playwright-report/
+test-results/
+
 # IDE and editor files
 .vscode/
 .idea/

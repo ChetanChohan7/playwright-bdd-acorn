@@ -7,7 +7,10 @@
     "build": "tsc -p tsconfig.build.json",
     "start": "ts-node src/index.ts",
     "dev": "ts-node src/index.ts",
-    "test": "jest --runInBand"
+    "bddgen": "bddgen",
+    "test": "npm run bddgen && playwright test",
+    "test:debug": "npm run bddgen && playwright test --debug",
+    "report": "playwright show-report"
   },
   "keywords": [
     "twilio",
@@ -22,10 +25,9 @@
     "twilio": "^4.0.0"
   },
   "devDependencies": {
-    "@types/jest": "^29.5.12",
+    "@playwright/test": "^1.62.1",
     "@types/node": "^20.8.0",
-    "jest": "^29.7.0",
-    "ts-jest": "^29.1.2",
+    "playwright-bdd": "^9.2.0",
     "ts-node": "^10.9.1",
     "typescript": "^5.2.2"
   }
