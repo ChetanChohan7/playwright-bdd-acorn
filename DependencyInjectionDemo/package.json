@@ -3,10 +3,14 @@
   "version": "1.0.0",
   "private": true,
   "type": "commonjs",
+  "main": "dist/src/lib.js",
+  "types": "dist/src/lib.d.ts",
+  "files": ["dist"],
   "scripts": {
     "start": "ts-node src/index.ts",
     "test": "node -r ts-node/register --test tests/testRunReporter.test.ts",
-    "build": "tsc"
+    "build": "tsc",
+    "prepare": "npm run build"
   },
   "devDependencies": {
     "@types/node": "^22.20.1",
