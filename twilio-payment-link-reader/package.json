@@ -1,0 +1,37 @@
+{
+  "name": "twilio-payment-link-reader",
+  "version": "1.0.0",
+  "description": "Azure Communication Services SMS reader that extracts payment URLs from SMS messages",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "start": "ts-node src/index.ts",
+    "dev": "ts-node src/index.ts",
+    "bddgen": "bddgen",
+    "test": "npm run bddgen && playwright test",
+    "test:debug": "npm run bddgen && playwright test --debug",
+    "report": "playwright show-report"
+  },
+  "keywords": [
+    "azure",
+    "acs",
+    "communication-services",
+    "sms",
+    "payment",
+    "url-extractor"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@azure/communication-sms": "^1.1.0",
+    "@azure/storage-queue": "^12.31.0",
+    "dotenv": "^16.3.1"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.62.1",
+    "@types/node": "^20.8.0",
+    "playwright-bdd": "^9.2.0",
+    "ts-node": "^10.9.1",
+    "typescript": "^5.2.2"
+  }
+}
