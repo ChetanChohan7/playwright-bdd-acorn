@@ -1,7 +1,7 @@
-export type TwilioSmsWorld = {
+export type AcsSmsWorld = {
   testToken?: string;
   sentBody?: string;
-  sentSid?: string;
-  deliveredBody?: string;
+  sentMessageId?: string;
   deliveryStatus?: string;
+  deliveryStatusDetails?: string;
 };

@@ -1,13 +1,13 @@
 import * as dotenv from 'dotenv';
 import { createInterface } from 'readline/promises';
 import { stdin as input, stdout as output } from 'process';
-import { TwilioSmsReader } from './twilio/TwilioSmsReader';
+import { AcsSmsReader } from './acs/AcsSmsReader';
 import { UrlExtractor } from './utils/UrlExtractor';
 
 /**
  * Main application entry point
- * Prompts user for SMS trigger confirmation, retrieves SMS from Twilio,
- * extracts payment URL, and outputs it to console
+ * Prompts user for SMS trigger confirmation, retrieves SMS from Azure
+ * Communication Services, extracts payment URL, and outputs it to console
  */
 async function main(): Promise<void> {
   // Load environment variables from .env file
@@ -15,7 +15,7 @@ async function main(): Promise<void> {
 
   // Display application header
   console.log('==================================================');
-  console.log('Twilio Payment Link Reader');
+  console.log('ACS Payment Link Reader');
   console.log('==================================================\n');
 
   // Create readline interface for user input
@@ -44,19 +44,19 @@ async function main(): Promise<void> {
     }
 
     // Retrieve environment variables
-    const accountSid = process.env.TWILIO_ACCOUNT_SID;
-    const authToken = process.env.TWILIO_AUTH_TOKEN;
-    const phoneNumber = process.env.TWILIO_PHONE_NUMBER;
+    const storageQueueConnectionString = process.env.AZURE_STORAGE_QUEUE_CONNECTION_STRING;
+    const smsReceivedQueueName = process.env.AZURE_SMS_RECEIVED_QUEUE_NAME;
+    const phoneNumber = process.env.ACS_PHONE_NUMBER;
 
     // Validate environment variables
-    if (!accountSid || !authToken || !phoneNumber) {
+    if (!storageQueueConnectionString || !smsReceivedQueueName || !phoneNumber) {
       throw new Error(
         'Missing required environment variables. Please check your .env file.'
       );
     }
 
-    // Create Twilio SMS reader instance
-    const smsReader = new TwilioSmsReader(accountSid, authToken, phoneNumber);
+    // Create ACS SMS reader instance
+    const smsReader = new AcsSmsReader(storageQueueConnectionString, smsReceivedQueueName, phoneNumber);
 
     // Wait for SMS (2 minute timeout)
     console.log('\nWaiting for SMS...');
