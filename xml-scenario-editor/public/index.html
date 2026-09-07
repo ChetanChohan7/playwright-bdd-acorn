@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>XML Scenario Editor</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <h1>XML Scenario Editor</h1>
+    <p>Load an XML document, edit its extracted fields, then save it as a new row in <code>data/scenarios.csv</code>.</p>
+  </header>
+
+  <main class="layout">
+    <section class="panel" id="load-panel">
+      <h2>1. Load XML</h2>
+      <div class="field-row">
+        <label for="xml-file">From file</label>
+        <input type="file" id="xml-file" accept=".xml,text/xml,application/xml" />
+      </div>
+      <div class="field-row">
+        <label for="xml-text">Or paste XML</label>
+        <textarea id="xml-text" rows="10" placeholder="<root>...</root>"></textarea>
+      </div>
+      <div class="actions">
+        <button id="parse-btn" type="button">Parse XML</button>
+        <span id="parse-status" class="status"></span>
+      </div>
+    </section>
+
+    <section class="panel" id="edit-panel" hidden>
+      <h2>2. Edit fields</h2>
+      <div class="meta-row">
+        <div class="field-row">
+          <label for="scenario-id">Scenario ID</label>
+          <input type="text" id="scenario-id" placeholder="e.g. SCN-001" />
+        </div>
+        <div class="field-row">
+          <label for="version">Version</label>
+          <input type="text" id="version" placeholder="e.g. 1.0" />
+        </div>
+      </div>
+
+      <div id="fields-container" class="fields-container"></div>
+
+      <div class="actions">
+        <button id="preview-btn" type="button" class="secondary">Preview updated XML</button>
+        <button id="save-btn" type="button">Save to CSV</button>
+        <span id="save-status" class="status"></span>
+      </div>
+
+      <details id="preview-details" hidden>
+        <summary>Updated XML preview</summary>
+        <pre id="xml-preview"></pre>
+      </details>
+    </section>
+
+    <section class="panel" id="history-panel">
+      <h2>3. Recent CSV rows</h2>
+      <div class="actions">
+        <button id="refresh-btn" type="button" class="secondary">Refresh</button>
+        <a id="download-link" href="/api/csv/download">Download full CSV</a>
+      </div>
+      <div class="table-wrap">
+        <table id="rows-table">
+          <thead>
+            <tr>
+              <th>Scenario ID</th>
+              <th>Version</th>
+              <th>Date</th>
+              <th>Xml (preview)</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
