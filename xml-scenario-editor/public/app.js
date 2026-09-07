@@ -18,8 +18,8 @@ const saveStatus = document.getElementById('save-status');
 const previewDetails = document.getElementById('preview-details');
 const xmlPreview = document.getElementById('xml-preview');
 
-const backfillPanel = document.getElementById('backfill-panel');
-const backfillFieldSelect = document.getElementById('backfill-field-select');
+const backfillPathInput = document.getElementById('backfill-path');
+const backfillSuggestions = document.getElementById('backfill-path-suggestions');
 const backfillValueInput = document.getElementById('backfill-value');
 const backfillBtn = document.getElementById('backfill-btn');
 const backfillStatus = document.getElementById('backfill-status');
@@ -68,10 +68,9 @@ parseBtn.addEventListener('click', async () => {
     currentStructure = data.structure;
     currentFields = data.fields;
     renderFields(currentFields);
-    populateBackfillFieldOptions(currentFields);
+    populatePathSuggestions(currentFields);
 
     editPanel.hidden = false;
-    backfillPanel.hidden = false;
     previewDetails.hidden = true;
     setStatus(parseStatus, `Parsed ${currentFields.length} field(s).`, 'success');
     setStatus(saveStatus, '', null);
@@ -186,35 +185,46 @@ saveBtn.addEventListener('click', async () => {
   }
 });
 
-function populateBackfillFieldOptions(fields) {
-  backfillFieldSelect.innerHTML = '<option value="">(choose a field)</option>';
+/** Converts an internal field path (array) to the dot/@ string syntax. */
+function pathToString(pathSegments) {
+  return pathSegments
+    .map((seg) => {
+      if (typeof seg === 'number') return String(seg);
+      if (seg.startsWith('@_')) return '@' + seg.slice(2);
+      return seg;
+    })
+    .join('.');
+}
+
+// Offers existing field paths as autocomplete suggestions, purely as a
+// convenience — the path input works fine for a path that matches
+// nothing currently parsed (i.e. a brand new field).
+function populatePathSuggestions(fields) {
+  backfillSuggestions.innerHTML = '';
   for (const field of fields) {
     const opt = document.createElement('option');
-    opt.value = String(field.id);
-    opt.textContent = field.label;
-    opt.dataset.value = field.value;
-    backfillFieldSelect.appendChild(opt);
+    opt.value = pathToString(field.path);
+    backfillSuggestions.appendChild(opt);
   }
 }
 
-backfillFieldSelect.addEventListener('change', () => {
-  const opt = backfillFieldSelect.selectedOptions[0];
-  backfillValueInput.value = opt && opt.dataset.value !== undefined ? opt.dataset.value : '';
+// If the typed path matches a field from the currently parsed document,
+// prefill the value from it (without clobbering something the user
+// already typed).
+backfillPathInput.addEventListener('input', () => {
+  if (backfillValueInput.value.trim() !== '') return;
+  const match = currentFields.find((f) => pathToString(f.path) === backfillPathInput.value.trim());
+  if (match) backfillValueInput.value = match.value;
 });
 
 backfillBtn.addEventListener('click', async () => {
   setStatus(backfillStatus, '', null);
 
-  const fieldId = backfillFieldSelect.value;
+  const path = backfillPathInput.value.trim();
   const value = backfillValueInput.value;
 
-  if (fieldId === '') {
-    setStatus(backfillStatus, 'Pick which field is the new one.', 'error');
-    return;
-  }
-  const field = currentFields.find((f) => String(f.id) === fieldId);
-  if (!field) {
-    setStatus(backfillStatus, 'Selected field is no longer available — re-parse the document.', 'error');
+  if (!path) {
+    setStatus(backfillStatus, 'Enter the field path to add, e.g. Plan.TaxRate.', 'error');
     return;
   }
 
@@ -223,7 +233,7 @@ backfillBtn.addEventListener('click', async () => {
     const res = await fetch('/api/backfill-field', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ path: field.path, value }),
+      body: JSON.stringify({ path, value }),
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Backfill failed.');

@@ -20,23 +20,29 @@ contains, and logging each save as a row in a CSV file.
    Every save appends a new row — the CSV is a running history, it's
    never overwritten.
 
-## Backfilling a new field into already-saved rows
+## Backfilling a field into already-saved rows
 
-If the XML template gains a new field after some rows have already been
-saved, those older rows' `Xml` column won't have it. The **"Add a new
-field to already-saved rows"** panel fixes that without hand-editing the
-CSV:
+If the XML template gains a field after some rows have already been
+saved — including a field that's **never existed in any document
+before** — those older rows' `Xml` column won't have it. The **"Add a
+field to already-saved rows"** panel fixes that without hand-editing
+the CSV:
 
-1. Parse a document that already contains the new field (so the tool
-   knows its path in the XML), then pick it from the dropdown.
-2. Enter the value it should have in every existing row (it's
-   pre-filled from the parsed document, but you can change it).
+1. Type the **field path**, dot-separated, e.g. `Plan.TaxRate` for a new
+   element or `Plan.@taxIncluded` for a new attribute. You can include
+   the document's root element name or leave it off — it's added
+   automatically (paths of fields from whatever you last parsed also
+   show up as autocomplete suggestions, but typing one that matches
+   nothing is exactly how you add a brand-new field).
+2. Enter the **value** it should have in every existing row.
 3. Click **Add to existing CSV rows**.
 
-The server re-parses each row's `Xml`, inserts the field at that path
-(creating it if missing), and rewrites the row — `ScenarioId`, `Version`
-and `Date` are left untouched, only `Xml` changes. A row is skipped
-(and reported) only if its stored XML fails to parse.
+The server re-parses each row's `Xml`, inserts the field at that path —
+creating any missing parent elements along the way — and rewrites the
+row; `ScenarioId`, `Version` and `Date` are left untouched, only `Xml`
+changes. It also guards against a mistyped path ever producing invalid
+multi-root XML: a row is skipped and reported (not corrupted) if
+anything about it can't be made to work.
 
 ## Run it
 

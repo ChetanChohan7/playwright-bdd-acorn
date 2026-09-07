@@ -35,6 +35,11 @@ const builderOptions = {
   format: true,
   indentBy: '  ',
   suppressEmptyNode: false,
+  // Without this, the builder renders any attribute whose value is
+  // exactly the string "true" as a bare, valueless attribute (e.g.
+  // `taxIncluded` instead of `taxIncluded="true"`) — invalid XML, and a
+  // real trap here since every value in this tool is kept as a string.
+  suppressBooleanAttributes: false,
 };
 
 /**
@@ -271,20 +276,44 @@ function buildXml(structure, fields) {
 }
 
 /**
+ * Parses the UI's dot/@ path syntax (e.g. "Plan.TaxRate" or
+ * "Items.Item.0.@sku") into the same path-segment array format used
+ * internally (numbers for array indices, "@_x" for attributes, plain
+ * strings for element names) — the exact inverse of the frontend's
+ * pathToString().
+ */
+function parsePathString(str) {
+  return String(str)
+    .split('.')
+    .map((seg) => seg.trim())
+    .filter(Boolean)
+    .map((seg) => {
+      if (/^\d+$/.test(seg)) return Number(seg);
+      if (seg.startsWith('@')) return '@_' + seg.slice(1);
+      return seg;
+    });
+}
+
+/**
  * Backfills a field into every row already saved in the CSV — used when
  * the XML template gains a new field after some rows were already
- * generated, so those older rows can be brought up to date. Each row's
+ * generated (including a field that has never existed in any document
+ * before), so those older rows can be brought up to date. Each row's
  * Xml column is re-parsed, the field is added (or overwritten) at
  * `path`, and the row is rebuilt; ScenarioId/Version/Date are left as-is.
  */
 app.post('/api/backfill-field', (req, res) => {
-  const { path: fieldPath, value } = req.body || {};
+  const { path: pathStr, value } = req.body || {};
 
-  if (!Array.isArray(fieldPath) || fieldPath.length === 0) {
-    return res.status(400).json({ error: 'Missing the field path to add — parse a document containing the new field first, then pick it from the list.' });
+  if (!pathStr || typeof pathStr !== 'string' || !pathStr.trim()) {
+    return res.status(400).json({ error: 'Missing the field path to add, e.g. "Plan.TaxRate".' });
   }
   if (value === undefined || value === null) {
     return res.status(400).json({ error: 'A value for the new field is required.' });
+  }
+  const fieldPath = parsePathString(pathStr);
+  if (fieldPath.length === 0) {
+    return res.status(400).json({ error: 'Could not make sense of that field path.' });
   }
 
   ensureCsv();
@@ -300,7 +329,28 @@ app.post('/api/backfill-field', (req, res) => {
     try {
       const structure = parser.parse(xml);
       pruneBlankText(structure);
-      setAtPathCreate(structure, fieldPath, String(value));
+
+      // A valid XML document has exactly one top-level element (plus an
+      // optional "?xml" declaration node). The path the user typed is
+      // relative to that root, so if they didn't include it (e.g. typed
+      // "Plan.TaxRate" instead of "PricingScenario.Plan.TaxRate"), prefix
+      // it with this row's actual root element automatically.
+      const rootKeys = Object.keys(structure).filter((k) => k !== '?xml');
+      if (rootKeys.length !== 1) {
+        throw new Error(`Row's XML doesn't have exactly one root element (found: ${rootKeys.join(', ') || 'none'}).`);
+      }
+      const [rootKey] = rootKeys;
+      const effectivePath = fieldPath[0] === rootKey ? fieldPath : [rootKey, ...fieldPath];
+
+      setAtPathCreate(structure, effectivePath, String(value));
+
+      // Guard against a mistyped path silently producing invalid,
+      // multi-root XML — fail this row instead of writing it out.
+      const afterKeys = Object.keys(structure).filter((k) => k !== '?xml');
+      if (afterKeys.length !== 1) {
+        throw new Error(`Adding "${pathStr}" would create a second root element (${afterKeys.join(', ')}) — check the path.`);
+      }
+
       const xmlOut = buildXml(structure, []);
       updated++;
       return [scenarioId, version, date, xmlOut];

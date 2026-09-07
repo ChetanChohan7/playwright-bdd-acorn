@@ -56,19 +56,26 @@
       </details>
     </section>
 
-    <section class="panel" id="backfill-panel" hidden>
-      <h2>3. Add a new field to already-saved rows</h2>
+    <section class="panel" id="backfill-panel">
+      <h2>3. Add a field to already-saved rows</h2>
       <p class="hint">
-        Once the XML template has a field that older CSV rows don't, pick it
-        below and push it into every row already saved in the CSV — each
-        row's Xml is re-parsed, the field is added, and the row is rewritten
-        in place (ScenarioId, Version and Date are left untouched).
+        Push a field into every row already saved in the CSV — including a
+        field that's never existed in any document before. Each row's Xml is
+        re-parsed, the field is added (creating parent elements as needed),
+        and the row is rewritten in place (ScenarioId, Version and Date are
+        left untouched).
       </p>
       <div class="field-row">
-        <label for="backfill-field-select">New field</label>
-        <select id="backfill-field-select">
-          <option value="">(parse a document containing the new field first)</option>
-        </select>
+        <label for="backfill-path">Field path</label>
+        <input type="text" id="backfill-path" list="backfill-path-suggestions" placeholder="e.g. Plan.TaxRate or Plan.@taxIncluded" />
+        <datalist id="backfill-path-suggestions"></datalist>
+        <small class="hint">
+          Dot-separated element names, relative to the document root (you can
+          include the root's own name or leave it off — it's added
+          automatically). Prefix a segment with <code>@</code> for an
+          attribute, e.g. <code>Plan.@taxIncluded</code>. Elements that don't
+          already exist are created.
+        </small>
       </div>
       <div class="field-row">
         <label for="backfill-value">Value to set it to in every existing row</label>
