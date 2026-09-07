@@ -112,6 +112,25 @@ function setAtPath(obj, pathSegments, value) {
   cur[pathSegments[pathSegments.length - 1]] = value;
 }
 
+/**
+ * Like setAtPath, but creates any missing intermediate objects/arrays
+ * along the way instead of assuming they already exist. Used to add a
+ * brand-new field into documents that don't have it yet (e.g. backfilling
+ * an older row's XML with a field only the current template has).
+ */
+function setAtPathCreate(obj, pathSegments, value) {
+  let cur = obj;
+  for (let i = 0; i < pathSegments.length - 1; i++) {
+    const seg = pathSegments[i];
+    const nextSeg = pathSegments[i + 1];
+    if (cur[seg] === undefined || cur[seg] === null || typeof cur[seg] !== 'object') {
+      cur[seg] = typeof nextSeg === 'number' ? [] : {};
+    }
+    cur = cur[seg];
+  }
+  cur[pathSegments[pathSegments.length - 1]] = value;
+}
+
 function ensureCsv() {
   if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
   if (!fs.existsSync(CSV_PATH)) {
@@ -251,50 +270,53 @@ function buildXml(structure, fields) {
   return xmlOut;
 }
 
-app.post('/api/bulk-save', (req, res) => {
-  const { structure, fields, version, scenarioIdPattern, startNumber, count, syncFieldId } = req.body || {};
+/**
+ * Backfills a field into every row already saved in the CSV — used when
+ * the XML template gains a new field after some rows were already
+ * generated, so those older rows can be brought up to date. Each row's
+ * Xml column is re-parsed, the field is added (or overwritten) at
+ * `path`, and the row is rebuilt; ScenarioId/Version/Date are left as-is.
+ */
+app.post('/api/backfill-field', (req, res) => {
+  const { path: fieldPath, value } = req.body || {};
 
-  if (!structure || !Array.isArray(fields)) {
-    return res.status(400).json({ error: 'Missing parsed XML structure/fields — parse an XML document first.' });
+  if (!Array.isArray(fieldPath) || fieldPath.length === 0) {
+    return res.status(400).json({ error: 'Missing the field path to add — parse a document containing the new field first, then pick it from the list.' });
   }
-  if (!version || !String(version).trim()) {
-    return res.status(400).json({ error: 'Version is required.' });
+  if (value === undefined || value === null) {
+    return res.status(400).json({ error: 'A value for the new field is required.' });
   }
-  if (!scenarioIdPattern || !scenarioIdPattern.includes('{n}')) {
-    return res.status(400).json({ error: 'Scenario ID pattern must include {n}, e.g. "PS-{n}".' });
-  }
-  const n = Number(count);
-  if (!Number.isInteger(n) || n < 1 || n > 500) {
-    return res.status(400).json({ error: 'Count must be a whole number between 1 and 500.' });
-  }
-  const start = Number.isFinite(Number(startNumber)) ? Number(startNumber) : 1;
 
-  try {
-    ensureCsv();
-    const date = new Date().toISOString();
-    const rows = [];
-    const items = [];
+  ensureCsv();
+  const content = fs.readFileSync(CSV_PATH, 'utf8');
+  const [header, ...dataRows] = parseCsv(content);
+  const parser = new XMLParser(parserOptions);
 
-    for (let i = 0; i < n; i++) {
-      const seq = start + i;
-      const scenarioId = scenarioIdPattern.split('{n}').join(String(seq));
-
-      const fieldsCopy = fields.map((f) => ({ ...f }));
-      if (syncFieldId !== null && syncFieldId !== undefined && syncFieldId !== '') {
-        const target = fieldsCopy.find((f) => f.id === syncFieldId);
-        if (target) target.value = scenarioId;
-      }
-
-      const xmlOut = buildXml(structure, fieldsCopy);
-      rows.push([scenarioId, version, date, xmlOut].map(csvEscape).join(',') + '\r\n');
-      items.push({ scenarioId, xml: xmlOut });
+  let updated = 0;
+  const errors = [];
+  const outRows = dataRows.map((r) => {
+    if (r.length < 4) return r;
+    const [scenarioId, version, date, xml] = r;
+    try {
+      const structure = parser.parse(xml);
+      pruneBlankText(structure);
+      setAtPathCreate(structure, fieldPath, String(value));
+      const xmlOut = buildXml(structure, []);
+      updated++;
+      return [scenarioId, version, date, xmlOut];
+    } catch (err) {
+      errors.push({ scenarioId, error: err.message });
+      return r;
     }
+  });
 
-    fs.appendFileSync(CSV_PATH, rows.join(''), 'utf8');
-    res.json({ date, items });
-  } catch (err) {
-    res.status(500).json({ error: `Bulk save failed: ${err.message}` });
-  }
+  const csvText =
+    header.map(csvEscape).join(',') +
+    '\r\n' +
+    outRows.map((r) => r.map(csvEscape).join(',') + '\r\n').join('');
+  fs.writeFileSync(CSV_PATH, csvText, 'utf8');
+
+  res.json({ total: dataRows.length, updated, skipped: errors.length, errors });
 });
 
 app.get('/api/rows', (req, res) => {

@@ -1,6 +1,7 @@
 // public/app.js
-// Wires up the load -> parse -> edit -> save -> history flow against
-// the server's /api/parse, /api/save and /api/rows endpoints.
+// Wires up the load -> parse -> edit -> save -> history flow, plus
+// backfilling a new field into already-saved rows, against the server's
+// /api/parse, /api/save, /api/backfill-field and /api/rows endpoints.
 
 const xmlFileInput = document.getElementById('xml-file');
 const xmlTextArea = document.getElementById('xml-text');
@@ -17,13 +18,11 @@ const saveStatus = document.getElementById('save-status');
 const previewDetails = document.getElementById('preview-details');
 const xmlPreview = document.getElementById('xml-preview');
 
-const bulkPanel = document.getElementById('bulk-panel');
-const bulkPatternInput = document.getElementById('bulk-pattern');
-const bulkStartInput = document.getElementById('bulk-start');
-const bulkCountInput = document.getElementById('bulk-count');
-const bulkSyncFieldSelect = document.getElementById('bulk-sync-field');
-const bulkGenerateBtn = document.getElementById('bulk-generate-btn');
-const bulkStatus = document.getElementById('bulk-status');
+const backfillPanel = document.getElementById('backfill-panel');
+const backfillFieldSelect = document.getElementById('backfill-field-select');
+const backfillValueInput = document.getElementById('backfill-value');
+const backfillBtn = document.getElementById('backfill-btn');
+const backfillStatus = document.getElementById('backfill-status');
 
 const refreshBtn = document.getElementById('refresh-btn');
 const rowsTableBody = document.querySelector('#rows-table tbody');
@@ -69,10 +68,10 @@ parseBtn.addEventListener('click', async () => {
     currentStructure = data.structure;
     currentFields = data.fields;
     renderFields(currentFields);
-    populateSyncFieldOptions(currentFields);
+    populateBackfillFieldOptions(currentFields);
 
     editPanel.hidden = false;
-    bulkPanel.hidden = false;
+    backfillPanel.hidden = false;
     previewDetails.hidden = true;
     setStatus(parseStatus, `Parsed ${currentFields.length} field(s).`, 'success');
     setStatus(saveStatus, '', null);
@@ -187,66 +186,58 @@ saveBtn.addEventListener('click', async () => {
   }
 });
 
-function populateSyncFieldOptions(fields) {
-  bulkSyncFieldSelect.innerHTML = '<option value="">(none — leave XML fields as edited above)</option>';
+function populateBackfillFieldOptions(fields) {
+  backfillFieldSelect.innerHTML = '<option value="">(choose a field)</option>';
   for (const field of fields) {
     const opt = document.createElement('option');
     opt.value = String(field.id);
     opt.textContent = field.label;
-    // A field whose path ends in an "id"-ish attribute/element is a
-    // reasonable default guess for "the ID field to vary".
-    if (/(^|[›\s@])id$/i.test(field.label)) opt.selected = true;
-    bulkSyncFieldSelect.appendChild(opt);
+    opt.dataset.value = field.value;
+    backfillFieldSelect.appendChild(opt);
   }
 }
 
-bulkGenerateBtn.addEventListener('click', async () => {
-  if (!currentStructure) return;
-  setStatus(bulkStatus, '', null);
+backfillFieldSelect.addEventListener('change', () => {
+  const opt = backfillFieldSelect.selectedOptions[0];
+  backfillValueInput.value = opt && opt.dataset.value !== undefined ? opt.dataset.value : '';
+});
 
-  const fields = collectEditedFields();
-  const version = versionInput.value.trim();
-  const pattern = bulkPatternInput.value.trim();
-  const startNumber = Number(bulkStartInput.value);
-  const count = Number(bulkCountInput.value);
-  const syncFieldValue = bulkSyncFieldSelect.value;
-  const syncFieldId = syncFieldValue === '' ? null : Number(syncFieldValue);
+backfillBtn.addEventListener('click', async () => {
+  setStatus(backfillStatus, '', null);
 
-  if (!version) {
-    setStatus(bulkStatus, 'Version is required (set it above).', 'error');
+  const fieldId = backfillFieldSelect.value;
+  const value = backfillValueInput.value;
+
+  if (fieldId === '') {
+    setStatus(backfillStatus, 'Pick which field is the new one.', 'error');
     return;
   }
-  if (!pattern.includes('{n}')) {
-    setStatus(bulkStatus, 'Scenario ID pattern must include {n}, e.g. "PS-{n}".', 'error');
+  const field = currentFields.find((f) => String(f.id) === fieldId);
+  if (!field) {
+    setStatus(backfillStatus, 'Selected field is no longer available — re-parse the document.', 'error');
     return;
   }
 
-  bulkGenerateBtn.disabled = true;
+  backfillBtn.disabled = true;
   try {
-    const res = await fetch('/api/bulk-save', {
+    const res = await fetch('/api/backfill-field', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        structure: currentStructure,
-        fields,
-        version,
-        scenarioIdPattern: pattern,
-        startNumber,
-        count,
-        syncFieldId,
-      }),
+      body: JSON.stringify({ path: field.path, value }),
     });
     const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Bulk save failed.');
+    if (!res.ok) throw new Error(data.error || 'Backfill failed.');
 
-    const first = data.items[0]?.scenarioId;
-    const last = data.items[data.items.length - 1]?.scenarioId;
-    setStatus(bulkStatus, `Saved ${data.items.length} rows: ${first} … ${last}.`, 'success');
+    let message = `Updated ${data.updated} of ${data.total} existing row(s).`;
+    if (data.skipped > 0) {
+      message += ` ${data.skipped} skipped (couldn't parse their XML).`;
+    }
+    setStatus(backfillStatus, message, data.skipped > 0 ? 'error' : 'success');
     loadRows();
   } catch (err) {
-    setStatus(bulkStatus, err.message, 'error');
+    setStatus(backfillStatus, err.message, 'error');
   } finally {
-    bulkGenerateBtn.disabled = false;
+    backfillBtn.disabled = false;
   }
 });
 

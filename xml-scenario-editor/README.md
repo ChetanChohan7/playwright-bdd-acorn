@@ -20,25 +20,23 @@ contains, and logging each save as a row in a CSV file.
    Every save appends a new row — the CSV is a running history, it's
    never overwritten.
 
-## Bulk generate
+## Backfilling a new field into already-saved rows
 
-Once a document is parsed, the **Bulk generate** panel lets you create
-many variants of it in one action instead of saving one at a time:
+If the XML template gains a new field after some rows have already been
+saved, those older rows' `Xml` column won't have it. The **"Add a new
+field to already-saved rows"** panel fixes that without hand-editing the
+CSV:
 
-- **Scenario ID pattern** — e.g. `PS-{n}`, where `{n}` is replaced by an
-  increasing number for each copy.
-- **Start number** / **How many** — e.g. start `1001`, count `10` →
-  `PS-1001` … `PS-1010`.
-- **Also set this XML field to the generated Scenario ID** — optionally
-  pick a field (e.g. the document's `@id` attribute) to sync to the same
-  generated value, so the id inside the XML matches the CSV's
-  `ScenarioId` column. Leave it on "(none)" to keep the XML content
-  identical across copies and only vary the CSV's Scenario ID.
+1. Parse a document that already contains the new field (so the tool
+   knows its path in the XML), then pick it from the dropdown.
+2. Enter the value it should have in every existing row (it's
+   pre-filled from the parsed document, but you can change it).
+3. Click **Add to existing CSV rows**.
 
-All other field values come from whatever is currently in the edit form,
-so you can tweak shared values once and then generate N variants of that
-template that differ only by ID. All N rows are appended to
-`data/scenarios.csv` in a single click.
+The server re-parses each row's `Xml`, inserts the field at that path
+(creating it if missing), and rewrites the row — `ScenarioId`, `Version`
+and `Date` are left untouched, only `Xml` changes. A row is skipped
+(and reported) only if its stored XML fails to parse.
 
 ## Run it
 

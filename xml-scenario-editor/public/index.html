@@ -56,35 +56,27 @@
       </details>
     </section>
 
-    <section class="panel" id="bulk-panel" hidden>
-      <h2>3. Bulk generate</h2>
+    <section class="panel" id="backfill-panel" hidden>
+      <h2>3. Add a new field to already-saved rows</h2>
       <p class="hint">
-        Uses the field values above as a template and generates multiple copies
-        with a different ID in each, appending all of them to the CSV at once.
+        Once the XML template has a field that older CSV rows don't, pick it
+        below and push it into every row already saved in the CSV — each
+        row's Xml is re-parsed, the field is added, and the row is rewritten
+        in place (ScenarioId, Version and Date are left untouched).
       </p>
-      <div class="meta-row">
-        <div class="field-row">
-          <label for="bulk-pattern">Scenario ID pattern</label>
-          <input type="text" id="bulk-pattern" placeholder="e.g. PS-{n}" value="PS-{n}" />
-        </div>
-        <div class="field-row">
-          <label for="bulk-start">Start number</label>
-          <input type="text" id="bulk-start" value="1001" />
-        </div>
-        <div class="field-row">
-          <label for="bulk-count">How many</label>
-          <input type="text" id="bulk-count" value="10" />
-        </div>
-      </div>
       <div class="field-row">
-        <label for="bulk-sync-field">Also set this XML field to the generated Scenario ID</label>
-        <select id="bulk-sync-field">
-          <option value="">(none — leave XML fields as edited above)</option>
+        <label for="backfill-field-select">New field</label>
+        <select id="backfill-field-select">
+          <option value="">(parse a document containing the new field first)</option>
         </select>
       </div>
+      <div class="field-row">
+        <label for="backfill-value">Value to set it to in every existing row</label>
+        <input type="text" id="backfill-value" placeholder="e.g. 0" />
+      </div>
       <div class="actions">
-        <button id="bulk-generate-btn" type="button">Generate &amp; save</button>
-        <span id="bulk-status" class="status"></span>
+        <button id="backfill-btn" type="button">Add to existing CSV rows</button>
+        <span id="backfill-status" class="status"></span>
       </div>
     </section>
 
