@@ -1,7 +1,8 @@
 // public/app.js
-// Wires up the load -> parse -> edit -> save -> history flow, plus
-// backfilling a new field into already-saved rows, against the server's
-// /api/parse, /api/save, /api/backfill-field and /api/rows endpoints.
+// Wires up the load -> parse -> edit -> save -> history flow, plus adding
+// a field to just the currently loaded document and backfilling a field
+// into already-saved rows, against the server's /api/parse, /api/save,
+// /api/add-field, /api/backfill-field and /api/rows endpoints.
 
 const xmlFileInput = document.getElementById('xml-file');
 const xmlTextArea = document.getElementById('xml-text');
@@ -17,6 +18,11 @@ const saveBtn = document.getElementById('save-btn');
 const saveStatus = document.getElementById('save-status');
 const previewDetails = document.getElementById('preview-details');
 const xmlPreview = document.getElementById('xml-preview');
+
+const addFieldPathInput = document.getElementById('add-field-path');
+const addFieldValueInput = document.getElementById('add-field-value');
+const addFieldBtn = document.getElementById('add-field-btn');
+const addFieldStatus = document.getElementById('add-field-status');
 
 const backfillPathInput = document.getElementById('backfill-path');
 const backfillSuggestions = document.getElementById('backfill-path-suggestions');
@@ -120,6 +126,47 @@ function collectEditedFields() {
   });
   return currentFields;
 }
+
+addFieldBtn.addEventListener('click', async () => {
+  if (!currentStructure) return;
+  setStatus(addFieldStatus, '', null);
+
+  const path = addFieldPathInput.value.trim();
+  const value = addFieldValueInput.value;
+
+  if (!path) {
+    setStatus(addFieldStatus, 'Enter the field path to add, e.g. Plan.TaxRate.', 'error');
+    return;
+  }
+
+  // Apply whatever's already been typed into the other fields first, so
+  // adding a field doesn't lose in-progress edits.
+  const fields = collectEditedFields();
+
+  addFieldBtn.disabled = true;
+  try {
+    const res = await fetch('/api/add-field', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ structure: currentStructure, fields, path, value }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to add field.');
+
+    currentStructure = data.structure;
+    currentFields = data.fields;
+    renderFields(currentFields);
+    populatePathSuggestions(currentFields);
+
+    addFieldPathInput.value = '';
+    addFieldValueInput.value = '';
+    setStatus(addFieldStatus, `Added "${path}". Remember to Save to write it to the CSV.`, 'success');
+  } catch (err) {
+    setStatus(addFieldStatus, err.message, 'error');
+  } finally {
+    addFieldBtn.disabled = false;
+  }
+});
 
 previewBtn.addEventListener('click', async () => {
   if (!currentStructure) return;

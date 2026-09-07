@@ -44,6 +44,19 @@
 
       <div id="fields-container" class="fields-container"></div>
 
+      <div class="add-field-row">
+        <div class="field-row">
+          <label for="add-field-path">Add a field to this document</label>
+          <input type="text" id="add-field-path" list="backfill-path-suggestions" placeholder="e.g. Plan.TaxRate or Plan.@taxIncluded" />
+        </div>
+        <div class="field-row">
+          <label for="add-field-value">Value</label>
+          <input type="text" id="add-field-value" placeholder="e.g. 0" />
+        </div>
+        <button id="add-field-btn" type="button" class="secondary">Add field</button>
+      </div>
+      <span id="add-field-status" class="status"></span>
+
       <div class="actions">
         <button id="preview-btn" type="button" class="secondary">Preview updated XML</button>
         <button id="save-btn" type="button">Save to CSV</button>

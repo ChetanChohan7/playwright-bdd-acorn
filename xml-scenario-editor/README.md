@@ -20,6 +20,18 @@ contains, and logging each save as a row in a CSV file.
    Every save appends a new row — the CSV is a running history, it's
    never overwritten.
 
+## Adding a field to just the document you're editing
+
+The **"Add a field to this document"** control (in the edit panel, above
+Preview/Save) adds a field to only the XML you currently have loaded —
+it doesn't touch the CSV or any other document. Useful when the document
+you're about to save is missing something the schema should have.
+
+Type the field's path (same dot/@ syntax as backfilling, below) and a
+value, click **Add field**, and it appears in the field list above like
+any other — editable, and included when you Preview or Save. Any edits
+already made to other fields are kept; nothing is lost by adding one.
+
 ## Backfilling a field into already-saved rows
 
 If the XML template gains a field after some rows have already been

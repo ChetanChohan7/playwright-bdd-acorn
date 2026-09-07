@@ -123,6 +123,22 @@ textarea {
   margin-bottom: 16px;
 }
 
+.add-field-row {
+  display: grid;
+  grid-template-columns: 2fr 1fr auto;
+  gap: 12px;
+  align-items: end;
+  padding: 12px;
+  background: var(--bg);
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  margin-bottom: 6px;
+}
+
+.add-field-row .field-row {
+  margin-bottom: 0;
+}
+
 .field-item label {
   display: block;
   font-size: 12px;

@@ -205,22 +205,7 @@ app.post('/api/parse', (req, res) => {
     const structure = parser.parse(xml);
     pruneBlankText(structure);
 
-    const rawFields = [];
-    collectFields(structure, [], rawFields);
-
-    // The XML declaration (<?xml version="1.0"?>) parses into a "?xml"
-    // pseudo-node; it's rebuilt automatically and isn't real scenario
-    // content, so don't surface it as an editable field.
-    const contentFields = rawFields.filter((f) => f.path[0] !== '?xml');
-
-    const fields = contentFields.map((f, i) => ({
-      id: i,
-      path: f.path,
-      label: labelForPath(f.path) || '(root)',
-      value: f.value,
-    }));
-
-    res.json({ fields, structure });
+    res.json({ fields: fieldsFromStructure(structure), structure });
   } catch (err) {
     res.status(400).json({ error: `Failed to parse XML: ${err.message}` });
   }
@@ -295,6 +280,86 @@ function parsePathString(str) {
 }
 
 /**
+ * Inserts a new field into a parsed-XML structure at a dot/@ path string,
+ * mutating it in place. Shared by /api/add-field (one document) and
+ * /api/backfill-field (every saved row), so both get the same root
+ * handling and the same guard against ever producing invalid XML.
+ *
+ * A valid XML document has exactly one top-level element (plus an
+ * optional "?xml" declaration node). The path is relative to that root,
+ * so if it's typed without the root (e.g. "Plan.TaxRate" instead of
+ * "PricingScenario.Plan.TaxRate"), it's prefixed automatically. If the
+ * result would somehow end up with more than one top-level element —
+ * i.e. a mistyped path tried to add a second root — this throws instead
+ * of letting invalid XML be built.
+ */
+function addFieldAtPath(structure, pathStr, value) {
+  const fieldPath = parsePathString(pathStr);
+  if (fieldPath.length === 0) {
+    throw new Error('Could not make sense of that field path.');
+  }
+
+  const rootKeys = Object.keys(structure).filter((k) => k !== '?xml');
+  if (rootKeys.length !== 1) {
+    throw new Error(`Document doesn't have exactly one root element (found: ${rootKeys.join(', ') || 'none'}).`);
+  }
+  const [rootKey] = rootKeys;
+  const effectivePath = fieldPath[0] === rootKey ? fieldPath : [rootKey, ...fieldPath];
+
+  setAtPathCreate(structure, effectivePath, String(value));
+
+  const afterKeys = Object.keys(structure).filter((k) => k !== '?xml');
+  if (afterKeys.length !== 1) {
+    throw new Error(`Adding "${pathStr}" would create a second root element (${afterKeys.join(', ')}) — check the path.`);
+  }
+}
+
+/** Re-derives the editable field list (fresh ids) from a structure. */
+function fieldsFromStructure(structure) {
+  const rawFields = [];
+  collectFields(structure, [], rawFields);
+  return rawFields
+    .filter((f) => f.path[0] !== '?xml')
+    .map((f, i) => ({ id: i, path: f.path, label: labelForPath(f.path) || '(root)', value: f.value }));
+}
+
+/**
+ * Adds a field to a single, currently-loaded document (not yet saved) —
+ * used by the "Add a field to this document" control in the edit panel.
+ * Any edits already made to other fields are applied first so they
+ * aren't lost, then the new field is added and the full field list is
+ * recomputed so the UI can re-render it.
+ */
+app.post('/api/add-field', (req, res) => {
+  const { structure, fields, path: pathStr, value } = req.body || {};
+
+  if (!structure) {
+    return res.status(400).json({ error: 'Parse an XML document first.' });
+  }
+  if (!pathStr || typeof pathStr !== 'string' || !pathStr.trim()) {
+    return res.status(400).json({ error: 'Missing the field path to add, e.g. "Plan.TaxRate".' });
+  }
+  if (value === undefined || value === null) {
+    return res.status(400).json({ error: 'A value for the new field is required.' });
+  }
+
+  try {
+    const updated = JSON.parse(JSON.stringify(structure));
+    if (Array.isArray(fields)) {
+      for (const f of fields) {
+        setAtPath(updated, f.path, f.value);
+      }
+    }
+
+    addFieldAtPath(updated, pathStr, value);
+
+    res.json({ structure: updated, fields: fieldsFromStructure(updated) });
+  } catch (err) {
+    res.status(400).json({ error: `Couldn't add field: ${err.message}` });
+  }
+});
+
+/**
  * Backfills a field into every row already saved in the CSV — used when
  * the XML template gains a new field after some rows were already
  * generated (including a field that has never existed in any document
@@ -311,10 +376,6 @@ app.post('/api/backfill-field', (req, res) => {
   if (value === undefined || value === null) {
     return res.status(400).json({ error: 'A value for the new field is required.' });
   }
-  const fieldPath = parsePathString(pathStr);
-  if (fieldPath.length === 0) {
-    return res.status(400).json({ error: 'Could not make sense of that field path.' });
-  }
 
   ensureCsv();
   const content = fs.readFileSync(CSV_PATH, 'utf8');
@@ -329,27 +390,7 @@ app.post('/api/backfill-field', (req, res) => {
     try {
       const structure = parser.parse(xml);
       pruneBlankText(structure);
-
-      // A valid XML document has exactly one top-level element (plus an
-      // optional "?xml" declaration node). The path the user typed is
-      // relative to that root, so if they didn't include it (e.g. typed
-      // "Plan.TaxRate" instead of "PricingScenario.Plan.TaxRate"), prefix
-      // it with this row's actual root element automatically.
-      const rootKeys = Object.keys(structure).filter((k) => k !== '?xml');
-      if (rootKeys.length !== 1) {
-        throw new Error(`Row's XML doesn't have exactly one root element (found: ${rootKeys.join(', ') || 'none'}).`);
-      }
-      const [rootKey] = rootKeys;
-      const effectivePath = fieldPath[0] === rootKey ? fieldPath : [rootKey, ...fieldPath];
-
-      setAtPathCreate(structure, effectivePath, String(value));
-
-      // Guard against a mistyped path silently producing invalid,
-      // multi-root XML — fail this row instead of writing it out.
-      const afterKeys = Object.keys(structure).filter((k) => k !== '?xml');
-      if (afterKeys.length !== 1) {
-        throw new Error(`Adding "${pathStr}" would create a second root element (${afterKeys.join(', ')}) — check the path.`);
-      }
+      addFieldAtPath(structure, pathStr, value);
 
       const xmlOut = buildXml(structure, []);
       updated++;
