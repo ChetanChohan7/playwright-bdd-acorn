@@ -81,7 +81,15 @@ body {
   gap: 16px;
 }
 
+.hint {
+  font-size: 13px;
+  color: var(--muted);
+  margin-top: -6px;
+  margin-bottom: 16px;
+}
+
 input[type="text"],
+select,
 textarea {
   font-family: inherit;
   font-size: 14px;

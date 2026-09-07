@@ -20,6 +20,26 @@ contains, and logging each save as a row in a CSV file.
    Every save appends a new row — the CSV is a running history, it's
    never overwritten.
 
+## Bulk generate
+
+Once a document is parsed, the **Bulk generate** panel lets you create
+many variants of it in one action instead of saving one at a time:
+
+- **Scenario ID pattern** — e.g. `PS-{n}`, where `{n}` is replaced by an
+  increasing number for each copy.
+- **Start number** / **How many** — e.g. start `1001`, count `10` →
+  `PS-1001` … `PS-1010`.
+- **Also set this XML field to the generated Scenario ID** — optionally
+  pick a field (e.g. the document's `@id` attribute) to sync to the same
+  generated value, so the id inside the XML matches the CSV's
+  `ScenarioId` column. Leave it on "(none)" to keep the XML content
+  identical across copies and only vary the CSV's Scenario ID.
+
+All other field values come from whatever is currently in the edit form,
+so you can tweak shared values once and then generate N variants of that
+template that differ only by ID. All N rows are appended to
+`data/scenarios.csv` in a single click.
+
 ## Run it
 
 ```bash

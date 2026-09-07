@@ -56,8 +56,40 @@
       </details>
     </section>
 
+    <section class="panel" id="bulk-panel" hidden>
+      <h2>3. Bulk generate</h2>
+      <p class="hint">
+        Uses the field values above as a template and generates multiple copies
+        with a different ID in each, appending all of them to the CSV at once.
+      </p>
+      <div class="meta-row">
+        <div class="field-row">
+          <label for="bulk-pattern">Scenario ID pattern</label>
+          <input type="text" id="bulk-pattern" placeholder="e.g. PS-{n}" value="PS-{n}" />
+        </div>
+        <div class="field-row">
+          <label for="bulk-start">Start number</label>
+          <input type="text" id="bulk-start" value="1001" />
+        </div>
+        <div class="field-row">
+          <label for="bulk-count">How many</label>
+          <input type="text" id="bulk-count" value="10" />
+        </div>
+      </div>
+      <div class="field-row">
+        <label for="bulk-sync-field">Also set this XML field to the generated Scenario ID</label>
+        <select id="bulk-sync-field">
+          <option value="">(none — leave XML fields as edited above)</option>
+        </select>
+      </div>
+      <div class="actions">
+        <button id="bulk-generate-btn" type="button">Generate &amp; save</button>
+        <span id="bulk-status" class="status"></span>
+      </div>
+    </section>
+
     <section class="panel" id="history-panel">
-      <h2>3. Recent CSV rows</h2>
+      <h2>4. Recent CSV rows</h2>
       <div class="actions">
         <button id="refresh-btn" type="button" class="secondary">Refresh</button>
         <a id="download-link" href="/api/csv/download">Download full CSV</a>

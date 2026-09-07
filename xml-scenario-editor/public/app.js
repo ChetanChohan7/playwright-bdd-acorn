@@ -17,6 +17,14 @@ const saveStatus = document.getElementById('save-status');
 const previewDetails = document.getElementById('preview-details');
 const xmlPreview = document.getElementById('xml-preview');
 
+const bulkPanel = document.getElementById('bulk-panel');
+const bulkPatternInput = document.getElementById('bulk-pattern');
+const bulkStartInput = document.getElementById('bulk-start');
+const bulkCountInput = document.getElementById('bulk-count');
+const bulkSyncFieldSelect = document.getElementById('bulk-sync-field');
+const bulkGenerateBtn = document.getElementById('bulk-generate-btn');
+const bulkStatus = document.getElementById('bulk-status');
+
 const refreshBtn = document.getElementById('refresh-btn');
 const rowsTableBody = document.querySelector('#rows-table tbody');
 
@@ -61,8 +69,10 @@ parseBtn.addEventListener('click', async () => {
     currentStructure = data.structure;
     currentFields = data.fields;
     renderFields(currentFields);
+    populateSyncFieldOptions(currentFields);
 
     editPanel.hidden = false;
+    bulkPanel.hidden = false;
     previewDetails.hidden = true;
     setStatus(parseStatus, `Parsed ${currentFields.length} field(s).`, 'success');
     setStatus(saveStatus, '', null);
@@ -174,6 +184,69 @@ saveBtn.addEventListener('click', async () => {
     setStatus(saveStatus, err.message, 'error');
   } finally {
     saveBtn.disabled = false;
+  }
+});
+
+function populateSyncFieldOptions(fields) {
+  bulkSyncFieldSelect.innerHTML = '<option value="">(none — leave XML fields as edited above)</option>';
+  for (const field of fields) {
+    const opt = document.createElement('option');
+    opt.value = String(field.id);
+    opt.textContent = field.label;
+    // A field whose path ends in an "id"-ish attribute/element is a
+    // reasonable default guess for "the ID field to vary".
+    if (/(^|[›\s@])id$/i.test(field.label)) opt.selected = true;
+    bulkSyncFieldSelect.appendChild(opt);
+  }
+}
+
+bulkGenerateBtn.addEventListener('click', async () => {
+  if (!currentStructure) return;
+  setStatus(bulkStatus, '', null);
+
+  const fields = collectEditedFields();
+  const version = versionInput.value.trim();
+  const pattern = bulkPatternInput.value.trim();
+  const startNumber = Number(bulkStartInput.value);
+  const count = Number(bulkCountInput.value);
+  const syncFieldValue = bulkSyncFieldSelect.value;
+  const syncFieldId = syncFieldValue === '' ? null : Number(syncFieldValue);
+
+  if (!version) {
+    setStatus(bulkStatus, 'Version is required (set it above).', 'error');
+    return;
+  }
+  if (!pattern.includes('{n}')) {
+    setStatus(bulkStatus, 'Scenario ID pattern must include {n}, e.g. "PS-{n}".', 'error');
+    return;
+  }
+
+  bulkGenerateBtn.disabled = true;
+  try {
+    const res = await fetch('/api/bulk-save', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        structure: currentStructure,
+        fields,
+        version,
+        scenarioIdPattern: pattern,
+        startNumber,
+        count,
+        syncFieldId,
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Bulk save failed.');
+
+    const first = data.items[0]?.scenarioId;
+    const last = data.items[data.items.length - 1]?.scenarioId;
+    setStatus(bulkStatus, `Saved ${data.items.length} rows: ${first} … ${last}.`, 'success');
+    loadRows();
+  } catch (err) {
+    setStatus(bulkStatus, err.message, 'error');
+  } finally {
+    bulkGenerateBtn.disabled = false;
   }
 });
 

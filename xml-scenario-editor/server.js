@@ -218,16 +218,7 @@ app.post('/api/save', (req, res) => {
   }
 
   try {
-    const updated = JSON.parse(JSON.stringify(structure));
-    for (const f of fields) {
-      setAtPath(updated, f.path, f.value);
-    }
-
-    const builder = new XMLBuilder(builderOptions);
-    let xmlOut = builder.build(updated);
-    if (!/^\s*<\?xml/.test(xmlOut)) {
-      xmlOut = '<?xml version="1.0" encoding="UTF-8"?>\n' + xmlOut;
-    }
+    const xmlOut = buildXml(structure, fields);
 
     // Dry run (used for the "Preview updated XML" button): build the XML
     // but don't touch the CSV.
@@ -243,6 +234,66 @@ app.post('/api/save', (req, res) => {
     res.json({ xml: xmlOut, date });
   } catch (err) {
     res.status(500).json({ error: `Failed to save: ${err.message}` });
+  }
+});
+
+/** Builds one XML string from a structure + edited field list. */
+function buildXml(structure, fields) {
+  const updated = JSON.parse(JSON.stringify(structure));
+  for (const f of fields) {
+    setAtPath(updated, f.path, f.value);
+  }
+  const builder = new XMLBuilder(builderOptions);
+  let xmlOut = builder.build(updated);
+  if (!/^\s*<\?xml/.test(xmlOut)) {
+    xmlOut = '<?xml version="1.0" encoding="UTF-8"?>\n' + xmlOut;
+  }
+  return xmlOut;
+}
+
+app.post('/api/bulk-save', (req, res) => {
+  const { structure, fields, version, scenarioIdPattern, startNumber, count, syncFieldId } = req.body || {};
+
+  if (!structure || !Array.isArray(fields)) {
+    return res.status(400).json({ error: 'Missing parsed XML structure/fields — parse an XML document first.' });
+  }
+  if (!version || !String(version).trim()) {
+    return res.status(400).json({ error: 'Version is required.' });
+  }
+  if (!scenarioIdPattern || !scenarioIdPattern.includes('{n}')) {
+    return res.status(400).json({ error: 'Scenario ID pattern must include {n}, e.g. "PS-{n}".' });
+  }
+  const n = Number(count);
+  if (!Number.isInteger(n) || n < 1 || n > 500) {
+    return res.status(400).json({ error: 'Count must be a whole number between 1 and 500.' });
+  }
+  const start = Number.isFinite(Number(startNumber)) ? Number(startNumber) : 1;
+
+  try {
+    ensureCsv();
+    const date = new Date().toISOString();
+    const rows = [];
+    const items = [];
+
+    for (let i = 0; i < n; i++) {
+      const seq = start + i;
+      const scenarioId = scenarioIdPattern.split('{n}').join(String(seq));
+
+      const fieldsCopy = fields.map((f) => ({ ...f }));
+      if (syncFieldId !== null && syncFieldId !== undefined && syncFieldId !== '') {
+        const target = fieldsCopy.find((f) => f.id === syncFieldId);
+        if (target) target.value = scenarioId;
+      }
+
+      const xmlOut = buildXml(structure, fieldsCopy);
+      rows.push([scenarioId, version, date, xmlOut].map(csvEscape).join(',') + '\r\n');
+      items.push({ scenarioId, xml: xmlOut });
+    }
+
+    fs.appendFileSync(CSV_PATH, rows.join(''), 'utf8');
+    res.json({ date, items });
+  } catch (err) {
+    res.status(500).json({ error: `Bulk save failed: ${err.message}` });
   }
 });
 
