@@ -80,6 +80,30 @@ function labelForPath(pathSegments) {
   return parts.join(' › ');
 }
 
+/**
+ * Removes whitespace-only "#text" nodes from a parsed-XML object tree.
+ * These arise from the indentation/newlines between sibling child
+ * elements in pretty-printed XML (e.g. `<Customer>\n  <Name/>\n</Customer>`)
+ * and aren't real content — left in place they'd show up as junk
+ * editable fields and, once the builder re-indents, as stray blank
+ * lines in the rebuilt XML.
+ */
+function pruneBlankText(node) {
+  if (Array.isArray(node)) {
+    node.forEach(pruneBlankText);
+    return;
+  }
+  if (node && typeof node === 'object') {
+    for (const key of Object.keys(node)) {
+      if (key === '#text' && typeof node[key] === 'string' && node[key].trim() === '') {
+        delete node[key];
+      } else {
+        pruneBlankText(node[key]);
+      }
+    }
+  }
+}
+
 function setAtPath(obj, pathSegments, value) {
   let cur = obj;
   for (let i = 0; i < pathSegments.length - 1; i++) {
@@ -155,6 +179,7 @@ app.post('/api/parse', (req, res) => {
   try {
     const parser = new XMLParser(parserOptions);
     const structure = parser.parse(xml);
+    pruneBlankText(structure);
 
     const rawFields = [];
     collectFields(structure, [], rawFields);
