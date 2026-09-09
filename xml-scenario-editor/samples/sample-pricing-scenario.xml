@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<PricingScenario id="PS-1001" region="US">
+  <Customer tier="Gold">
+    <Name>Acme Corp</Name>
+    <AccountId>ACC-88213</AccountId>
+  </Customer>
+  <Plan code="PRO-MONTHLY">
+    <BasePrice currency="USD">49.99</BasePrice>
+    <BillingCycle>Monthly</BillingCycle>
+    <Features>
+      <Feature seats="10">Team Workspace</Feature>
+      <Feature seats="1">Priority Support</Feature>
+    </Features>
+  </Plan>
+  <Discounts>
+    <Discount type="Percentage" code="LAUNCH10">10</Discount>
+    <Discount type="Fixed" code="LOYALTY5">5.00</Discount>
+  </Discounts>
+  <EffectiveDate>2026-09-01</EffectiveDate>
+</PricingScenario>

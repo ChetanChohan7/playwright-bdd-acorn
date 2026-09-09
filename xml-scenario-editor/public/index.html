@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>XML Scenario Editor</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <h1>XML Scenario Editor</h1>
+    <p>Load an XML document, edit its extracted fields, then save it as a new row in <code>data/scenarios.csv</code>.</p>
+  </header>
+
+  <main class="layout">
+    <section class="panel" id="load-panel">
+      <h2>1. Load XML</h2>
+      <div class="field-row">
+        <label for="xml-file">From file</label>
+        <input type="file" id="xml-file" accept=".xml,text/xml,application/xml" />
+      </div>
+      <div class="field-row">
+        <label for="xml-text">Or paste XML</label>
+        <textarea id="xml-text" rows="10" placeholder="<root>...</root>"></textarea>
+      </div>
+      <div class="actions">
+        <button id="parse-btn" type="button">Parse XML</button>
+        <span id="parse-status" class="status"></span>
+      </div>
+    </section>
+
+    <section class="panel" id="edit-panel" hidden>
+      <h2>2. Edit fields</h2>
+      <div class="meta-row">
+        <div class="field-row">
+          <label for="scenario-id">Scenario ID</label>
+          <input type="text" id="scenario-id" placeholder="e.g. SCN-001" />
+        </div>
+        <div class="field-row">
+          <label for="version">Version</label>
+          <input type="text" id="version" placeholder="e.g. 1.0" />
+        </div>
+      </div>
+
+      <div id="fields-container" class="fields-container"></div>
+
+      <div class="add-field-row">
+        <div class="field-row">
+          <label for="add-field-path">Add a field to this document</label>
+          <input type="text" id="add-field-path" list="backfill-path-suggestions" placeholder="e.g. Plan.TaxRate or Plan.@taxIncluded" />
+        </div>
+        <div class="field-row">
+          <label for="add-field-value">Value</label>
+          <input type="text" id="add-field-value" placeholder="e.g. 0" />
+        </div>
+        <button id="add-field-btn" type="button" class="secondary">Add field</button>
+      </div>
+      <span id="add-field-status" class="status"></span>
+
+      <div class="actions">
+        <button id="preview-btn" type="button" class="secondary">Preview updated XML</button>
+        <button id="save-btn" type="button">Save to CSV</button>
+        <span id="save-status" class="status"></span>
+      </div>
+
+      <details id="preview-details" hidden>
+        <summary>Updated XML preview</summary>
+        <pre id="xml-preview"></pre>
+      </details>
+    </section>
+
+    <section class="panel" id="backfill-panel">
+      <h2>3. Add a field to already-saved rows</h2>
+      <p class="hint">
+        Push a field into every row already saved in the CSV — including a
+        field that's never existed in any document before. Each row's Xml is
+        re-parsed, the field is added (creating parent elements as needed),
+        and the row is rewritten in place (ScenarioId, Version and Date are
+        left untouched).
+      </p>
+      <div class="field-row">
+        <label for="backfill-path">Field path</label>
+        <input type="text" id="backfill-path" list="backfill-path-suggestions" placeholder="e.g. Plan.TaxRate or Plan.@taxIncluded" />
+        <datalist id="backfill-path-suggestions"></datalist>
+        <small class="hint">
+          Dot-separated element names, relative to the document root (you can
+          include the root's own name or leave it off — it's added
+          automatically). Prefix a segment with <code>@</code> for an
+          attribute, e.g. <code>Plan.@taxIncluded</code>. Elements that don't
+          already exist are created.
+        </small>
+      </div>
+      <div class="field-row">
+        <label for="backfill-value">Value to set it to in every existing row</label>
+        <input type="text" id="backfill-value" placeholder="e.g. 0" />
+      </div>
+      <div class="actions">
+        <button id="backfill-btn" type="button">Add to existing CSV rows</button>
+        <span id="backfill-status" class="status"></span>
+      </div>
+    </section>
+
+    <section class="panel" id="history-panel">
+      <h2>4. Recent CSV rows</h2>
+      <div class="actions">
+        <button id="refresh-btn" type="button" class="secondary">Refresh</button>
+        <a id="download-link" href="/api/csv/download">Download full CSV</a>
+      </div>
+      <div class="table-wrap">
+        <table id="rows-table">
+          <thead>
+            <tr>
+              <th>Scenario ID</th>
+              <th>Version</th>
+              <th>Date</th>
+              <th>Xml (preview)</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
