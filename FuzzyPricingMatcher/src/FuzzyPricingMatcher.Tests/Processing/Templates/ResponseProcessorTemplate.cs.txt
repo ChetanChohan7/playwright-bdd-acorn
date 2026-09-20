@@ -1,0 +1,2 @@
+// Test-only response processor template.
+// Implementations should parse response XML and return a domain value without SQL or HTTP work.

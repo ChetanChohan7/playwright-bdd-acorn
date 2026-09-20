@@ -829,25 +829,24 @@
     ]
   },
   "packageFolders": {
-    "/Users/chetanchohan/.nuget/packages/": {}
+    "C:\\Users\\SumeethRamessar\\.nuget\\packages\\": {}
   },
   "project": {
     "version": "1.0.0",
     "restore": {
-      "projectUniqueName": "/Users/chetanchohan/Projects/inspired-poc/TestRunnerSolution/src/TestDataService/TestDataService.csproj",
+      "projectUniqueName": "C:\\Users\\SumeethRamessar\\Repo\\playwright-bdd-acorn\\TestRunnerSolution\\src\\TestDataService\\TestDataService.csproj",
       "projectName": "TestDataService",
-      "projectPath": "/Users/chetanchohan/Projects/inspired-poc/TestRunnerSolution/src/TestDataService/TestDataService.csproj",
-      "packagesPath": "/Users/chetanchohan/.nuget/packages/",
-      "outputPath": "/Users/chetanchohan/Projects/inspired-poc/TestRunnerSolution/src/TestDataService/obj/",
+      "projectPath": "C:\\Users\\SumeethRamessar\\Repo\\playwright-bdd-acorn\\TestRunnerSolution\\src\\TestDataService\\TestDataService.csproj",
+      "packagesPath": "C:\\Users\\SumeethRamessar\\.nuget\\packages\\",
+      "outputPath": "C:\\Users\\SumeethRamessar\\Repo\\playwright-bdd-acorn\\TestRunnerSolution\\src\\TestDataService\\obj\\",
       "projectStyle": "PackageReference",
       "configFilePaths": [
-        "/Users/chetanchohan/.nuget/NuGet/NuGet.Config"
+        "C:\\Users\\SumeethRamessar\\AppData\\Roaming\\NuGet\\NuGet.Config"
       ],
       "originalTargetFrameworks": [
         "net10.0"
       ],
       "sources": {
-        "/opt/homebrew/Cellar/dotnet/10.0.302/libexec/library-packs": {},
         "https://api.nuget.org/v3/index.json": {}
       },
       "frameworks": {
@@ -867,7 +866,7 @@
         "auditLevel": "low",
         "auditMode": "all"
       },
-      "SdkAnalysisLevel": "10.0.300"
+      "SdkAnalysisLevel": "10.0.400"
     },
     "frameworks": {
       "net10.0": {
@@ -910,7 +909,7 @@
             "privateAssets": "all"
           }
         },
-        "runtimeIdentifierGraphPath": "/opt/homebrew/Cellar/dotnet/10.0.302/libexec/sdk/10.0.302/PortableRuntimeIdentifierGraph.json",
+        "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\10.0.401/PortableRuntimeIdentifierGraph.json",
         "packagesToPrune": {
           "Microsoft.AspNetCore": "(,10.0.32767]",
           "Microsoft.AspNetCore.Antiforgery": "(,10.0.32767]",

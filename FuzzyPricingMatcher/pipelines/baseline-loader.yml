@@ -1,0 +1,98 @@
+# Future template only. Azure DevOps connection is intentionally not configured here.
+trigger:
+  batch: true
+  branches:
+    include:
+      - main
+  paths:
+    include:
+      - TestAsset/baseline-scenarios.csv
+
+pr: none
+
+pool:
+  vmImage: ubuntu-latest
+
+variables:
+  buildConfiguration: Release
+  csvPath: $(Build.SourcesDirectory)/TestAsset/baseline-scenarios.csv
+  evidenceDirectory: $(Build.SourcesDirectory)/TestResults/FuzzyMatcherEvidence
+
+steps:
+- task: UseDotNet@2
+  displayName: Install .NET 10 SDK
+  inputs:
+    packageType: sdk
+    version: 10.0.x
+
+- script: dotnet restore FuzzyPricingMatcher.sln
+  displayName: Restore
+
+- script: dotnet build FuzzyPricingMatcher.sln --configuration $(buildConfiguration) --no-restore
+  displayName: Release build
+
+- script: >-
+    dotnet test FuzzyPricingMatcher.sln
+    --configuration $(buildConfiguration)
+    --no-build
+    --filter "TestCategory=Unit"
+    --logger "trx;LogFileName=unit.trx"
+    --results-directory "$(Build.SourcesDirectory)/TestResults/Unit"
+  displayName: Run Unit tests
+  env:
+    Pipeline__BuildId: $(Build.BuildId)
+    Pipeline__BuildNumber: $(Build.BuildNumber)
+
+- script: >-
+    dotnet test FuzzyPricingMatcher.sln
+    --configuration $(buildConfiguration)
+    --no-build
+    --filter "TestCategory=LoadBaseline"
+    --logger "trx;LogFileName=loader.trx"
+    --results-directory "$(Build.SourcesDirectory)/TestResults/LoadBaseline"
+  displayName: Run LoadBaseline tests only
+  env:
+    Loader__CsvPath: $(Build.SourcesDirectory)/TestAsset/baseline-scenarios.csv
+    Pipeline__BuildId: $(Build.BuildId)
+    Pipeline__BuildNumber: $(Build.BuildNumber)
+    Pipeline__ApiDate: $(FUZZY_API_DATE)
+    Database__SqlConnectionString: $(FUZZY_SQL_CONNECTION_STRING)
+    Endpoints__EndpointA__BaseUrl: $(FUZZY_API_ENDPOINT_A_BASE_URL)
+    Endpoints__EndpointA__Resource: $(FUZZY_API_ENDPOINT_A_RESOURCE)
+    Endpoints__EndpointA__Username: $(FUZZY_API_ENDPOINT_A_USERNAME)
+    Endpoints__EndpointA__Password: $(FUZZY_API_ENDPOINT_A_PASSWORD)
+    Endpoints__EndpointA__Enabled: $(FUZZY_API_ENDPOINT_A_ENABLED)
+    Endpoints__EndpointB__BaseUrl: $(FUZZY_API_ENDPOINT_B_BASE_URL)
+    Endpoints__EndpointB__Resource: $(FUZZY_API_ENDPOINT_B_RESOURCE)
+    Endpoints__EndpointB__Username: $(FUZZY_API_ENDPOINT_B_USERNAME)
+    Endpoints__EndpointB__Password: $(FUZZY_API_ENDPOINT_B_PASSWORD)
+    Endpoints__EndpointB__Enabled: $(FUZZY_API_ENDPOINT_B_ENABLED)
+    Endpoints__EndpointC__BaseUrl: $(FUZZY_API_ENDPOINT_C_BASE_URL)
+    Endpoints__EndpointC__Resource: $(FUZZY_API_ENDPOINT_C_RESOURCE)
+    Endpoints__EndpointC__Username: $(FUZZY_API_ENDPOINT_C_USERNAME)
+    Endpoints__EndpointC__Password: $(FUZZY_API_ENDPOINT_C_PASSWORD)
+    Endpoints__EndpointC__Enabled: $(FUZZY_API_ENDPOINT_C_ENABLED)
+    Resilience__ApiRateLimitPerSecond: $(FUZZY_API_RATE_LIMIT_PER_SECOND)
+    Resilience__ApiRetryAttempts: $(FUZZY_API_RETRY_ATTEMPTS)
+    Resilience__SqlRetryAttempts: $(FUZZY_SQL_RETRY_ATTEMPTS)
+    Resilience__ApiTimeoutSeconds: $(FUZZY_API_TIMEOUT_SECONDS)
+    Resilience__SqlCommandTimeoutSeconds: $(FUZZY_SQL_COMMAND_TIMEOUT_SECONDS)
+    Evidence__EvidenceDirectory: $(evidenceDirectory)
+
+- task: PublishTestResults@2
+  displayName: Publish test results
+  condition: succeededOrFailed()
+  inputs:
+    testResultsFormat: VSTest
+    testResultsFiles: '$(Build.SourcesDirectory)/TestResults/**/*.trx'
+    searchFolder: '$(Build.SourcesDirectory)'
+    mergeTestResults: true
+    failTaskOnFailedTests: false
+
+- task: PublishPipelineArtifact@1
+  displayName: Publish loader evidence
+  condition: succeededOrFailed()
+  inputs:
+    targetPath: '$(Build.SourcesDirectory)/TestResults'
+    artifact: fuzzy-pricing-loader-results
+    publishLocation: pipeline

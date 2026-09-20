@@ -1,0 +1,37 @@
+# Build output
+bin/
+obj/
+TestResults/
+
+# Local logs and generated evidence
+*.log
+logs/
+evidence/
+*.xml
+!*.xsd
+
+# Local configuration and secrets
+appsettings.Local.json
+*.secrets.json
+.env
+.env.*
+
+# Temporary files
+*.tmp
+*.temp
+*.user
+*.suo
+
+# User-specific IDE files
+.vs/
+.vscode/settings.json
+.vscode/launch.json
+*.userprefs
+
+# Keep example configuration, schemas, docs, and pipeline definitions tracked.
+!appsettings.json
+!appsettings.Local.example.json
+!*.xsd
+!docs/
+!pipelines/
+.fake
