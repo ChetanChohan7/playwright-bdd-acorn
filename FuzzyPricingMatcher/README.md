@@ -18,26 +18,19 @@ The comparison runner discovers selected database scenarios, sends raw request X
 
 ## Project structure
 
-Implementation is grouped under `ExternalAPIAccess/`, `Comparison/`, `Configuration/`, `Database/`, `Evidence/`, `Loader/`, `Processing/`, `Routing/`, `Validation/`, and `Resilience/`. Unit tests are under `Tests/Unit`; guarded entry points are under `Tests/Integration/Loader` and `Tests/Integration/Comparison`.
+Implementation is grouped under `ExternalAPIAccess/`, `Comparison/`, `Configuration/`, `Database/`, `Evidence/`, `Loader/`, `Processing/`, `Routing/`, and `Validation/`. API and SQL resilience (retry, rate limiting) live inside `ExternalAPIAccess/` and `Database/` rather than a separate folder. Unit tests are under `Tests/Unit`. Guarded integration entry points (`Tests/Integration/Loader`, `Tests/Integration/Comparison`) are not yet implemented; see [project-todo.md](docs/project-todo.md).
 
 ## Documentation
 
 - [Architecture](docs/architecture.md)
-- [Execution path reference](docs/execution-path-reference.md)
 - [Sequence diagrams](docs/sequence-diagrams.md)
 - [Configuration guide](docs/configuration-guide.md)
 - [Developer guide](docs/developer-guide.md)
 - [Operations runbook](docs/operations-runbook.md)
 - [Troubleshooting](docs/troubleshooting.md)
 - [Beginner user guide](docs/user-guide.md)
-- [Client testing team guide](docs/client-testing-team-guide.md)
-- [Code walkthrough for new starters](docs/code-walkthrough-for-new-starters.md)
-- [Glossary](docs/glossary.md)
-- [Assumptions and decisions](docs/assumptions-and-decisions.md)
 - [Naming and style guide](docs/naming-and-style-guide.md)
-- [Original solution review](docs/solution-review.md) (historical findings)
-- [Post-remediation review](docs/post-remediation-review.md)
-- [Final local verification](docs/final-verification.md) (release-gate status)
+- [Project TODO](docs/project-todo.md)
 - Response schema and authoritative CSV guidance are included below.
 
 ## Quick local verification

@@ -47,30 +47,22 @@ The solution currently contains one .NET test project:
 ```text
 FuzzyPricingMatcher.sln
 └── src/FuzzyPricingMatcher.Tests/
-    ├── ExternalAPIAccess/
-    │   └── Models/
-    ├── Comparison/
-    │   ├── Enums/
-    │   └── Models/
-    ├── Configuration/
-    │   └── Enums/
-    ├── Database/
-    │   └── Models/
-    ├── Evidence/
-    ├── Infrastructure/
-    ├── Loader/
-    │   ├── Enums/
-    │   └── Models/
-    ├── Processing/
-    │   ├── Enums/
-    │   └── ...
+    ├── ExternalAPIAccess/       (client, retry, rate limiting, URL building, Models.cs)
+    ├── Comparison/              (Enums/, Models.cs, scenario executor)
+    ├── Configuration/           (Enums/, settings sections)
+    ├── Database/                (repository, mutation executor, Models.cs)
+    ├── Evidence/                (safe file names, path building, evidence writers)
+    ├── Infrastructure/          (composition root, safe logging)
+    ├── Loader/                  (Enums/, Models.cs, synchronization service)
+    ├── Processing/              (CSV reading, normalizers, fingerprinting)
     ├── Routing/
     ├── Schemas/
     ├── Validation/
     └── Tests/
-        ├── Unit/
-        └── Integration/
+        └── Unit/
 ```
+
+Models are one `Models.cs` file per folder (record/DTO types are colocated rather than one file per type); enums keep their own `Enums/` subfolder where a folder has more than one. `Tests/Integration` does not exist yet — guarded integration entry points are still on the [project TODO](project-todo.md).
 
 The project contains both test entry points and production-style support services. This is appropriate for the current automation harness, but an architect may wish to assess whether the infrastructure should eventually move into a separate class library if reuse or deployment boundaries grow.
 
@@ -78,7 +70,7 @@ The project contains both test entry points and production-style support service
 
 ### Test entry points
 
-Located under `Tests/Integration` and `Tests/Unit`.
+Currently all under `Tests/Unit` (guarded `Tests/Integration` entry points are not yet implemented).
 
 Responsibilities:
 
@@ -271,7 +263,7 @@ This object is prepared for loader synchronization. It is not a reporting model.
 
 ### ExternalAPIAccess request
 
-`ExternalAPIAccessRequest` contains:
+`ExternalXmlRequest` contains:
 
 - scenario ID
 - SchemeCode
@@ -283,7 +275,7 @@ This object is prepared for loader synchronization. It is not a reporting model.
 
 The policy reference is not a separate API metadata field. It remains inside the raw XML body as `PolicyReference`. The value may be extracted and represented as `QuoteRef` for internal reporting, evidence, database references, and test naming.
 
-### Databasebase models
+### Database models
 
 Database read models represent request rows, response rows, snapshots, duplicate results, and scenario selections. Mutation command models represent inserts, updates, tag updates, Pass updates, and Fail updates.
 
@@ -303,7 +295,7 @@ flowchart TD
     APIADAPTER[ProductionLoaderApiClient]
     XMLVALIDATE[SchemaLoaderResponseValidator]
     SQL[FuzzyMatcherRepository]
-    API[IExternalAPIAccessClient]
+    API[IExternalXmlServiceClient]
     SUMMARY[LoaderSummaryWriter]
 
     LT --> CR
@@ -333,7 +325,7 @@ flowchart TD
     REPO[FuzzyMatcherRepository]
     XML[RequestXmlMetadataReader]
     ROUTE[SchemeRouteResolver]
-    API[ExternalAPIAccessClient]
+    API[ExternalXmlServiceClient]
     VALIDATE[ExternalResponseValidationService]
     AMOUNT[Response amount reader]
     THRESHOLD[ThresholdEvaluator]
@@ -359,19 +351,19 @@ Scenario selection is database-first. `TagMatchMode.Any` selects scenarios conta
 ## API Architecture
 
 ```text
-ExternalAPIAccessRequest
-    -> ExternalAPIAccessClient.ValidateRequest
-    -> ExternalAPIAccessRequestUriBuilder.Build
-    -> ExternalAPIAccessClientFactory.GetClient
-    -> ExternalAPIAccessRetryPipeline.ExecuteAsync
-        -> ExternalAPIAccessRateLimiter.WaitAsync
+ExternalXmlRequest
+    -> ExternalXmlServiceClient.ValidateRequest
+    -> ExternalAPIRequestUrlBuilder.BuildRequestUri
+    -> ExternalServiceClientFactory.GetClient
+    -> ExternalAPIRetryPolicy.ExecuteAsync
+        -> ExternalAPIRateLimiter.WaitAsync
         -> create RestRequest
         -> RestRequestExecutor.ExecuteAsync
-        -> convert RestResponse to ExternalAPIAccessResponse
+        -> convert RestResponse to ExternalAPIResponse
     -> loader or comparison caller
 ```
 
-`ExternalAPIAccessClientFactory` maintains a thread-safe, on-demand cache of one authenticated RestSharp client per endpoint name.
+`ExternalServiceClientFactory` maintains a thread-safe, on-demand cache of one authenticated RestSharp client per endpoint name.
 
 The API client sends the exact raw XML string. It does not add a correlation header or send `QuoteRef` separately. The policy reference is exposed to the API only as part of the XML request body.
 
@@ -437,7 +429,7 @@ Current controls include:
 - Coverage is collected, but no percentage gate is enforced.
 - The current project combines test entry points and reusable infrastructure in one test assembly.
 - Some workflow boundaries synchronously wait on asynchronous repository/API calls; an architect may wish to assess whether the public workflow should become fully asynchronous.
-- The `ExternalAPIAccessClient` contains a `timeoutSeconds` field, but the current implementation should be reviewed to confirm that the configured timeout is applied to the RestSharp client or request.
+- The `ExternalXmlServiceClient` contains a `timeoutSeconds` field, but the current implementation should be reviewed to confirm that the configured timeout is applied to the RestSharp client or request.
 
 ## Architect Review Questions
 
@@ -452,14 +444,15 @@ The following are intentional review topics, not declared defects:
 7. Should SQL table names remain configuration-driven, or should approved table mappings be constrained more strongly?
 8. Should `TagMatchMode` and tag filtering remain in repository SQL, or should a database view/stored procedure be considered for the fixed schema?
 9. Should evidence retention and redaction rules be defined for production-like XML data?
-10. Should one class per public type remain the standard layout across all feature folders?
+
+Resolved: one class per public type is *not* the standard layout. An interface is kept only where it backs a real test seam (a fake substitutes for it) or has more than one production implementation — the repository, route resolver, external API client, rate limiter, clock, evidence writers, logger, response amount reader, and SQL mutation session/transaction all qualify. Pure-function helpers (normalizers, readers, the schema registry/validator, the retry policy/URL builder/client factory, the threshold evaluator, and the loader/comparison/CSV entry points) had exactly one production implementation and no substitution, so their interfaces were removed in favor of the concrete class; likewise, small record/DTO types are colocated in one `Models.cs` per folder instead of one file per type. See the [project TODO](project-todo.md#completed-work) for the full list of what changed.
 
 ## Verification Status
 
 The local unit suite currently passes:
 
 ```text
-93 succeeded
+86 succeeded
 0 failed
 0 skipped
 ```

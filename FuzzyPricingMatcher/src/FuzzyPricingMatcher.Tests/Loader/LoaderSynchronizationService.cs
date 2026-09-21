@@ -1,20 +1,19 @@
-using FuzzyPricingMatcher.Tests.Models;
 using FuzzyPricingMatcher.Tests.Processing;
 
 namespace FuzzyPricingMatcher.Tests.Loader;
 
-public sealed class LoaderSynchronizationService : ILoaderSynchronizationService
+public sealed class LoaderSynchronizationService
 {
     private readonly ILoaderRepository repository;
     private readonly ILoaderRouteResolver routeResolver;
     private readonly ILoaderApiClient apiClient;
     private readonly ILoaderResponseValidator responseValidator;
     private readonly ILoaderEvidenceWriter evidenceWriter;
-    private readonly IRequestXmlMetadataReader metadataReader;
-    private readonly IXmlFingerprintService fingerprintService;
+    private readonly RequestXmlMetadataReader metadataReader;
+    private readonly XmlFingerprintService fingerprintService;
     private readonly IReadOnlyList<PreparedBaselineScenario> emptyRecords = Array.Empty<PreparedBaselineScenario>();
 
-    public LoaderSynchronizationService(ILoaderRepository repository, ILoaderRouteResolver routeResolver, ILoaderApiClient apiClient, ILoaderResponseValidator responseValidator, ILoaderEvidenceWriter evidenceWriter, IRequestXmlMetadataReader? metadataReader = null, IXmlFingerprintService? fingerprintService = null)
+    public LoaderSynchronizationService(ILoaderRepository repository, ILoaderRouteResolver routeResolver, ILoaderApiClient apiClient, ILoaderResponseValidator responseValidator, ILoaderEvidenceWriter evidenceWriter, RequestXmlMetadataReader? metadataReader = null, XmlFingerprintService? fingerprintService = null)
     {
         this.repository = repository;
         this.routeResolver = routeResolver;

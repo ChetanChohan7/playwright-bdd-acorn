@@ -3,7 +3,7 @@ using NLog;
 
 namespace FuzzyPricingMatcher.Tests.ExternalAPIAccess;
 
-public sealed class ExternalAPIRetryPolicy : IExternalAPIRetryPolicy
+public sealed class ExternalAPIRetryPolicy
 {
     private static readonly Logger Logger = LogManager.GetCurrentClassLogger();
     private readonly ResilienceSettings settings;

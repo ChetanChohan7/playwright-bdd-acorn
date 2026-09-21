@@ -1,11 +1,5 @@
-using FuzzyPricingMatcher.Tests.Models;
 
 namespace FuzzyPricingMatcher.Tests.Loader;
-
-public interface ILoaderSynchronizationService
-{
-    LoaderSynchronizationResult Synchronize(IReadOnlyList<PreparedBaselineScenario> records, string buildId);
-}
 
 public interface ILoaderRepository
 {
@@ -39,7 +33,3 @@ public interface ILoaderEvidenceWriter
     void Save(LoaderEvidence evidence);
 }
 
-public interface ILoaderSummaryWriter
-{
-    void Write(string path, LoaderSynchronizationResult result);
-}

@@ -1,20 +1,20 @@
 using CsvHelper;
 using CsvHelper.Configuration;
-using FuzzyPricingMatcher.Tests.Models;
+using FuzzyPricingMatcher.Tests.Loader;
 using FuzzyPricingMatcher.Tests.Validation;
 using System.Globalization;
 
 namespace FuzzyPricingMatcher.Tests.Processing;
 
-public sealed class CsvScenarioReader : ICsvScenarioReader
+public sealed class CsvScenarioReader
 {
     private static readonly string[] RequiredHeaders = ["Scenario_id", "XML_request", "Test_tags"];
-    private readonly IScenarioIdNormalizer scenarioIdNormalizer;
-    private readonly IRequestXmlMetadataReader metadataReader;
-    private readonly ITagNormalizer tagNormalizer;
-    private readonly IXmlFingerprintService fingerprintService;
+    private readonly ScenarioIdNormalizer scenarioIdNormalizer;
+    private readonly RequestXmlMetadataReader metadataReader;
+    private readonly TagNormalizer tagNormalizer;
+    private readonly XmlFingerprintService fingerprintService;
 
-    public CsvScenarioReader(IScenarioIdNormalizer? scenarioIdNormalizer = null, IRequestXmlMetadataReader? metadataReader = null, ITagNormalizer? tagNormalizer = null, IXmlFingerprintService? fingerprintService = null)
+    public CsvScenarioReader(ScenarioIdNormalizer? scenarioIdNormalizer = null, RequestXmlMetadataReader? metadataReader = null, TagNormalizer? tagNormalizer = null, XmlFingerprintService? fingerprintService = null)
     {
         this.scenarioIdNormalizer = scenarioIdNormalizer ?? new ScenarioIdNormalizer();
         this.metadataReader = metadataReader ?? new RequestXmlMetadataReader();

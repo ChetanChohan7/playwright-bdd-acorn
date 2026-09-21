@@ -5,23 +5,18 @@ using FuzzyPricingMatcher.Tests.Validation;
 
 namespace FuzzyPricingMatcher.Tests.Comparison;
 
-public interface IComparisonScenarioExecutor
-{
-    ComparisonExecutionResult Execute(ComparisonScenario scenario, ComparisonScenarioInput input, CancellationToken cancellationToken = default);
-}
-
-public sealed class ComparisonScenarioExecutor : IComparisonScenarioExecutor
+public sealed class ComparisonScenarioExecutor
 {
     private readonly IFuzzyMatcherRepository repository;
-    private readonly IRequestXmlMetadataReader metadataReader;
+    private readonly RequestXmlMetadataReader metadataReader;
     private readonly IScenarioRouteResolver routeResolver;
     private readonly IExternalXmlServiceClient apiClient;
     private readonly ExternalResponseValidationService validationService;
-    private readonly IThresholdEvaluator thresholdEvaluator;
+    private readonly ThresholdEvaluator thresholdEvaluator;
     private readonly IScenarioEvidenceWriter evidenceWriter;
     private readonly IScenarioLogger logger;
 
-    public ComparisonScenarioExecutor(IFuzzyMatcherRepository repository, IRequestXmlMetadataReader metadataReader, IScenarioRouteResolver routeResolver, IExternalXmlServiceClient apiClient, ExternalResponseValidationService validationService, IThresholdEvaluator thresholdEvaluator, IScenarioEvidenceWriter evidenceWriter, IScenarioLogger logger)
+    public ComparisonScenarioExecutor(IFuzzyMatcherRepository repository, RequestXmlMetadataReader metadataReader, IScenarioRouteResolver routeResolver, IExternalXmlServiceClient apiClient, ExternalResponseValidationService validationService, ThresholdEvaluator thresholdEvaluator, IScenarioEvidenceWriter evidenceWriter, IScenarioLogger logger)
     {
         this.repository = repository;
         this.metadataReader = metadataReader;

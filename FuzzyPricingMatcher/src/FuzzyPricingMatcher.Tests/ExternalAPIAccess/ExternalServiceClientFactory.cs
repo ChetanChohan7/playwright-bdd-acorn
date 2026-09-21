@@ -5,7 +5,7 @@ using RestSharp.Authenticators;
 
 namespace FuzzyPricingMatcher.Tests.ExternalAPIAccess;
 
-public sealed class ExternalServiceClientFactory : IExternalServiceClientFactory, IDisposable
+public sealed class ExternalServiceClientFactory : IDisposable
 {
     private readonly ConcurrentDictionary<string, Lazy<RestClient>> clients = new(StringComparer.OrdinalIgnoreCase);
 

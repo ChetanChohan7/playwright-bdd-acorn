@@ -1,6 +1,6 @@
 namespace FuzzyPricingMatcher.Tests.Comparison;
 
-public sealed class ThresholdEvaluator : IThresholdEvaluator
+public sealed class ThresholdEvaluator
 {
     public ThresholdResult Evaluate(decimal apiValue, decimal baselineValue, decimal minimumThreshold, decimal maximumThreshold)
     {

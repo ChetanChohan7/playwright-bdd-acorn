@@ -20,13 +20,7 @@ public interface ISqlMutationTransaction : IAsyncDisposable
     Task RollbackAsync(CancellationToken cancellationToken);
 }
 
-public interface ISqlMutationExecutor
-{
-    Task ExecuteAsync(SqlCommandPlan plan, int expectedAffectedRows, CancellationToken cancellationToken);
-    Task ExecuteTransactionAsync(IReadOnlyList<SqlCommandPlan> plans, int expectedAffectedRows, CancellationToken cancellationToken);
-}
-
-public sealed class SqlMutationExecutor : ISqlMutationExecutor
+public sealed class SqlMutationExecutor
 {
     private readonly ISqlMutationSessionFactory sessionFactory;
 
@@ -70,9 +64,9 @@ public sealed class SqlMutationExecutor : ISqlMutationExecutor
 
 public sealed class SqlConnectionMutationSessionFactory : ISqlMutationSessionFactory
 {
-    private readonly ISqlConnectionFactory connectionFactory;
+    private readonly SqlConnectionFactory connectionFactory;
 
-    public SqlConnectionMutationSessionFactory(ISqlConnectionFactory connectionFactory)
+    public SqlConnectionMutationSessionFactory(SqlConnectionFactory connectionFactory)
     {
         this.connectionFactory = connectionFactory;
     }

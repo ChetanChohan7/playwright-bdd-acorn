@@ -8,14 +8,14 @@ namespace FuzzyPricingMatcher.Tests.Database;
 public sealed class FuzzyMatcherRepository : IFuzzyMatcherRepository
 {
     private static readonly Logger Logger = LogManager.GetCurrentClassLogger();
-    private readonly ISqlConnectionFactory connectionFactory;
-    private readonly IDatabaseRetryExecutor retryExecutor;
-    private readonly ISqlMutationExecutor mutationExecutor;
+    private readonly SqlConnectionFactory connectionFactory;
+    private readonly DatabaseRetryExecutor retryExecutor;
+    private readonly SqlMutationExecutor mutationExecutor;
     private readonly string requestTable;
     private readonly string responseTable;
     private readonly SqlCommandPlanFactory commandFactory;
 
-    public FuzzyMatcherRepository(DatabaseSettings settings, ISqlConnectionFactory connectionFactory, IDatabaseRetryExecutor retryExecutor, ISqlMutationExecutor mutationExecutor)
+    public FuzzyMatcherRepository(DatabaseSettings settings, SqlConnectionFactory connectionFactory, DatabaseRetryExecutor retryExecutor, SqlMutationExecutor mutationExecutor)
     {
         requestTable = SafeSqlIdentifierValidator.Validate(settings.RequestTableName);
         responseTable = SafeSqlIdentifierValidator.Validate(settings.ResponseTableName);

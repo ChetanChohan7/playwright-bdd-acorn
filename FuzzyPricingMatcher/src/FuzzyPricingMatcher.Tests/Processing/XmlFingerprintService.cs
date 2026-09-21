@@ -4,7 +4,7 @@ using System.Xml.Linq;
 
 namespace FuzzyPricingMatcher.Tests.Processing;
 
-public sealed class XmlFingerprintService : IXmlFingerprintService
+public sealed class XmlFingerprintService
 {
     public string CreateFingerprint(XDocument document)
     {

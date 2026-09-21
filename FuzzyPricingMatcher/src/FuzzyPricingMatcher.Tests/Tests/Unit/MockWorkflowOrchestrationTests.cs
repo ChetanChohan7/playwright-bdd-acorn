@@ -3,7 +3,6 @@ using FuzzyPricingMatcher.Tests.Comparison;
 using FuzzyPricingMatcher.Tests.Configuration;
 using FuzzyPricingMatcher.Tests.Database;
 using FuzzyPricingMatcher.Tests.Loader;
-using FuzzyPricingMatcher.Tests.Models;
 using FuzzyPricingMatcher.Tests.Processing;
 using FuzzyPricingMatcher.Tests.Validation;
 using NUnit.Framework;

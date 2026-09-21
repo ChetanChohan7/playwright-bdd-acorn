@@ -1,14 +1,14 @@
-using FuzzyPricingMatcher.Tests.Models;
+using FuzzyPricingMatcher.Tests.Loader;
 
 namespace FuzzyPricingMatcher.Tests.Processing;
 
 public sealed record DuplicateScenarioResult(string NormalizedScenarioId, IReadOnlyList<int> RowNumbers, int Occurrences, string ErrorMessage);
 
-public sealed class DuplicateScenarioDetector : IDuplicateScenarioDetector
+public sealed class DuplicateScenarioDetector
 {
-    private readonly IScenarioIdNormalizer normalizer;
+    private readonly ScenarioIdNormalizer normalizer;
 
-    public DuplicateScenarioDetector(IScenarioIdNormalizer? normalizer = null) => this.normalizer = normalizer ?? new ScenarioIdNormalizer();
+    public DuplicateScenarioDetector(ScenarioIdNormalizer? normalizer = null) => this.normalizer = normalizer ?? new ScenarioIdNormalizer();
 
     public IReadOnlyList<DuplicateScenarioResult> Detect(IEnumerable<BaselineScenarioCsvRow> records) => records
         .GroupBy(record => normalizer.Normalize(record.ScenarioId), StringComparer.OrdinalIgnoreCase)

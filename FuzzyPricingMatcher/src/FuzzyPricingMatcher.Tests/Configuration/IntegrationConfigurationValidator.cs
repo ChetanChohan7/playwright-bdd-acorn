@@ -1,5 +1,5 @@
 using FuzzyPricingMatcher.Tests.Processing;
-using FuzzyPricingMatcher.Tests.Models;
+using FuzzyPricingMatcher.Tests.Loader;
 
 namespace FuzzyPricingMatcher.Tests.Configuration;
 

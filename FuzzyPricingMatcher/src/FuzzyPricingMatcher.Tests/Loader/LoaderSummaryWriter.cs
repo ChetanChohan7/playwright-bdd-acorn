@@ -1,6 +1,6 @@
 namespace FuzzyPricingMatcher.Tests.Loader;
 
-public sealed class LoaderSummaryWriter : ILoaderSummaryWriter
+public sealed class LoaderSummaryWriter
 {
     public void Write(string path, LoaderSynchronizationResult result)
         => Write(path, result, new LoaderSummaryContext("LOCAL", string.Empty, DateTimeOffset.UtcNow));

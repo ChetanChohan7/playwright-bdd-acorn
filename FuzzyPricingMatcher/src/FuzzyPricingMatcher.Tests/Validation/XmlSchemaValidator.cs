@@ -4,11 +4,11 @@ using System.Xml.Schema;
 
 namespace FuzzyPricingMatcher.Tests.Validation;
 
-public sealed class XmlSchemaValidator : IXmlSchemaValidator
+public sealed class XmlSchemaValidator
 {
-    private readonly ISchemaRegistry registry;
+    private readonly SchemaRegistry registry;
 
-    public XmlSchemaValidator(ISchemaRegistry registry) => this.registry = registry;
+    public XmlSchemaValidator(SchemaRegistry registry) => this.registry = registry;
 
     public XmlValidationResult Validate(XmlResponseValidationRequest request)
     {

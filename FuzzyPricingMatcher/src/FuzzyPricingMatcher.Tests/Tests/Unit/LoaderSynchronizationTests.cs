@@ -1,6 +1,5 @@
 using System.Xml.Linq;
 using FuzzyPricingMatcher.Tests.Loader;
-using FuzzyPricingMatcher.Tests.Models;
 using FuzzyPricingMatcher.Tests.Processing;
 using NUnit.Framework;
 

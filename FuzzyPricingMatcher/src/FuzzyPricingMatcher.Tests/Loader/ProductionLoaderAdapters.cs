@@ -1,7 +1,6 @@
 using FuzzyPricingMatcher.Tests.ExternalAPIAccess;
 using FuzzyPricingMatcher.Tests.Configuration;
 using FuzzyPricingMatcher.Tests.Database;
-using FuzzyPricingMatcher.Tests.Models;
 using FuzzyPricingMatcher.Tests.Processing;
 
 namespace FuzzyPricingMatcher.Tests.Loader;
@@ -10,7 +9,7 @@ using FuzzyPricingMatcher.Tests.Comparison;
 public sealed class ProductionLoaderRepository : ILoaderRepository
 {
     private readonly IFuzzyMatcherRepository repository;
-    private readonly ITagNormalizer tagNormalizer = new TagNormalizer();
+    private readonly TagNormalizer tagNormalizer = new();
 
     public ProductionLoaderRepository(IFuzzyMatcherRepository repository) => this.repository = repository;
 

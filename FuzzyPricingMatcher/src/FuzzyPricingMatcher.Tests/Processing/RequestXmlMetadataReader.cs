@@ -4,7 +4,7 @@ using FuzzyPricingMatcher.Tests.Validation;
 
 namespace FuzzyPricingMatcher.Tests.Processing;
 
-public sealed class RequestXmlMetadataReader : IRequestXmlMetadataReader
+public sealed class RequestXmlMetadataReader
 {
     public RequestXmlMetadata Read(string rawXml)
     {

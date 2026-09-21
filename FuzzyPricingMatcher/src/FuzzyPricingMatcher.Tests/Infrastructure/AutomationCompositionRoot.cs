@@ -36,44 +36,44 @@ public sealed class AutomationCompositionRoot : IDisposable
         services.AddSingleton(configuration.Resilience);
         services.AddSingleton<IntegrationConfigurationValidator>();
 
-        services.AddSingleton<IScenarioIdNormalizer, ScenarioIdNormalizer>();
-        services.AddSingleton<IDuplicateScenarioDetector, DuplicateScenarioDetector>();
-        services.AddSingleton<IRequestXmlMetadataReader, RequestXmlMetadataReader>();
-        services.AddSingleton<ITagNormalizer, TagNormalizer>();
-        services.AddSingleton<IXmlFingerprintService, XmlFingerprintService>();
+        services.AddSingleton<ScenarioIdNormalizer>();
+        services.AddSingleton<DuplicateScenarioDetector>();
+        services.AddSingleton<RequestXmlMetadataReader>();
+        services.AddSingleton<TagNormalizer>();
+        services.AddSingleton<XmlFingerprintService>();
         services.AddSingleton<CsvScenarioReader>();
         services.AddSingleton<SchemeRouteResolver>();
         services.AddSingleton<ILoaderRouteResolver>(services => services.GetRequiredService<SchemeRouteResolver>());
         services.AddSingleton<IScenarioRouteResolver>(services => services.GetRequiredService<SchemeRouteResolver>());
 
-        services.AddSingleton<ISqlConnectionFactory, SqlConnectionFactory>();
+        services.AddSingleton<SqlConnectionFactory>();
         services.AddSingleton<ISqlMutationSessionFactory, SqlConnectionMutationSessionFactory>();
-        services.AddSingleton<ISqlMutationExecutor, SqlMutationExecutor>();
-        services.AddSingleton<IDatabaseRetryExecutor, DatabaseRetryExecutor>();
+        services.AddSingleton<SqlMutationExecutor>();
+        services.AddSingleton<DatabaseRetryExecutor>();
         services.AddSingleton<IFuzzyMatcherRepository, FuzzyMatcherRepository>();
         services.AddSingleton<ILoaderRepository, ProductionLoaderRepository>();
 
-        services.AddSingleton<IExternalServiceClientFactory, ExternalServiceClientFactory>();
-        services.AddSingleton<IExternalAPIRequestUrlBuilder, ExternalAPIRequestUrlBuilder>();
+        services.AddSingleton<ExternalServiceClientFactory>();
+        services.AddSingleton<ExternalAPIRequestUrlBuilder>();
         services.AddSingleton<IExternalAPIRateLimiter>(_ => new ExternalAPIRateLimiter(configuration.Resilience.ApiRateLimitPerSecond));
-        services.AddSingleton<IExternalAPIRetryPolicy, ExternalAPIRetryPolicy>();
+        services.AddSingleton<ExternalAPIRetryPolicy>();
         services.AddSingleton<IExternalXmlServiceClient, ExternalXmlServiceClient>();
         services.AddSingleton<ILoaderApiClient, ProductionLoaderApiClient>();
 
         var schemaNames = configuration.Routes.Values.Select(route => route.ResponseSchemaFile).Where(name => !string.IsNullOrWhiteSpace(name)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
-        services.AddSingleton<ISchemaRegistry>(_ => new SchemaRegistry(Path.Combine(AppContext.BaseDirectory, "Schemas"), schemaNames));
-        services.AddSingleton<IXmlSchemaValidator, XmlSchemaValidator>();
-        services.AddSingleton<IComparisonAmountReaderRegistry>(_ => new ComparisonAmountReaderRegistry(new[] { new ComparisonAmountReaderRegistration("PlaceholderResponseProcessor", new PlaceholderResponseAmountReader()) }));
+        services.AddSingleton(_ => new SchemaRegistry(Path.Combine(AppContext.BaseDirectory, "Schemas"), schemaNames));
+        services.AddSingleton<XmlSchemaValidator>();
+        services.AddSingleton(_ => new ComparisonAmountReaderRegistry(new[] { new ComparisonAmountReaderRegistration("PlaceholderResponseProcessor", new PlaceholderResponseAmountReader()) }));
         services.AddSingleton<ExternalResponseValidationService>();
         services.AddSingleton<ILoaderResponseValidator, SchemaLoaderResponseValidator>();
-        services.AddSingleton<IThresholdEvaluator, ThresholdEvaluator>();
+        services.AddSingleton<ThresholdEvaluator>();
 
-        services.AddSingleton<IEvidencePathBuilder>(_ => new EvidencePathBuilder(configuration.Evidence.EvidenceDirectory));
-        services.AddSingleton<IScenarioEvidenceWriter>(_ => new ScenarioEvidenceWriter(_.GetRequiredService<IEvidencePathBuilder>(), configuration.Pipeline.BuildId));
-        services.AddSingleton<ILoaderEvidenceWriter>(_ => new LoaderEvidenceWriter(_.GetRequiredService<IEvidencePathBuilder>(), configuration.Pipeline.BuildId));
-        services.AddSingleton<ILoaderSummaryWriter, LoaderSummaryWriter>();
+        services.AddSingleton(_ => new EvidencePathBuilder(configuration.Evidence.EvidenceDirectory));
+        services.AddSingleton<IScenarioEvidenceWriter>(_ => new ScenarioEvidenceWriter(_.GetRequiredService<EvidencePathBuilder>(), configuration.Pipeline.BuildId));
+        services.AddSingleton<ILoaderEvidenceWriter>(_ => new LoaderEvidenceWriter(_.GetRequiredService<EvidencePathBuilder>(), configuration.Pipeline.BuildId));
+        services.AddSingleton<LoaderSummaryWriter>();
         services.AddTransient<LoaderSynchronizationService>();
-        services.AddTransient<IComparisonScenarioExecutor, ComparisonScenarioExecutor>();
+        services.AddTransient<ComparisonScenarioExecutor>();
         services.AddSingleton<IScenarioLogger, NLogScenarioLogger>();
         services.AddSingleton<NUnitScenarioOutputWriter>();
 

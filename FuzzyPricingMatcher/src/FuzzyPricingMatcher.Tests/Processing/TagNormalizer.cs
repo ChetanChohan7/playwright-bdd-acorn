@@ -1,6 +1,6 @@
 namespace FuzzyPricingMatcher.Tests.Processing;
 
-public sealed class TagNormalizer : ITagNormalizer
+public sealed class TagNormalizer
 {
     public IReadOnlyList<string> Normalize(string? rawTags) => (rawTags ?? string.Empty)
         .Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)

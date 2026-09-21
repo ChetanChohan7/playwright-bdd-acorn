@@ -4,12 +4,7 @@ namespace FuzzyPricingMatcher.Tests.Processing;
 
 public sealed record ComparisonAmountReaderRegistration(string Name, IResponseAmountReader Reader);
 
-public interface IComparisonAmountReaderRegistry
-{
-    IResponseAmountReader Resolve(string name);
-}
-
-public sealed class ComparisonAmountReaderRegistry : IComparisonAmountReaderRegistry
+public sealed class ComparisonAmountReaderRegistry
 {
     private readonly IReadOnlyDictionary<string, IResponseAmountReader> readers;
 
@@ -30,10 +25,10 @@ public sealed record ValidatedResponseAmount(decimal Amount, XmlValidationResult
 
 public sealed class ExternalResponseValidationService
 {
-    private readonly IXmlSchemaValidator validator;
-    private readonly IComparisonAmountReaderRegistry amountReaders;
+    private readonly XmlSchemaValidator validator;
+    private readonly ComparisonAmountReaderRegistry amountReaders;
 
-    public ExternalResponseValidationService(IXmlSchemaValidator validator, IComparisonAmountReaderRegistry amountReaders)
+    public ExternalResponseValidationService(XmlSchemaValidator validator, ComparisonAmountReaderRegistry amountReaders)
     {
         this.validator = validator;
         this.amountReaders = amountReaders;

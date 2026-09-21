@@ -16,7 +16,7 @@ public sealed class IntegrationCompositionTests
         Assert.Multiple(() =>
         {
             Assert.That(root.HasRegistration<LoaderSynchronizationService>(), Is.True);
-            Assert.That(root.HasRegistration<IComparisonScenarioExecutor>(), Is.True);
+            Assert.That(root.HasRegistration<ComparisonScenarioExecutor>(), Is.True);
             Assert.That(root.HasRegistration<MatcherConfiguration>(), Is.True);
             Assert.That(root.HasRegistration<IntegrationConfigurationValidator>(), Is.True);
         });

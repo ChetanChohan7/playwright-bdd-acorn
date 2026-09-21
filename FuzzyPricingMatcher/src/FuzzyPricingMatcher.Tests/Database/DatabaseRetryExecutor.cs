@@ -4,7 +4,7 @@ using NLog;
 
 namespace FuzzyPricingMatcher.Tests.Database;
 
-public sealed class DatabaseRetryExecutor : IDatabaseRetryExecutor
+public sealed class DatabaseRetryExecutor
 {
     private static readonly Logger Logger = LogManager.GetCurrentClassLogger();
     private readonly ResilienceSettings settings;

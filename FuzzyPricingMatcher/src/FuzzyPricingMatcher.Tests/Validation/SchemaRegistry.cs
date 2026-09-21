@@ -5,7 +5,7 @@ using System.Xml.Linq;
 
 namespace FuzzyPricingMatcher.Tests.Validation;
 
-public sealed class SchemaRegistry : ISchemaRegistry
+public sealed class SchemaRegistry
 {
     private readonly string schemasDirectory;
     private readonly ConcurrentDictionary<string, Lazy<SchemaRegistration>> registrations = new(StringComparer.OrdinalIgnoreCase);

@@ -3,7 +3,7 @@ using FuzzyPricingMatcher.Tests.Configuration;
 
 namespace FuzzyPricingMatcher.Tests.ExternalAPIAccess;
 
-public sealed class ExternalAPIRequestUrlBuilder : IExternalAPIRequestUrlBuilder
+public sealed class ExternalAPIRequestUrlBuilder
 {
     public ExternalPricingRequestUri BuildRequestUri(EndpointSettings endpoint, DateOnly apiDate)
     {

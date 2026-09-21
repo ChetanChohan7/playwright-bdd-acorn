@@ -9,13 +9,13 @@ namespace FuzzyPricingMatcher.Tests.ExternalAPIAccess;
 public sealed class ExternalXmlServiceClient : IExternalXmlServiceClient
 {
     private static readonly Logger Logger = LogManager.GetCurrentClassLogger();
-    private readonly IExternalServiceClientFactory clientFactory;
-    private readonly IExternalAPIRequestUrlBuilder resourceBuilder;
-    private readonly IExternalAPIRetryPolicy retryPipeline;
+    private readonly ExternalServiceClientFactory clientFactory;
+    private readonly ExternalAPIRequestUrlBuilder resourceBuilder;
+    private readonly ExternalAPIRetryPolicy retryPipeline;
     private readonly IRestRequestExecutor executor;
     private readonly int timeoutSeconds;
 
-    public ExternalXmlServiceClient(IExternalServiceClientFactory clientFactory, IExternalAPIRequestUrlBuilder resourceBuilder, IExternalAPIRetryPolicy retryPipeline, IRestRequestExecutor? executor = null, int timeoutSeconds = 60)
+    public ExternalXmlServiceClient(ExternalServiceClientFactory clientFactory, ExternalAPIRequestUrlBuilder resourceBuilder, ExternalAPIRetryPolicy retryPipeline, IRestRequestExecutor? executor = null, int timeoutSeconds = 60)
     {
         if (timeoutSeconds <= 0)
             throw new ExternalAPIConfigurationException("API timeout must be greater than zero.");

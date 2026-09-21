@@ -3,7 +3,7 @@ using Microsoft.Data.SqlClient;
 
 namespace FuzzyPricingMatcher.Tests.Database;
 
-public sealed class SqlConnectionFactory : ISqlConnectionFactory
+public sealed class SqlConnectionFactory
 {
     private readonly string connectionString;
 

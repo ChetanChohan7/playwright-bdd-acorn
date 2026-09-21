@@ -182,7 +182,7 @@ public sealed class ApiFoundationTests
         });
     }
 
-    private static ExternalXmlServiceClient CreateClient(FakeExecutor executor, FakeLimiter limiter, EndpointSettings endpoint, IExternalAPIRetryPolicy? pipeline = null) => new(new ExternalServiceClientFactory(), new ExternalAPIRequestUrlBuilder(), pipeline ?? new ExternalAPIRetryPolicy(new ResilienceSettings { ApiRetryAttempts = 0 }, limiter, (_, _) => Task.CompletedTask), executor);
+    private static ExternalXmlServiceClient CreateClient(FakeExecutor executor, FakeLimiter limiter, EndpointSettings endpoint, ExternalAPIRetryPolicy? pipeline = null) => new(new ExternalServiceClientFactory(), new ExternalAPIRequestUrlBuilder(), pipeline ?? new ExternalAPIRetryPolicy(new ResilienceSettings { ApiRetryAttempts = 0 }, limiter, (_, _) => Task.CompletedTask), executor);
 
     private static ExternalXmlRequest Request(string raw, EndpointSettings endpoint) => new("SCN-1", "S-1", raw, "BUILD-1", endpoint, new RouteSettings { EndpointName = "EndpointA", Enabled = true }, new DateOnly(2026, 9, 18));
 

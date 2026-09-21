@@ -2,7 +2,7 @@ using FuzzyPricingMatcher.Tests.Validation;
 
 namespace FuzzyPricingMatcher.Tests.Processing;
 
-public sealed class ScenarioIdNormalizer : IScenarioIdNormalizer
+public sealed class ScenarioIdNormalizer
 {
     public string Normalize(string? scenarioId)
     {

@@ -3,10 +3,9 @@ bin/
 obj/
 TestResults/
 
-# Local logs and generated evidence
+# Local logs and generated evidence (generated evidence lands under TestResults/, ignored above)
 *.log
 logs/
-evidence/
 *.xml
 !*.xsd
 
