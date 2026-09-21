@@ -78,12 +78,12 @@ public sealed class SchemaValidationTests
     public void Processor_registry_is_case_insensitive_rejects_duplicates_and_unknown_names()
     {
         var amountReader = new PlaceholderResponseAmountReader();
-        var registry = new ResponseAmountReaderRegistry(new[] { new ResponseAmountReaderRegistration("PlaceholderResponseProcessor", amountReader) });
+        var registry = new ComparisonAmountReaderRegistry(new[] { new ComparisonAmountReaderRegistration("PlaceholderResponseProcessor", amountReader) });
         Assert.Multiple(() =>
         {
             Assert.That(registry.Resolve("placeholderresponseprocessor"), Is.SameAs(amountReader));
             Assert.That(() => registry.Resolve("unknown"), Throws.InvalidOperationException);
-            Assert.That(() => new ResponseAmountReaderRegistry(new[] { new ResponseAmountReaderRegistration("P", amountReader), new ResponseAmountReaderRegistration("p", amountReader) }), Throws.InvalidOperationException);
+            Assert.That(() => new ComparisonAmountReaderRegistry(new[] { new ComparisonAmountReaderRegistration("P", amountReader), new ComparisonAmountReaderRegistration("p", amountReader) }), Throws.InvalidOperationException);
         });
     }
 
@@ -105,7 +105,7 @@ public sealed class SchemaValidationTests
     public void Validation_happens_before_processor_and_same_processor_handles_api_and_stored_documents()
     {
         var amountReader = new CountingAmountReader();
-        var service = new ResponseValidationService(new XmlSchemaValidator(CreateRegistry(SchemaFile)), new ResponseAmountReaderRegistry(new[] { new ResponseAmountReaderRegistration("counting", amountReader) }));
+        var service = new ExternalResponseValidationService(new XmlSchemaValidator(CreateRegistry(SchemaFile)), new ComparisonAmountReaderRegistry(new[] { new ComparisonAmountReaderRegistration("counting", amountReader) }));
         var valid = Request("<PlaceholderResponse xmlns=\"urn:fuzzypricing:placeholder:scheme01\"><PlaceholderAmount>1</PlaceholderAmount></PlaceholderResponse>");
         service.ValidateAndReadAmount(valid, "COUNTING");
         service.ValidateAndReadAmount(valid with { DocumentType = "StoredBaseline" }, "counting");

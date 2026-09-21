@@ -1,7 +1,7 @@
-using FuzzyPricingMatcher.Tests.Api;
+using FuzzyPricingMatcher.Tests.ExternalAPIAccess;
 using FuzzyPricingMatcher.Tests.Comparison;
 using FuzzyPricingMatcher.Tests.Configuration;
-using FuzzyPricingMatcher.Tests.Data;
+using FuzzyPricingMatcher.Tests.Database;
 using NLog;
 using NLog.Config;
 using NLog.Targets;
@@ -30,12 +30,12 @@ public sealed class CapturedLoggingTests
             using (ScopeContext.PushProperty("EndpointName", "EndpointA"))
             {
                 new NLogScenarioLogger().Outcome(new ComparisonResult("SCN", "Q", ComparisonOutcome.ApiFailed, false, null, null, null, "password=__API_PASSWORD_SECRET__ authorization=__AUTHORIZATION_SECRET__ connectionString=__CONNECTION_STRING_SECRET__ <response>__RESPONSE_XML_SECRET__</response>"));
-                var apiPipeline = new ApiRetryPipeline(new ResilienceSettings { ApiRetryAttempts = 1, ApiRetryInitialDelaySeconds = 0, ApiRetryMaximumDelaySeconds = 0 }, new PermitCounter(), (_, _) => Task.CompletedTask);
+                var apiPipeline = new ExternalAPIRetryPolicy(new ResilienceSettings { ApiRetryAttempts = 1, ApiRetryInitialDelaySeconds = 0, ApiRetryMaximumDelaySeconds = 0 }, new PermitCounter(), (_, _) => Task.CompletedTask);
                 var apiAttempts = 0;
                 await apiPipeline.ExecuteAsync("captured-api", (_, _) =>
                 {
                     apiAttempts++;
-                    return Task.FromResult(apiAttempts == 1 ? ApiCallResult.Failure(503, "transport", 1, TimeSpan.Zero) : ApiCallResult.Success(200, "ok", 2, TimeSpan.Zero));
+                    return Task.FromResult(apiAttempts == 1 ? ExternalAPIResponse.Failure(503, "transport", 1, TimeSpan.Zero) : ExternalAPIResponse.Success(200, "ok", 2, TimeSpan.Zero));
                 });
                 var sqlRetry = new DatabaseRetryExecutor(new ResilienceSettings { SqlRetryAttempts = 2, SqlRetryInitialDelaySeconds = 0, SqlRetryMaximumDelaySeconds = 0 }, (_, _) => Task.CompletedTask);
                 var sqlAttempts = 0;
@@ -71,7 +71,7 @@ public sealed class CapturedLoggingTests
         }
     }
 
-    private sealed class PermitCounter : IApiRateLimiter
+    private sealed class PermitCounter : IExternalAPIRateLimiter
     {
         public Task WaitAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
     }

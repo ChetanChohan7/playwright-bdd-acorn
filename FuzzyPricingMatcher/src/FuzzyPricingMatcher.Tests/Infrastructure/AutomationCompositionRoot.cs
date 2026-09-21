@@ -1,7 +1,7 @@
-using FuzzyPricingMatcher.Tests.Api;
+using FuzzyPricingMatcher.Tests.ExternalAPIAccess;
 using FuzzyPricingMatcher.Tests.Comparison;
 using FuzzyPricingMatcher.Tests.Configuration;
-using FuzzyPricingMatcher.Tests.Data;
+using FuzzyPricingMatcher.Tests.Database;
 using FuzzyPricingMatcher.Tests.Evidence;
 using FuzzyPricingMatcher.Tests.Loader;
 using FuzzyPricingMatcher.Tests.Processing;
@@ -42,9 +42,9 @@ public sealed class AutomationCompositionRoot : IDisposable
         services.AddSingleton<ITagNormalizer, TagNormalizer>();
         services.AddSingleton<IXmlFingerprintService, XmlFingerprintService>();
         services.AddSingleton<CsvScenarioReader>();
-        services.AddSingleton<ConfiguredRouteResolver>();
-        services.AddSingleton<ILoaderRouteResolver>(services => services.GetRequiredService<ConfiguredRouteResolver>());
-        services.AddSingleton<IScenarioRouteResolver>(services => services.GetRequiredService<ConfiguredRouteResolver>());
+        services.AddSingleton<SchemeRouteResolver>();
+        services.AddSingleton<ILoaderRouteResolver>(services => services.GetRequiredService<SchemeRouteResolver>());
+        services.AddSingleton<IScenarioRouteResolver>(services => services.GetRequiredService<SchemeRouteResolver>());
 
         services.AddSingleton<ISqlConnectionFactory, SqlConnectionFactory>();
         services.AddSingleton<ISqlMutationSessionFactory, SqlConnectionMutationSessionFactory>();
@@ -53,18 +53,18 @@ public sealed class AutomationCompositionRoot : IDisposable
         services.AddSingleton<IFuzzyMatcherRepository, FuzzyMatcherRepository>();
         services.AddSingleton<ILoaderRepository, ProductionLoaderRepository>();
 
-        services.AddSingleton<IRestClientFactory, RestClientFactory>();
-        services.AddSingleton<IApiResourceBuilder, ApiResourceBuilder>();
-        services.AddSingleton<IApiRateLimiter>(_ => new ApiRateLimiter(configuration.Resilience.ApiRateLimitPerSecond));
-        services.AddSingleton<IApiRetryPipeline, ApiRetryPipeline>();
-        services.AddSingleton<IXmlApiClient, XmlApiClient>();
+        services.AddSingleton<IExternalServiceClientFactory, ExternalServiceClientFactory>();
+        services.AddSingleton<IExternalAPIRequestUrlBuilder, ExternalAPIRequestUrlBuilder>();
+        services.AddSingleton<IExternalAPIRateLimiter>(_ => new ExternalAPIRateLimiter(configuration.Resilience.ApiRateLimitPerSecond));
+        services.AddSingleton<IExternalAPIRetryPolicy, ExternalAPIRetryPolicy>();
+        services.AddSingleton<IExternalXmlServiceClient, ExternalXmlServiceClient>();
         services.AddSingleton<ILoaderApiClient, ProductionLoaderApiClient>();
 
         var schemaNames = configuration.Routes.Values.Select(route => route.ResponseSchemaFile).Where(name => !string.IsNullOrWhiteSpace(name)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
         services.AddSingleton<ISchemaRegistry>(_ => new SchemaRegistry(Path.Combine(AppContext.BaseDirectory, "Schemas"), schemaNames));
         services.AddSingleton<IXmlSchemaValidator, XmlSchemaValidator>();
-        services.AddSingleton<IResponseAmountReaderRegistry>(_ => new ResponseAmountReaderRegistry(new[] { new ResponseAmountReaderRegistration("PlaceholderResponseProcessor", new PlaceholderResponseAmountReader()) }));
-        services.AddSingleton<ResponseValidationService>();
+        services.AddSingleton<IComparisonAmountReaderRegistry>(_ => new ComparisonAmountReaderRegistry(new[] { new ComparisonAmountReaderRegistration("PlaceholderResponseProcessor", new PlaceholderResponseAmountReader()) }));
+        services.AddSingleton<ExternalResponseValidationService>();
         services.AddSingleton<ILoaderResponseValidator, SchemaLoaderResponseValidator>();
         services.AddSingleton<IThresholdEvaluator, ThresholdEvaluator>();
 

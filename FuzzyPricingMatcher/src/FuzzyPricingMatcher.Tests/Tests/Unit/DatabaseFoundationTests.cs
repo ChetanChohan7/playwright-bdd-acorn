@@ -1,5 +1,5 @@
 using FuzzyPricingMatcher.Tests.Configuration;
-using FuzzyPricingMatcher.Tests.Data;
+using FuzzyPricingMatcher.Tests.Database;
 using FuzzyPricingMatcher.Tests.Loader;
 using NUnit.Framework;
 

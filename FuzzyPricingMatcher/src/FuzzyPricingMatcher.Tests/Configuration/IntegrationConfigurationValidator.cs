@@ -62,7 +62,7 @@ public sealed class IntegrationConfigurationValidator
         if (string.IsNullOrWhiteSpace(endpoint.Username) || string.IsNullOrWhiteSpace(endpoint.Password) || IsMarker(endpoint.Username) || IsMarker(endpoint.Password))
             throw new ConfigurationValidationException($"Endpoint '{route.EndpointName}' requires approved credentials supplied through protected configuration.");
         if (!string.IsNullOrWhiteSpace(configuration.Pipeline.ApiDate))
-            _ = Api.ApiDateResolver.Resolve(configuration.Pipeline.ApiDate);
+            _ = ExternalAPIAccess.ApiDateResolver.Resolve(configuration.Pipeline.ApiDate);
         return route;
     }
 

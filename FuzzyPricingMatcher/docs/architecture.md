@@ -47,14 +47,14 @@ The solution currently contains one .NET test project:
 ```text
 FuzzyPricingMatcher.sln
 └── src/FuzzyPricingMatcher.Tests/
-    ├── Api/
+    ├── ExternalAPIAccess/
     │   └── Models/
     ├── Comparison/
     │   ├── Enums/
     │   └── Models/
     ├── Configuration/
     │   └── Enums/
-    ├── Data/
+    ├── Database/
     │   └── Models/
     ├── Evidence/
     ├── Infrastructure/
@@ -153,11 +153,11 @@ The processing layer transforms raw input into objects that loader and compariso
 
 ### Routing
 
-`ConfiguredRouteResolver` maps a `SchemeCode` to endpoint and route configuration.
+`SchemeRouteResolver` maps a `SchemeCode` to endpoint and route configuration.
 
 It prevents workflow code from needing to know which API endpoint handles a particular scheme.
 
-### API
+### ExternalAPIAccess
 
 Responsibilities:
 
@@ -171,7 +171,7 @@ Responsibilities:
 
 The API layer does not interpret response business values and does not make threshold decisions.
 
-### Data
+### Database
 
 Responsibilities:
 
@@ -237,7 +237,7 @@ Configuration
 Processing
     -> CSV reader, normalizers, metadata, fingerprints
 Routing
-    -> ConfiguredRouteResolver
+    -> SchemeRouteResolver
 Data
     -> connection, mutation, retry, repository
 API
@@ -269,9 +269,9 @@ BaselineScenarioCsvRow
 
 This object is prepared for loader synchronization. It is not a reporting model.
 
-### API request
+### ExternalAPIAccess request
 
-`XmlApiRequest` contains:
+`ExternalAPIAccessRequest` contains:
 
 - scenario ID
 - SchemeCode
@@ -283,7 +283,7 @@ This object is prepared for loader synchronization. It is not a reporting model.
 
 The policy reference is not a separate API metadata field. It remains inside the raw XML body as `PolicyReference`. The value may be extracted and represented as `QuoteRef` for internal reporting, evidence, database references, and test naming.
 
-### Database models
+### Databasebase models
 
 Database read models represent request rows, response rows, snapshots, duplicate results, and scenario selections. Mutation command models represent inserts, updates, tag updates, Pass updates, and Fail updates.
 
@@ -303,7 +303,7 @@ flowchart TD
     APIADAPTER[ProductionLoaderApiClient]
     XMLVALIDATE[SchemaLoaderResponseValidator]
     SQL[FuzzyMatcherRepository]
-    API[IXmlApiClient]
+    API[IExternalAPIAccessClient]
     SUMMARY[LoaderSummaryWriter]
 
     LT --> CR
@@ -332,9 +332,9 @@ flowchart TD
     EXEC[ComparisonScenarioExecutor]
     REPO[FuzzyMatcherRepository]
     XML[RequestXmlMetadataReader]
-    ROUTE[ConfiguredRouteResolver]
-    API[XmlApiClient]
-    VALIDATE[ResponseValidationService]
+    ROUTE[SchemeRouteResolver]
+    API[ExternalAPIAccessClient]
+    VALIDATE[ExternalResponseValidationService]
     AMOUNT[Response amount reader]
     THRESHOLD[ThresholdEvaluator]
     UPDATE[Database Pass/Fail mutation]
@@ -359,19 +359,19 @@ Scenario selection is database-first. `TagMatchMode.Any` selects scenarios conta
 ## API Architecture
 
 ```text
-XmlApiRequest
-    -> XmlApiClient.ValidateRequest
-    -> ApiResourceBuilder.Build
-    -> RestClientFactory.GetClient
-    -> ApiRetryPipeline.ExecuteAsync
-        -> ApiRateLimiter.WaitAsync
+ExternalAPIAccessRequest
+    -> ExternalAPIAccessClient.ValidateRequest
+    -> ExternalAPIAccessRequestUriBuilder.Build
+    -> ExternalAPIAccessClientFactory.GetClient
+    -> ExternalAPIAccessRetryPipeline.ExecuteAsync
+        -> ExternalAPIAccessRateLimiter.WaitAsync
         -> create RestRequest
         -> RestRequestExecutor.ExecuteAsync
-        -> convert RestResponse to ApiCallResult
+        -> convert RestResponse to ExternalAPIAccessResponse
     -> loader or comparison caller
 ```
 
-`RestClientFactory` maintains a thread-safe, on-demand cache of one authenticated RestSharp client per endpoint name.
+`ExternalAPIAccessClientFactory` maintains a thread-safe, on-demand cache of one authenticated RestSharp client per endpoint name.
 
 The API client sends the exact raw XML string. It does not add a correlation header or send `QuoteRef` separately. The policy reference is exposed to the API only as part of the XML request body.
 
@@ -437,7 +437,7 @@ Current controls include:
 - Coverage is collected, but no percentage gate is enforced.
 - The current project combines test entry points and reusable infrastructure in one test assembly.
 - Some workflow boundaries synchronously wait on asynchronous repository/API calls; an architect may wish to assess whether the public workflow should become fully asynchronous.
-- The `XmlApiClient` contains a `timeoutSeconds` field, but the current implementation should be reviewed to confirm that the configured timeout is applied to the RestSharp client or request.
+- The `ExternalAPIAccessClient` contains a `timeoutSeconds` field, but the current implementation should be reviewed to confirm that the configured timeout is applied to the RestSharp client or request.
 
 ## Architect Review Questions
 

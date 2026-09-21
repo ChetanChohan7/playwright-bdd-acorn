@@ -1,4 +1,4 @@
-using FuzzyPricingMatcher.Tests.Api;
+using FuzzyPricingMatcher.Tests.ExternalAPIAccess;
 using NUnit.Framework;
 
 namespace FuzzyPricingMatcher.Tests.Tests.Unit;
@@ -11,7 +11,7 @@ public sealed class ConcurrentRateLimiterTests
     public async Task Concurrent_callers_share_one_global_schedule()
     {
         var clock = new ControlledClock();
-        var limiter = new ApiRateLimiter(2, clock);
+        var limiter = new ExternalAPIRateLimiter(2, clock);
         var waits = Enumerable.Range(0, 4).Select(_ => limiter.WaitAsync()).ToArray();
 
         await Task.WhenAll(waits);
@@ -28,7 +28,7 @@ public sealed class ConcurrentRateLimiterTests
     public async Task Cancelled_waiter_does_not_corrupt_the_next_permit()
     {
         var clock = new CancellationClock();
-        var limiter = new ApiRateLimiter(2, clock);
+        var limiter = new ExternalAPIRateLimiter(2, clock);
         await limiter.WaitAsync();
         using var cancellation = new CancellationTokenSource();
         var cancelled = limiter.WaitAsync(cancellation.Token);
@@ -45,7 +45,7 @@ public sealed class ConcurrentRateLimiterTests
     public async Task Two_starts_per_second_schedule_starts_about_500_milliseconds_apart_without_sleeping()
     {
         var clock = new ControlledClock();
-        var limiter = new ApiRateLimiter(2, clock);
+        var limiter = new ExternalAPIRateLimiter(2, clock);
         await limiter.WaitAsync();
         await limiter.WaitAsync();
 

@@ -1,0 +1,34 @@
+# Naming Refactor Plan
+
+This plan was prepared after the Release build and Unit test baseline passed. Only entries marked **Apply** are to be changed.
+
+| Current name | Proposed name | Type | Current path | Proposed path | Responsibility | Reason and expected readability improvement | References requiring updates | External contract | Risk | Decision |
+|---|---|---|---|---|---|---|---|---|---|---|
+| `Api/` | `ExternalAPIAccess/` | Folder | `src/FuzzyPricingMatcher.Tests/Api/` | `src/FuzzyPricingMatcher.Tests/ExternalAPIAccess/` | External pricing HTTP/XML communication | Describes business purpose rather than transport protocol | Namespaces, using directives, documentation, composition, tests | No | Medium | **Apply** |
+| `Data/` | `Database/` | Folder | `src/FuzzyPricingMatcher.Tests/Data/` | `src/FuzzyPricingMatcher.Tests/Database/` | SQL Server repositories, commands, and connection infrastructure | Distinguishes storage concerns from generic data processing | Namespaces, using directives, documentation, tests | No | Medium | **Apply** |
+| `XmlApiClient` | `ExternalAPIAccessClient` | Class | `Api/XmlApiClient.cs` | `ExternalAPIAccess/ExternalAPIAccessClient.cs` | Sends raw XML pricing requests and receives external responses | Makes the external system and business purpose explicit | Composition, tests, callers | No | Medium | **Apply** |
+| `IXmlApiClient` | `IExternalAPIAccessClient` | Interface | `Api/IXmlApiClient.cs` | `ExternalAPIAccess/IExternalAPIAccessClient.cs` | Boundary for external pricing requests | Removes transport-only `Api` wording while retaining the boundary | Composition, tests, callers | No | Medium | **Apply** |
+| `XmlApiRequest` | `ExternalAPIAccessRequest` | Record | `Api/Models/XmlApiRequest.cs` | `ExternalAPIAccess/Models/ExternalAPIAccessRequest.cs` | Request data sent to an external pricing endpoint | States where the request goes | Callers and tests | No | Low | **Apply** |
+| `ApiCallResult` | `ExternalAPIAccessResponse` | Record | `Api/Models/ApiCallResult.cs` | `ExternalAPIAccess/Models/ExternalAPIAccessResponse.cs` | Outcome and response XML from an external request | Distinguishes current external response from stored baseline data | Callers and tests | No | Medium | **Apply** |
+| `ApiResourceBuilder` | `ExternalAPIAccessRequestUriBuilder` | Class | `Api/ApiResourceBuilder.cs` | `ExternalAPIAccess/ExternalAPIAccessRequestUriBuilder.cs` | Builds endpoint resource paths and date parameters | Names the returned URI/resource purpose | Composition, tests, callers | No | Low | **Apply** |
+| `IApiResourceBuilder` | `IExternalAPIAccessRequestUriBuilder` | Interface | `Api/IApiResourceBuilder.cs` | `ExternalAPIAccess/IExternalAPIAccessRequestUriBuilder.cs` | Boundary for pricing request URI construction | Makes the boundary meaningful | Composition, tests, callers | No | Low | **Apply** |
+| `ApiRetryPipeline` | `ExternalAPIAccessRetryPipeline` | Class | `Api/ApiRetryPipeline.cs` | `ExternalAPIAccess/ExternalAPIAccessRetryPipeline.cs` | Retries external pricing request attempts | Names the operation being retried | Composition, tests, callers | No | Medium | **Apply** |
+| `IApiRetryPipeline` | `IExternalAPIAccessRetryPipeline` | Interface | `Api/IApiRetryPipeline.cs` | `ExternalAPIAccess/IExternalAPIAccessRetryPipeline.cs` | Boundary for pricing retry workflow | Removes ambiguous API terminology | Composition, tests, callers | No | Medium | **Apply** |
+| `ApiRateLimiter` | `ExternalAPIAccessRateLimiter` | Class | `Api/ApiRateLimiter.cs` | `ExternalAPIAccess/ExternalAPIAccessRateLimiter.cs` | Spaces external pricing request attempts | Connects the limiter to the protected resource | Composition, tests, callers | No | Medium | **Apply** |
+| `IApiRateLimiter` | `IExternalAPIAccessRateLimiter` | Interface | `Api/IApiRateLimiter.cs` | `ExternalAPIAccess/IExternalAPIAccessRateLimiter.cs` | Boundary for pricing request pacing | Makes the protected operation explicit | Composition, tests, callers | No | Medium | **Apply** |
+| `ApiResource` | `ExternalAPIAccessRequestUri` | Record | `Api/Models/ApiResource.cs` | `ExternalAPIAccess/Models/ExternalAPIAccessRequestUri.cs` | Built resource path and date query values | Explains the object contents | Builder, client, tests | No | Low | **Apply** |
+| `ApiConfigurationException`, `ApiRequestValidationException`, `ApiTransportException`, `ApiResponseException` | External-pricing-specific exception names | Exceptions | `Api/ApiExceptions.cs` | `ExternalAPIAccess/ExternalAPIAccessExceptions.cs` | External pricing configuration, request, transport, and response failures | Prevents generic API wording in diagnostics | All callers and tests | No | Medium | **Apply** |
+| `ConfiguredRouteResolver` | `SchemeRouteResolver` | Class | `Routing/ConfiguredRouteResolver.cs` | Same folder | Resolves endpoint, schema, and response reader for a scheme | Names the complete resolved business object | Composition, tests, callers | No | Medium | **Apply** |
+| `ResponseAmountReaderRegistry` | `ComparisonAmountReaderRegistry` | Class/interface/registration | `Processing/*` | Same folder | Resolves readers for comparison amounts | Removes the generic processor implication and clarifies output | Composition, tests, callers | No | Medium | **Apply** |
+| `ResponseValidationService` | `ExternalResponseValidationService` | Class | `Processing/ResponseAmountReaderRegistry.cs` | Same folder | Validates external/stored response XML and reads comparison amount | States the validated document source and purpose | Composition, tests, callers | No | Medium | **Apply** |
+| `EndpointRouter`, `IEndpointRouter`, `ResolvedRoute` | None | Types | Repository search | None | Not present in current source | No rename is proposed for types that do not exist | None | N/A | None | **Keep existing name** |
+| `Processor`-style classes | None unless listed above | Classes | Repository search | None | Existing classes have more specific names or are not present | Avoids a blanket mechanical rename | None | N/A | Low | **Keep existing name** |
+| Database table/column names and CSV/XML/environment keys | None | External contracts | Configuration, SQL, CSV, XML | None | Physical integration contracts | Compatibility requires exact spellings | Mappings remain explicit | Yes | High | **External contract, do not rename** |
+
+## Interface decisions
+
+Retain interfaces at the persistence, external HTTP, evidence, retry/rate-limit, validation, routing, and workflow boundaries. No interface is removed: each retained interface either represents an external side effect, a substitutable test boundary, or multiple implementations.
+
+## Business terms needing confirmation
+
+The comparison amount is deliberately not renamed to `Premium` or another business-specific term. Confirm the domain term before introducing one.

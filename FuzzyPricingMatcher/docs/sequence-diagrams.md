@@ -56,7 +56,7 @@ sequenceDiagram
     participant RepoAdapter as ProductionLoaderRepository
     participant APIAdapter as ProductionLoaderApiClient
     participant DB as FuzzyMatcherRepository
-    participant API as XmlApiClient
+    participant API as ExternalAPIAccessClient
     participant Response as SchemaLoaderResponseValidator
     participant Summary as LoaderSummaryWriter
     participant Files as Evidence/TestResults
@@ -82,8 +82,8 @@ sequenceDiagram
     RepoAdapter-->>Loader: BaselineDatabaseSnapshot
     alt Scenario is new
         Loader->>APIAdapter: Fetch(LoaderApiRequest, route)
-        APIAdapter->>API: SendAsync(XmlApiRequest)
-        API-->>APIAdapter: ApiCallResult
+        APIAdapter->>API: SendExternalAPIAccessRequestAsync(ExternalAPIAccessRequest)
+        API-->>APIAdapter: ExternalAPIAccessResponse
         APIAdapter-->>Loader: LoaderApiResponse
         Loader->>Response: Validate(response, route)
         Response-->>Loader: Valid response
@@ -91,8 +91,8 @@ sequenceDiagram
         RepoAdapter->>DB: InsertBaselineAsync(command)
     else XML changed
         Loader->>APIAdapter: Fetch(LoaderApiRequest, route)
-        APIAdapter->>API: SendAsync(XmlApiRequest)
-        API-->>APIAdapter: ApiCallResult
+        APIAdapter->>API: SendExternalAPIAccessRequestAsync(ExternalAPIAccessRequest)
+        API-->>APIAdapter: ExternalAPIAccessResponse
         APIAdapter-->>Loader: LoaderApiResponse
         Loader->>Response: Validate(response, route)
         Response-->>Loader: Valid response
@@ -160,20 +160,20 @@ sequenceDiagram
 ```mermaid
 sequenceDiagram
     participant Caller as Loader adapter or comparison executor
-    participant Client as XmlApiClient
-    participant Resource as ApiResourceBuilder
-    participant Factory as RestClientFactory
-    participant Retry as ApiRetryPipeline
-    participant Limit as ApiRateLimiter
+    participant Client as ExternalAPIAccessClient
+    participant Resource as ExternalAPIAccessRequestUriBuilder
+    participant Factory as ExternalAPIAccessClientFactory
+    participant Retry as ExternalAPIAccessRetryPipeline
+    participant Limit as ExternalAPIAccessRateLimiter
     participant Executor as RestRequestExecutor
     participant Rest as RestSharp
     participant Endpoint as External XML API
 
-    Caller->>Client: SendAsync(XmlApiRequest)
+    Caller->>Client: SendExternalAPIAccessRequestAsync(ExternalAPIAccessRequest)
     Client->>Client: Validate route, endpoint, and raw XML
-    Client->>Resource: Build(EndpointSettings, ApiDate)
+    Client->>Resource: BuildRequestUri(EndpointSettings, ApiDate)
     Resource->>Resource: Validate date placement and format
-    Resource-->>Client: ApiResource
+    Resource-->>Client: ExternalAPIAccessRequestUri
     Client->>Factory: GetClient(endpointName, endpoint)
     Factory->>Factory: Validate endpoint
     Factory->>Factory: Get or create cached authenticated RestClient
@@ -197,14 +197,14 @@ sequenceDiagram
     Rest-->>Executor: RestResponse
     Executor-->>Client: RestResponse
     Client->>Client: Convert status/content/retry-after
-    Client-->>Retry: ApiCallResult
+    Client-->>Retry: ExternalAPIAccessResponse
     alt Successful 2xx
         Retry-->>Caller: Success result with raw XML
     else Retryable exception or status
         Retry->>Retry: Backoff, jitter, and Retry-After handling
         Retry->>Limit: WaitAsync() for next physical attempt
     else Non-retryable failure or exhausted attempts
-        Retry-->>Caller: Failed ApiCallResult or exception
+        Retry-->>Caller: Failed ExternalAPIAccessResponse or exception
     end
 ```
 
@@ -228,7 +228,7 @@ flowchart TD
     Status -->|408, 429, 502, 503, 504| RetryStatus{Attempts remain?}
     RetryStatus -->|Yes| RetryAfter[Honor Retry-After minimum]
     RetryAfter --> Delay
-    RetryStatus -->|No| FinalFailure[Return failed ApiCallResult]
+    RetryStatus -->|No| FinalFailure[Return failed ExternalAPIAccessResponse]
     Status -->|Other status| FinalFailure
     Delay --> Cancel
 ```
@@ -307,9 +307,9 @@ sequenceDiagram
     participant Repo as FuzzyMatcherRepository
     participant Executor as ComparisonScenarioExecutor
     participant Metadata as RequestXmlMetadataReader
-    participant Route as ConfiguredRouteResolver
-    participant API as XmlApiClient
-    participant Validation as ResponseValidationService
+    participant Route as SchemeRouteResolver
+    participant API as ExternalAPIAccessClient
+    participant Validation as ExternalResponseValidationService
     participant Amount as AmountReaderRegistry
     participant Threshold as ThresholdEvaluator
     participant Evidence as ScenarioEvidenceWriter
@@ -326,8 +326,8 @@ sequenceDiagram
         Metadata-->>Executor: SchemeCode and PolicyReference
         Executor->>Route: Resolve(SchemeCode)
         Route-->>Executor: Endpoint and route
-        Executor->>API: SendAsync(XmlApiRequest)
-        API-->>Executor: ApiCallResult with raw current XML
+        Executor->>API: SendExternalAPIAccessRequestAsync(ExternalAPIAccessRequest)
+        API-->>Executor: ExternalAPIAccessResponse with raw current XML
         alt API unsuccessful
             Executor->>Repo: UpdateComparisonFailAsync
             Executor->>Evidence: Save failure evidence

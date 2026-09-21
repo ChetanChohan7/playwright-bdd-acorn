@@ -1,8 +1,8 @@
 using System.Xml.Linq;
-using FuzzyPricingMatcher.Tests.Api;
+using FuzzyPricingMatcher.Tests.ExternalAPIAccess;
 using FuzzyPricingMatcher.Tests.Comparison;
 using FuzzyPricingMatcher.Tests.Configuration;
-using FuzzyPricingMatcher.Tests.Data;
+using FuzzyPricingMatcher.Tests.Database;
 using FuzzyPricingMatcher.Tests.Processing;
 using FuzzyPricingMatcher.Tests.Validation;
 using NUnit.Framework;
@@ -85,7 +85,7 @@ public sealed class ComparisonFoundationTests
     [Category("Unit")]
     public void API_failure_preserves_baseline_and_does_not_claim_a_pass()
     {
-        var fakes = new ComparisonFakes(string.Empty, BaselineXml(10m)) { ApiResult = ApiCallResult.Failure(503, "unavailable", 3, TimeSpan.Zero) };
+        var fakes = new ComparisonFakes(string.Empty, BaselineXml(10m)) { ApiResult = ExternalAPIResponse.Failure(503, "unavailable", 3, TimeSpan.Zero) };
         var result = CreateExecutor(fakes).Execute(new ComparisonScenario("SCN", "Q"), Input(-1m, 1m));
         Assert.Multiple(() =>
         {
@@ -178,10 +178,10 @@ public sealed class ComparisonFoundationTests
 
     private static ComparisonScenarioExecutor CreateExecutor(ComparisonFakes fakes) => new(fakes, new RequestXmlMetadataReader(), fakes, fakes, CreateValidationService(), new ThresholdEvaluator(), fakes, fakes);
 
-    private static ResponseValidationService CreateValidationService()
+    private static ExternalResponseValidationService CreateValidationService()
     {
         var registry = new SchemaRegistry(Path.Combine(TestContext.CurrentContext.TestDirectory, "Schemas"), new[] { "Scheme01-response.xsd" });
-        return new ResponseValidationService(new XmlSchemaValidator(registry), new ResponseAmountReaderRegistry(new[] { new ResponseAmountReaderRegistration("PlaceholderResponseProcessor", new PlaceholderResponseAmountReader()) }));
+        return new ExternalResponseValidationService(new XmlSchemaValidator(registry), new ComparisonAmountReaderRegistry(new[] { new ComparisonAmountReaderRegistration("PlaceholderResponseProcessor", new PlaceholderResponseAmountReader()) }));
     }
 
     private static ComparisonScenarioInput Input(decimal minimum, decimal maximum) => new("", "", minimum, maximum, "BUILD", "NUMBER");
@@ -189,21 +189,21 @@ public sealed class ComparisonFoundationTests
     private static string ApiXml(decimal amount) => $"<PlaceholderResponse xmlns=\"urn:fuzzypricing:placeholder:scheme01\"><PlaceholderAmount>{amount.ToString(System.Globalization.CultureInfo.InvariantCulture)}</PlaceholderAmount></PlaceholderResponse>";
     private static string BaselineXml(decimal amount) => ApiXml(amount);
 
-    private sealed class ComparisonFakes : IFuzzyMatcherRepository, IScenarioRouteResolver, IXmlApiClient, IScenarioEvidenceWriter, IScenarioLogger
+    private sealed class ComparisonFakes : IFuzzyMatcherRepository, IScenarioRouteResolver, IExternalXmlServiceClient, IScenarioEvidenceWriter, IScenarioLogger
     {
         public ComparisonFakes(string apiXml, string baselineXml)
         {
             RawRequest = RequestXml("Q");
             OriginalBaseline = baselineXml;
             Snapshot = new DatabaseScenarioSnapshot(new DatabaseRequestRecord("SCN", "Q", RawRequest, "smoke", DateTime.UtcNow), new DatabaseResponseRecord("SCN", "Q", baselineXml, "OLD", DateTime.UtcNow, null, null));
-            ApiResult = ApiCallResult.Success(200, apiXml, 1, TimeSpan.Zero);
+            ApiResult = ExternalAPIResponse.Success(200, apiXml, 1, TimeSpan.Zero);
         }
         public string RawRequest { get; }
         public string OriginalBaseline { get; }
         public DatabaseScenarioSnapshot Snapshot { get; set; }
-        public ApiCallResult ApiResult { get; set; }
+        public ExternalAPIResponse ApiResult { get; set; }
         public Exception? SnapshotException { get; set; }
-        public XmlApiRequest? ApiRequest { get; private set; }
+        public ExternalXmlRequest? ApiRequest { get; private set; }
         public DatabaseComparisonPassCommand? PassCommand { get; private set; }
         public DatabaseComparisonFailCommand? FailCommand { get; private set; }
         public Exception? FailUpdateException { get; set; }
@@ -221,7 +221,7 @@ public sealed class ComparisonFoundationTests
         public Task UpdateComparisonPassAsync(DatabaseComparisonPassCommand command, CancellationToken cancellationToken = default) { Events.Add("pass-update"); PassCommand = command; return Task.CompletedTask; }
         public Task UpdateComparisonFailAsync(DatabaseComparisonFailCommand command, CancellationToken cancellationToken = default) { Events.Add("fail-update"); if (FailUpdateException is not null) throw FailUpdateException; FailCommand = command; return Task.CompletedTask; }
         public ComparisonScenarioRoute Resolve(string schemeCode) => new(schemeCode, "EndpointA", new FuzzyPricingMatcher.Tests.Configuration.EndpointSettings { BaseUrl = "https://api.example.test", Resource = "/v1/{date}", Username = "__NOT_A_REAL_USERNAME__", Password = "__NOT_A_REAL_PASSWORD__", DatePlacement = "Path", DateParameterName = "date", DateFormat = "yyyy-MM-dd", Enabled = true }, new FuzzyPricingMatcher.Tests.Configuration.RouteSettings { EndpointName = "EndpointA", ResponseSchemaFile = "Scheme01-response.xsd", ResponseProcessorName = "PlaceholderResponseProcessor", Enabled = true });
-        public Task<ApiCallResult> SendAsync(XmlApiRequest request, CancellationToken cancellationToken = default) { cancellationToken.ThrowIfCancellationRequested(); Events.Add("api"); ApiRequest = request; return Task.FromResult(ApiResult); }
+        public Task<ExternalAPIResponse> SendXmlRequestAsync(ExternalXmlRequest request, CancellationToken cancellationToken = default) { cancellationToken.ThrowIfCancellationRequested(); Events.Add("api"); ApiRequest = request; return Task.FromResult(ApiResult); }
         public void Save(ScenarioEvidence evidence) { Events.Add(evidence.Outcome == "Started" ? "initial-evidence" : "final-evidence"); }
         public void Outcome(ComparisonResult result) => Events.Add("outcome");
         public void QuoteMismatch(string scenarioId, string extractedQuoteRef, string storedQuoteRef) => Events.Add("quote-mismatch");

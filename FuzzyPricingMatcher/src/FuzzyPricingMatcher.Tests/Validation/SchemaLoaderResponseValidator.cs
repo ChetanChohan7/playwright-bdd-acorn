@@ -1,4 +1,4 @@
-using FuzzyPricingMatcher.Tests.Api;
+using FuzzyPricingMatcher.Tests.ExternalAPIAccess;
 using FuzzyPricingMatcher.Tests.Loader;
 using FuzzyPricingMatcher.Tests.Processing;
 
@@ -6,9 +6,9 @@ namespace FuzzyPricingMatcher.Tests.Validation;
 
 public sealed class SchemaLoaderResponseValidator : ILoaderResponseValidator
 {
-    private readonly ResponseValidationService validationService;
+    private readonly ExternalResponseValidationService validationService;
 
-    public SchemaLoaderResponseValidator(ResponseValidationService validationService) => this.validationService = validationService;
+    public SchemaLoaderResponseValidator(ExternalResponseValidationService validationService) => this.validationService = validationService;
 
     public void Validate(LoaderApiResponse response, RouteDefinition route)
     {

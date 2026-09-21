@@ -1,6 +1,6 @@
-using FuzzyPricingMatcher.Tests.Api;
+using FuzzyPricingMatcher.Tests.ExternalAPIAccess;
 using FuzzyPricingMatcher.Tests.Configuration;
-using FuzzyPricingMatcher.Tests.Data;
+using FuzzyPricingMatcher.Tests.Database;
 using FuzzyPricingMatcher.Tests.Models;
 using FuzzyPricingMatcher.Tests.Processing;
 
@@ -36,11 +36,11 @@ public sealed class ProductionLoaderRepository : ILoaderRepository
 
 public sealed class ProductionLoaderApiClient : ILoaderApiClient
 {
-    private readonly IXmlApiClient apiClient;
+    private readonly IExternalXmlServiceClient apiClient;
     private readonly MatcherConfiguration configuration;
     private readonly IScenarioRouteResolver routeResolver;
 
-    public ProductionLoaderApiClient(IXmlApiClient apiClient, MatcherConfiguration configuration, IScenarioRouteResolver routeResolver)
+    public ProductionLoaderApiClient(IExternalXmlServiceClient apiClient, MatcherConfiguration configuration, IScenarioRouteResolver routeResolver)
     {
         this.apiClient = apiClient;
         this.configuration = configuration;
@@ -50,7 +50,7 @@ public sealed class ProductionLoaderApiClient : ILoaderApiClient
     public LoaderApiResponse Fetch(LoaderApiRequest request, RouteDefinition route)
     {
         var comparisonRoute = routeResolver.Resolve(route.SchemeCode);
-        var result = apiClient.SendAsync(new XmlApiRequest(request.ScenarioId, route.SchemeCode, request.RawXml, configuration.Pipeline.BuildId, comparisonRoute.Endpoint, comparisonRoute.Route, ApiDateResolver.Resolve(configuration.Pipeline.ApiDate))).GetAwaiter().GetResult();
+        var result = apiClient.SendXmlRequestAsync(new ExternalXmlRequest(request.ScenarioId, route.SchemeCode, request.RawXml, configuration.Pipeline.BuildId, comparisonRoute.Endpoint, comparisonRoute.Route, ApiDateResolver.Resolve(configuration.Pipeline.ApiDate))).GetAwaiter().GetResult();
         if (!result.Successful)
             throw new LoaderApiException(result.Error);
         return new LoaderApiResponse(result.ResponseXml);

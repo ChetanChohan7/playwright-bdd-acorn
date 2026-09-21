@@ -6,7 +6,7 @@ FuzzyPricingMatcher is a .NET 10 NUnit solution with a Baseline Loader and Compa
 
 ## Current status
 
-The local Unit suite passes. All committed routes and endpoints are disabled. The CSV is currently a headings-only safe template. Live SQL/API integration and Azure DevOps pipeline execution have not been run.
+The local Unit suite passes with 86 discovered, 86 passed, 0 failed, and 0 skipped. All committed routes and endpoints are disabled, the CSV is a headings-only safe template, and live SQL/API integration and Azure DevOps execution have not been run. See the [authoritative project TODO](docs/project-todo.md) for remaining work.
 
 ## Baseline Loader
 
@@ -18,7 +18,7 @@ The comparison runner discovers selected database scenarios, sends raw request X
 
 ## Project structure
 
-Implementation is grouped under `Api/`, `Comparison/`, `Configuration/`, `Data/`, `Evidence/`, `Loader/`, `Processing/`, `Routing/`, `Validation/`, and `Resilience/`. Unit tests are under `Tests/Unit`; guarded entry points are under `Tests/Integration/Loader` and `Tests/Integration/Comparison`.
+Implementation is grouped under `ExternalAPIAccess/`, `Comparison/`, `Configuration/`, `Database/`, `Evidence/`, `Loader/`, `Processing/`, `Routing/`, `Validation/`, and `Resilience/`. Unit tests are under `Tests/Unit`; guarded entry points are under `Tests/Integration/Loader` and `Tests/Integration/Comparison`.
 
 ## Documentation
 
@@ -63,15 +63,11 @@ Base settings are in `src/FuzzyPricingMatcher.Tests/appsettings.json`. Keep priv
 
 Do not enable placeholder routes or endpoints. Do not commit credentials, live connection strings, DDL, or raw XML logs. API and SQL retries remain separate, and every physical API attempt uses the shared limiter.
 
-## Current limitations
-
-Real SchemeCode mappings, endpoint contracts, credentials, response XSDs, amount paths, SQL permissions, and support contacts still require human approval. Coverage is collected but no percentage threshold is enforced.
-
 ## API foundation
 
-`XmlApiClient` sends the exact raw XML string supplied by the caller and never serializes an `XDocument`. `RestClientFactory` caches one disposable `RestClient` per endpoint; each physical attempt creates a new `RestRequest`.
+`ExternalAPIAccessClient` sends the exact raw XML string supplied by the caller and never serializes an `XDocument`. `ExternalAPIAccessClientFactory` caches one disposable `RestClient` per endpoint; each physical attempt creates a new `RestRequest`.
 
-The process-wide `ApiRateLimiter` reserves one asynchronous permit for every physical attempt. At the default rate of two starts per second, reserved starts are spaced by approximately 500 milliseconds.
+The process-wide `ExternalAPIAccessRateLimiter` reserves one asynchronous permit for every physical attempt. At the default rate of two starts per second, reserved starts are spaced by approximately 500 milliseconds.
 
 The retry pipeline retries transport failures, safe timeouts, and HTTP 408, 429, 502, 503, and 504 responses. It does not retry authentication, client, configuration, XML, validation, deserialization, amount, threshold, or cancellation failures. `Retry-After` is honored for 429 responses.
 
@@ -111,6 +107,3 @@ The CSV is the master scenario list. `Scenario_id` is a unique reference number,
 
 The loader must fail safely when the template has no data rows and must never delete database rows from an empty source. Headers are matched case-insensitively after surrounding whitespace is trimmed.
 
-## Next step
-
-Confirm one approved scheme's external contracts, then configure it privately and run a separately reviewed guarded integration test.

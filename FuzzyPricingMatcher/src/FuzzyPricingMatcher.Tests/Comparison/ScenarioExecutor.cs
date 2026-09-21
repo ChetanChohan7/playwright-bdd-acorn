@@ -1,5 +1,5 @@
-using FuzzyPricingMatcher.Tests.Api;
-using FuzzyPricingMatcher.Tests.Data;
+using FuzzyPricingMatcher.Tests.ExternalAPIAccess;
+using FuzzyPricingMatcher.Tests.Database;
 using FuzzyPricingMatcher.Tests.Processing;
 using FuzzyPricingMatcher.Tests.Validation;
 
@@ -15,13 +15,13 @@ public sealed class ComparisonScenarioExecutor : IComparisonScenarioExecutor
     private readonly IFuzzyMatcherRepository repository;
     private readonly IRequestXmlMetadataReader metadataReader;
     private readonly IScenarioRouteResolver routeResolver;
-    private readonly IXmlApiClient apiClient;
-    private readonly ResponseValidationService validationService;
+    private readonly IExternalXmlServiceClient apiClient;
+    private readonly ExternalResponseValidationService validationService;
     private readonly IThresholdEvaluator thresholdEvaluator;
     private readonly IScenarioEvidenceWriter evidenceWriter;
     private readonly IScenarioLogger logger;
 
-    public ComparisonScenarioExecutor(IFuzzyMatcherRepository repository, IRequestXmlMetadataReader metadataReader, IScenarioRouteResolver routeResolver, IXmlApiClient apiClient, ResponseValidationService validationService, IThresholdEvaluator thresholdEvaluator, IScenarioEvidenceWriter evidenceWriter, IScenarioLogger logger)
+    public ComparisonScenarioExecutor(IFuzzyMatcherRepository repository, IRequestXmlMetadataReader metadataReader, IScenarioRouteResolver routeResolver, IExternalXmlServiceClient apiClient, ExternalResponseValidationService validationService, IThresholdEvaluator thresholdEvaluator, IScenarioEvidenceWriter evidenceWriter, IScenarioLogger logger)
     {
         this.repository = repository;
         this.metadataReader = metadataReader;
@@ -61,8 +61,8 @@ public sealed class ComparisonScenarioExecutor : IComparisonScenarioExecutor
                 logger.QuoteMismatch(scenario.ScenarioId, requestMetadata.QuoteReference, storedBaselineResponse.QuoteRef);
             var selectedSchemeRoute = routeResolver.Resolve(requestMetadata.SchemeCode);
             var apiDate = ApiDateResolver.Resolve(input.ApiDate);
-            var currentApiRequest = new XmlApiRequest(scenario.ScenarioId, requestMetadata.SchemeCode, storedRequest.XmlRequest, input.BuildId, selectedSchemeRoute.Endpoint, selectedSchemeRoute.Route, apiDate);
-            var currentApiResponse = apiClient.SendAsync(currentApiRequest, cancellationToken).GetAwaiter().GetResult();
+            var currentApiRequest = new ExternalXmlRequest(scenario.ScenarioId, requestMetadata.SchemeCode, storedRequest.XmlRequest, input.BuildId, selectedSchemeRoute.Endpoint, selectedSchemeRoute.Route, apiDate);
+            var currentApiResponse = apiClient.SendXmlRequestAsync(currentApiRequest, cancellationToken).GetAwaiter().GetResult();
             evidence = evidence with { RawApiXml = currentApiResponse.ResponseXml };
             if (!currentApiResponse.Successful)
                 return FinishFailure(scenario, input, ComparisonOutcome.ApiFailed, null, null, null, currentApiResponse.Error, storedRequest.XmlRequest, currentApiResponse.ResponseXml, cancellationToken);
