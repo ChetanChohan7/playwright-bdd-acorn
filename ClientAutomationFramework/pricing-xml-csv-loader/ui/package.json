@@ -1,0 +1,11 @@
+{
+  "name": "scenario-xml-loader-ui-tests",
+  "private": true,
+  "description": "Dev-only test tooling for ui/index.html's extracted logic (scenario-loader.js). Not needed to use the app itself — index.html still opens directly with no install, no server, no build step.",
+  "scripts": {
+    "test": "node --test"
+  },
+  "devDependencies": {
+    "jsdom": "^25.0.1"
+  }
+}

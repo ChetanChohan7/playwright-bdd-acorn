@@ -1,0 +1,79 @@
+# Azure Pipelines definition for the Scenario XML Loader UI.
+#
+# What this does: on every push to main that touches ui/, runs the ui/ test suite as a
+# gate, then deploys the static UI to Azure Static Web Apps. No build step — this app is
+# plain HTML/JS by design, so "deploy" just means "copy the right files up."
+#
+# Only index.html, csv-viewer.html and scenario-loader.js are staged for deployment —
+# package.json, package-lock.json, node_modules and scenario-loader.test.js are dev/test-only
+# and deliberately never shipped to the hosted site.
+#
+# ---------------------------------------------------------------------------------------
+# ONE-TIME SETUP STILL NEEDED before this pipeline can actually deploy (not done by this
+# file — needs your Azure subscription and Azure DevOps org access):
+#
+#   1. Create the Azure Static Web Apps resource, e.g.:
+#        az staticwebapp create --name <name> --resource-group <rg> --source <this repo URL>
+#      (or via the Azure Portal — either way, choose "Other" as the deployment source
+#      when it asks, since this pipeline handles the deploy, not Azure's own GitHub/DevOps
+#      integration).
+#   2. Copy its deployment token: Static Web App resource -> Overview -> "Manage deployment
+#      token" in the Azure Portal.
+#   3. In this pipeline's settings in Azure DevOps: Edit -> Variables -> New variable ->
+#      name it AZURE_STATIC_WEB_APPS_API_TOKEN, paste the token as the value, and tick
+#      "Keep this value secret".
+#   4. Create the pipeline itself in Azure DevOps (Pipelines -> New pipeline -> this repo ->
+#      "Existing Azure Pipelines YAML file" -> select this file).
+# ---------------------------------------------------------------------------------------
+#
+# PATH NOTE: trigger paths, workingDirectory and SourceFolder below are all resolved
+# relative to the pipeline's configured repo root, not to this file's own folder. They
+# currently assume that root is this pricing-xml-csv-loader/ folder itself (e.g. its own
+# repo, or a sparse/single-folder checkout). If the pipeline ends up configured against a
+# repo root further up (e.g. the whole ClientAutomationFramework solution, or the wider
+# monorepo it lives in), prefix every path below with the extra folder(s) in between —
+# e.g. ClientAutomationFramework/pricing-xml-csv-loader/ui/*.
+# ---------------------------------------------------------------------------------------
+
+trigger:
+  branches:
+    include:
+      - main
+  paths:
+    include:
+      - pricing-xml-csv-loader/ui/*
+
+pr: none
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+steps:
+  - task: NodeTool@0
+    inputs:
+      versionSpec: '20.x'
+    displayName: 'Use Node.js 20.x'
+
+  - script: |
+      npm ci
+      npm test
+    workingDirectory: pricing-xml-csv-loader/ui
+    displayName: 'Run ui/ test suite (scenario-loader.js logic)'
+
+  - task: CopyFiles@2
+    inputs:
+      SourceFolder: 'pricing-xml-csv-loader/ui'
+      Contents: |
+        index.html
+        csv-viewer.html
+        scenario-loader.js
+      TargetFolder: '$(Build.ArtifactStagingDirectory)/site'
+      flattenFolders: true
+    displayName: 'Stage only the deployable UI files'
+
+  - task: AzureStaticWebApp@0
+    inputs:
+      app_location: '$(Build.ArtifactStagingDirectory)/site'
+      skip_app_build: true
+      azure_static_web_apps_api_token: $(AZURE_STATIC_WEB_APPS_API_TOKEN)
+    displayName: 'Deploy to Azure Static Web Apps'

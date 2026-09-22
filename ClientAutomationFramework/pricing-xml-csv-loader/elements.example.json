@@ -1,0 +1,6 @@
+[
+  {
+    "parentXPath": "/catalog",
+    "xml": "<book price=\"39.95\"><title>Learning XML</title></book>\n<book price=\"29.99\"><title>XML Basics</title></book>"
+  }
+]

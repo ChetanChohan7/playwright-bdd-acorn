@@ -1,0 +1,16 @@
+[
+  {
+    "parentXPath": "/Message/Policy",
+    "elementName": "NCBYears",
+    "value": "12",
+    "conditionXPath": "/Message/Policy/ProductCode",
+    "conditionValue": "SampleInsurePC"
+  },
+  {
+    "parentXPath": "/Message/Policy",
+    "elementName": "VoluntaryExcess",
+    "value": "300",
+    "conditionXPath": "/Message/Policy/ProductCode",
+    "conditionValue": "SampleInsurePC"
+  }
+]

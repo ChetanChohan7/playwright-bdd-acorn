@@ -1,0 +1,666 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Scenario XML Loader</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    max-width: 960px;
+    margin: 2rem auto;
+    padding: 0 1rem;
+    background: #ffffff;
+    color: #1a1a1a;
+    line-height: 1.4;
+  }
+  h1 { font-size: 1.4rem; }
+  h2 { font-size: 1.1rem; margin-top: 0; }
+  section {
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    padding: 1rem 1.25rem;
+    margin-bottom: 1.25rem;
+  }
+  label { display: block; font-size: 0.85rem; font-weight: 600; margin: 0.75rem 0 0.25rem; }
+  input[type="text"], select {
+    width: 100%;
+    padding: 0.4rem 0.5rem;
+    font-size: 0.95rem;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+  }
+  button {
+    margin-top: 0.75rem;
+    margin-right: 0.5rem;
+    padding: 0.45rem 0.9rem;
+    font-size: 0.9rem;
+    border: 1px solid #888;
+    border-radius: 4px;
+    background: #f4f4f4;
+    cursor: pointer;
+  }
+  button:hover { background: #e8e8e8; }
+  button.primary { background: #1a5fd6; color: white; border-color: #1a5fd6; }
+  button.primary:hover { background: #164db3; }
+  .status { margin-top: 0.6rem; font-size: 0.85rem; }
+  .status.ok { color: #147a2e; }
+  .status.err { color: #c0341d; }
+  .notice {
+    margin: 0.75rem 0 1.25rem;
+    padding: 0.6rem 0.9rem;
+    border-radius: 6px;
+    border: 1px solid;
+    font-size: 0.85rem;
+  }
+  .notice.ok { background: #eefbf1; border-color: #b7e4c7; color: #146c2e; }
+  .notice.warn { background: #fff4e5; border-color: #ffcf86; color: #8a5300; }
+  .row { display: flex; gap: 1rem; flex-wrap: wrap; }
+  .row > div { flex: 1; min-width: 220px; }
+  #csvList {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.85rem;
+    background: #fafafa;
+    border: 1px solid #eee;
+    border-radius: 4px;
+    padding: 0.75rem;
+    max-height: 280px;
+    overflow: auto;
+  }
+  .hint { font-size: 0.8rem; color: #666; margin-top: 0.4rem; }
+  .pill {
+    display: inline-block;
+    font-size: 0.75rem;
+    background: #eef2ff;
+    color: #1a5fd6;
+    border-radius: 10px;
+    padding: 0.1rem 0.6rem;
+    margin-left: 0.4rem;
+  }
+  textarea#bulkArrayXmlInput {
+    width: 100%;
+    padding: 0.4rem 0.5rem;
+    font-size: 0.85rem;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    resize: vertical;
+  }
+</style>
+</head>
+<body>
+
+<h1>Scenario XML Loader</h1>
+<p class="hint">Bulk load scenario XMLs into a CSV, then bulk add fields or repeated elements across every row — matched by scenario_id, same as the CLI tool.</p>
+<div class="notice" id="browserSupportNotice"></div>
+
+<section>
+  <button id="setBaseFolderBtn">Set baseFolder…</button>
+  <span class="hint" id="baseFolderLabel">No baseFolder set — click "Set baseFolder…" and choose this project's folder (pickers below open wherever your browser defaults until then).</span>
+  <div class="status" id="baseFolderStatus"></div>
+  <button id="openCsvViewerBtn">Open CSV Viewer in new tab</button>
+  <input type="file" id="csvFileInputFallback" accept=".csv" style="display:none" />
+  <div class="hint" id="csvModeHint"></div>
+  <label>Rows currently in memory (<span id="csvCount">0</span>)</label>
+  <div id="csvList"></div>
+</section>
+
+<section id="bulkLoadSection">
+  <h2>1. Bulk load XMLs into CSV</h2>
+  <p class="hint">Select several scenario-*.xml files at once. Same rule as the CLI's build-csv: new scenario_ids are added, and existing ones are updated only if the file's content has actually changed since it was loaded — a re-select of an unmodified file reports as unchanged. If you're adding to an <strong>existing</strong> scenarios.csv, open it first.</p>
+  <button id="openCsvForBulkLoadBtn">Open existing scenarios.csv…</button>
+  <div class="status" id="bulkLoadOpenStatus"></div>
+  <input type="file" id="bulkXmlInput" accept=".xml" multiple />
+  <button class="primary" id="bulkLoadBtn">Add scenarios to CSV</button>
+  <div class="status" id="bulkLoadStatus"></div>
+</section>
+
+<section id="bulkEditSection">
+  <h2>2. Bulk add a field across every row</h2>
+  <p class="hint">Applies to every row currently in memory — open a CSV directly below, or use whatever's already loaded from a bulk load above (section 1).</p>
+  <button id="openCsvForBulkEditBtn">Open a CSV to edit…</button>
+  <div class="status" id="bulkEditOpenStatus"></div>
+
+  <label for="bulkModeSelect">Edit type</label>
+  <select id="bulkModeSelect">
+    <option value="field">Single field</option>
+    <option value="array">Repeated element (array)</option>
+  </select>
+
+  <div class="row">
+    <div>
+      <label for="bulkParentSelect">Parent element</label>
+      <select id="bulkParentSelect"></select>
+    </div>
+    <div id="bulkFieldNameGroup">
+      <label for="bulkFieldNameInput">Field name</label>
+      <input type="text" id="bulkFieldNameInput" placeholder="e.g. NCBYears" />
+    </div>
+    <div id="bulkFieldValueGroup">
+      <label for="bulkFieldValueInput">Value</label>
+      <input type="text" id="bulkFieldValueInput" placeholder="e.g. 12" />
+    </div>
+  </div>
+
+  <div id="bulkArrayGroup" hidden>
+    <label for="bulkArrayXmlInput">Elements to add (raw XML)</label>
+    <textarea id="bulkArrayXmlInput" rows="8" placeholder="<book>&#10;  <title>Learning XML</title>&#10;  <price>39.95</price>&#10;</book>&#10;<book>&#10;  <title>XML Basics</title>&#10;  <price>29.99</price>&#10;</book>"></textarea>
+    <div class="hint">Paste one or more elements exactly as they should appear — tag names, nesting and attributes are taken as-is, no separate "element name" field needed. Each one is appended as a new sibling under the parent. Always appends — matching elements already there are left alone (no update/replace).</div>
+  </div>
+
+  <label>Only apply to rows matching (optional)</label>
+  <div class="row">
+    <div>
+      <label for="bulkConditionPathSelect">Condition element</label>
+      <select id="bulkConditionPathSelect"></select>
+    </div>
+    <div>
+      <label for="bulkConditionValueInput">Equals</label>
+      <input type="text" id="bulkConditionValueInput" placeholder="e.g. SampleInsurePC" />
+    </div>
+  </div>
+  <div class="hint">Leave the condition element on "(no condition)" to apply to every row. Pick an element and set "Equals" to only touch rows where that element's text matches — e.g. ProductCode == SampleInsurePC.</div>
+
+  <button class="primary" id="bulkEditBtn">Apply to all rows</button>
+  <div class="status" id="bulkEditStatus"></div>
+</section>
+
+<script src="scenario-loader.js"></script>
+<script>
+  const setBaseFolderBtn = document.getElementById('setBaseFolderBtn');
+  const baseFolderLabel = document.getElementById('baseFolderLabel');
+  const baseFolderStatus = document.getElementById('baseFolderStatus');
+  document.getElementById('openCsvViewerBtn').addEventListener('click', () => {
+    window.open('csv-viewer.html', '_blank');
+  });
+  const csvFileInputFallback = document.getElementById('csvFileInputFallback');
+  const csvModeHint = document.getElementById('csvModeHint');
+  const csvList = document.getElementById('csvList');
+  const csvCount = document.getElementById('csvCount');
+
+  const supportsFsAccess = 'showOpenFilePicker' in window;
+  const supportsDirPicker = 'showDirectoryPicker' in window;
+  if (!supportsDirPicker) {
+    setBaseFolderBtn.disabled = true;
+    baseFolderLabel.textContent = "This browser doesn't support picking a default folder — pickers will open wherever your browser defaults.";
+  }
+
+  // Stated plainly and visibly on load — not just buried in a hint the user only sees
+  // after they start clicking around — since the whole point of this tool (saving
+  // straight back to disk) depends on it.
+  const browserSupportNotice = document.getElementById('browserSupportNotice');
+  if (supportsFsAccess) {
+    browserSupportNotice.textContent = "This tool is built for Chrome or Edge (uses the File System Access API to save directly to disk). You're running one of those — saves will write straight to your files.";
+    browserSupportNotice.className = 'notice ok';
+  } else {
+    browserSupportNotice.textContent = "This browser doesn't support direct file saving (needs Chrome or Edge). Everything here still works, but every save will download a new file instead of writing straight to disk.";
+    browserSupportNotice.className = 'notice warn';
+  }
+
+  let csvRows = [];       // [{ scenario_id, xml }]
+  let csvFileHandle = null;
+  let csvBaseName = 'scenarios'; // filename stem the next save's timestamp gets appended to
+  let baseFolderHandle = null; // where "Open"/"Save" pickers default to
+
+  // ---------- status helpers ----------
+  function setStatus(el, message, isError) {
+    el.textContent = message;
+    el.className = 'status ' + (isError ? 'err' : 'ok');
+  }
+
+  // getRootPath, collectPaths, isWhitespaceWithNewline, findIndentText, appendChildWithIndent,
+  // serializeXmlDoc, parseCsv, csvEscape, serializeCsv, timestampForFilename and deriveBaseName
+  // all live in scenario-loader.js now (loaded above) — shared with the test suite there.
+
+  // scenario_id is set via textContent, not innerHTML: it can come from a local filename or
+  // a CSV cell, neither of which should be trusted to not contain markup.
+  function renderCsvList() {
+    csvCount.textContent = csvRows.length;
+    csvList.innerHTML = '';
+    if (csvRows.length === 0) {
+      csvList.textContent = '(empty)';
+      return;
+    }
+    csvRows.forEach((r, i) => {
+      if (i > 0) csvList.appendChild(document.createElement('br'));
+      csvList.appendChild(document.createTextNode(r.scenario_id));
+    });
+  }
+
+  function downloadText(text, filename) {
+    const blob = new Blob([text], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  // ---------- baseFolder (default location for Open/Save pickers) ----------
+  // Browsers never allow silently granting file-system access with zero interaction
+  // (showDirectoryPicker always needs a real click), so full auto-select on page load
+  // isn't possible. This is the closest real alternative: remember the granted handle
+  // in IndexedDB, and on the next load either reuse it automatically (if the browser
+  // still trusts the grant this session) or require one click to reconfirm — instead
+  // of re-navigating the whole folder picker from scratch every time.
+  let pendingBaseFolderHandle = null; // a remembered handle awaiting permission reconfirmation
+
+  function openHandleDb() {
+    return new Promise((resolve, reject) => {
+      const req = indexedDB.open('scenario-xml-loader', 1);
+      req.onupgradeneeded = () => req.result.createObjectStore('handles');
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+  }
+
+  async function saveBaseFolderHandle(handle) {
+    const db = await openHandleDb();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction('handles', 'readwrite');
+      tx.objectStore('handles').put(handle, 'baseFolder');
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  }
+
+  async function loadBaseFolderHandle() {
+    const db = await openHandleDb();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction('handles', 'readonly');
+      const req = tx.objectStore('handles').get('baseFolder');
+      req.onsuccess = () => resolve(req.result || null);
+      req.onerror = () => reject(req.error);
+    });
+  }
+
+  function markBaseFolderActive(handle) {
+    baseFolderHandle = handle;
+    pendingBaseFolderHandle = null;
+    setBaseFolderBtn.textContent = 'Set baseFolder…';
+    baseFolderLabel.textContent = `baseFolder: ${handle.name} — Open/Save will default here.`;
+  }
+
+  setBaseFolderBtn.addEventListener('click', async () => {
+    try {
+      if (pendingBaseFolderHandle) {
+        // A remembered handle exists but needs the browser to reconfirm access this
+        // session — one click here re-requests permission on that same handle rather
+        // than opening a fresh picker.
+        const permission = await pendingBaseFolderHandle.requestPermission({ mode: 'readwrite' });
+        if (permission === 'granted') {
+          markBaseFolderActive(pendingBaseFolderHandle);
+          return;
+        }
+        setStatus(baseFolderStatus, 'Access not granted — pick a folder instead.', true);
+      }
+
+      const handle = await window.showDirectoryPicker();
+      await saveBaseFolderHandle(handle);
+      markBaseFolderActive(handle);
+    } catch (err) {
+      if (err.name !== 'AbortError') setStatus(baseFolderStatus, 'Could not set baseFolder: ' + err.message, true);
+    }
+  });
+
+  // On load: try to reuse whatever was remembered from a previous session.
+  (async () => {
+    if (!supportsDirPicker) return;
+    try {
+      const stored = await loadBaseFolderHandle();
+      if (!stored) return;
+
+      const permission = await stored.queryPermission({ mode: 'readwrite' });
+      if (permission === 'granted') {
+        markBaseFolderActive(stored);
+      } else {
+        pendingBaseFolderHandle = stored;
+        setBaseFolderBtn.textContent = `Reconnect to "${stored.name}"…`;
+        baseFolderLabel.textContent =
+          `Remembered baseFolder "${stored.name}" — click "Reconnect" to restore access (the browser needs to reconfirm it each session).`;
+      }
+    } catch (err) {
+      // No stored handle, or IndexedDB unavailable in this context — fall back to the
+      // plain "no baseFolder set" state, no error worth surfacing to the user for this.
+    }
+  })();
+
+  // ---------- open existing CSV (shared by both sections' buttons) ----------
+  let openCsvStatusEl = null; // which status line the fallback <input> handler reports into
+
+  async function openCsv(statusEl) {
+    openCsvStatusEl = statusEl;
+    if (supportsFsAccess) {
+      try {
+        [csvFileHandle] = await window.showOpenFilePicker({
+          types: [{ description: 'CSV', accept: { 'text/csv': ['.csv'] } }],
+          ...(baseFolderHandle ? { startIn: baseFolderHandle } : {}),
+        });
+        const file = await csvFileHandle.getFile();
+        loadCsvText(await file.text());
+        csvBaseName = deriveBaseName(csvFileHandle.name);
+        setStatus(statusEl, `Loaded ${csvRows.length} row(s) from ${csvFileHandle.name}. Saves will write a new versioned file, never overwrite this one.`, false);
+      } catch (err) {
+        if (err.name !== 'AbortError') setStatus(statusEl, 'Could not open file: ' + err.message, true);
+      }
+    } else {
+      csvFileInputFallback.click();
+    }
+  }
+
+  csvFileInputFallback.addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    loadCsvText(await file.text());
+    csvBaseName = deriveBaseName(file.name);
+    setStatus(openCsvStatusEl, `Loaded ${csvRows.length} row(s) from ${file.name}. This browser can't save in place — saving will download a new versioned file.`, false);
+  });
+
+  function loadCsvText(text) {
+    csvRows = parseCsv(text);
+    renderCsvList();
+    populateBulkParentSelect();
+  }
+
+  // Element paths from the first loaded row's structure — a representative sample,
+  // since all scenarios here share the same shape. Feeds both the parent dropdown
+  // and the condition-element dropdown below, so it's computed once and shared.
+  function computeBulkPaths() {
+    if (csvRows.length === 0) return [];
+    const doc = new DOMParser().parseFromString(csvRows[0].xml, 'application/xml');
+    if (doc.querySelector('parsererror')) return [];
+    const paths = [];
+    collectPaths(doc.documentElement, getRootPath(doc.documentElement), paths);
+    return paths;
+  }
+
+  function populateBulkParentSelect() {
+    const paths = computeBulkPaths();
+
+    const bulkParentSelect = document.getElementById('bulkParentSelect');
+    const previousParent = bulkParentSelect.value;
+    bulkParentSelect.innerHTML = '';
+    paths.forEach((p) => {
+      const opt = document.createElement('option');
+      opt.value = p;
+      opt.textContent = p;
+      bulkParentSelect.appendChild(opt);
+    });
+    if (paths.includes(previousParent)) bulkParentSelect.value = previousParent;
+
+    const bulkConditionPathSelect = document.getElementById('bulkConditionPathSelect');
+    const previousCondition = bulkConditionPathSelect.value;
+    bulkConditionPathSelect.innerHTML = '';
+    const noneOpt = document.createElement('option');
+    noneOpt.value = '';
+    noneOpt.textContent = '(no condition)';
+    bulkConditionPathSelect.appendChild(noneOpt);
+    paths.forEach((p) => {
+      const opt = document.createElement('option');
+      opt.value = p;
+      opt.textContent = p;
+      bulkConditionPathSelect.appendChild(opt);
+    });
+    if (paths.includes(previousCondition)) bulkConditionPathSelect.value = previousCondition;
+  }
+
+  // ---------- versioned filenames ----------
+  // timestampForFilename and deriveBaseName live in scenario-loader.js now.
+  //
+  // Browsers commonly coarsen Date's clock resolution (privacy/fingerprinting mitigation),
+  // so back-to-back saves can see the exact same millisecond reading more than once —
+  // comparing only against the previous filename isn't enough to catch that. Keeping a
+  // monotonic high-water-mark and always issuing max(now, watermark + 1) guarantees every
+  // filename this session is strictly later than the last, regardless of clock coarseness.
+  let lastVersionedTimeMs = 0;
+  function nextVersionedFilename() {
+    const ms = Math.max(Date.now(), lastVersionedTimeMs + 1);
+    lastVersionedTimeMs = ms;
+    return `${csvBaseName}-${timestampForFilename(new Date(ms))}.csv`;
+  }
+
+  // ---------- shared save (single, bulk load, and bulk edit all write through this) ----------
+  // Every save writes a brand-new scenarios-{timestamp}.csv rather than overwriting whatever
+  // was opened — so past versions are never lost and the full edit history stays on disk as a
+  // sequence of files. There is no in-place overwrite option.
+  async function writeCsvToDisk(rows) {
+    const csvText = serializeCsv(rows);
+    const filename = nextVersionedFilename();
+
+    if (baseFolderHandle) {
+      // baseFolder already has readwrite permission (requested when it was set), so a new
+      // versioned file can be created there directly — no picker dialog needed per save.
+      const handle = await baseFolderHandle.getFileHandle(filename, { create: true });
+      const writable = await handle.createWritable();
+      await writable.write(csvText);
+      await writable.close();
+      csvFileHandle = handle;
+      return `Saved new version: ${filename} (in "${baseFolderHandle.name}").`;
+    }
+    if (supportsFsAccess) {
+      const handle = await window.showSaveFilePicker({
+        suggestedName: filename,
+        types: [{ description: 'CSV', accept: { 'text/csv': ['.csv'] } }],
+      });
+      const writable = await handle.createWritable();
+      await writable.write(csvText);
+      await writable.close();
+      csvFileHandle = handle;
+      return `Saved new version: ${handle.name}.`;
+    }
+    downloadText(csvText, filename);
+    return `Downloaded ${filename}.`;
+  }
+
+  csvModeHint.textContent = supportsFsAccess
+    ? 'Every save writes a new scenarios-{timestamp}.csv — never overwrites what you opened, so the full edit history stays on disk. Set a baseFolder first to save each version there automatically with no dialog; without it, every save opens a "Save As" prompt.'
+    : 'This browser cannot write files directly — CSV loading falls back to a file picker, and every save downloads a new scenarios-{timestamp}.csv.';
+
+  // ---------- 1. bulk load XMLs into CSV ----------
+  const openCsvForBulkLoadBtn = document.getElementById('openCsvForBulkLoadBtn');
+  const bulkLoadOpenStatus = document.getElementById('bulkLoadOpenStatus');
+  const bulkXmlInput = document.getElementById('bulkXmlInput');
+  const bulkLoadBtn = document.getElementById('bulkLoadBtn');
+  const bulkLoadStatus = document.getElementById('bulkLoadStatus');
+
+  openCsvForBulkLoadBtn.addEventListener('click', () => openCsv(bulkLoadOpenStatus));
+
+  bulkLoadBtn.addEventListener('click', async () => {
+    const files = Array.from(bulkXmlInput.files);
+    if (files.length === 0) { setStatus(bulkLoadStatus, 'Choose one or more XML files first.', true); return; }
+
+    let added = 0;
+    let updated = 0;
+    let unchanged = 0;
+
+    for (const file of files) {
+      const scenarioId = file.name.replace(/\.xml$/i, '');
+      const xml = await file.text();
+      const idx = csvRows.findIndex((r) => r.scenario_id === scenarioId);
+
+      if (idx === -1) {
+        csvRows.push({ scenario_id: scenarioId, xml });
+        added++;
+      } else if (csvRows[idx].xml !== xml) {
+        csvRows[idx].xml = xml;
+        updated++;
+      } else {
+        unchanged++;
+      }
+    }
+
+    try {
+      const saveMsg = await writeCsvToDisk(csvRows);
+      setStatus(bulkLoadStatus, `${added} new scenario(s) added, ${updated} updated, ${unchanged} unchanged. ${saveMsg}`, false);
+    } catch (err) {
+      if (err.name !== 'AbortError') setStatus(bulkLoadStatus, 'Save failed: ' + err.message, true);
+      return;
+    }
+
+    renderCsvList();
+    populateBulkParentSelect();
+  });
+
+  // ---------- 2. bulk add / update a field, or bulk add repeated elements, across every row ----------
+  const openCsvForBulkEditBtn = document.getElementById('openCsvForBulkEditBtn');
+  const bulkEditOpenStatus = document.getElementById('bulkEditOpenStatus');
+  openCsvForBulkEditBtn.addEventListener('click', () => openCsv(bulkEditOpenStatus));
+
+  const bulkModeSelect = document.getElementById('bulkModeSelect');
+  const bulkParentSelect = document.getElementById('bulkParentSelect');
+  const bulkFieldNameGroup = document.getElementById('bulkFieldNameGroup');
+  const bulkFieldValueGroup = document.getElementById('bulkFieldValueGroup');
+  const bulkFieldNameInput = document.getElementById('bulkFieldNameInput');
+  const bulkFieldValueInput = document.getElementById('bulkFieldValueInput');
+  const bulkArrayGroup = document.getElementById('bulkArrayGroup');
+  const bulkArrayXmlInput = document.getElementById('bulkArrayXmlInput');
+  const bulkConditionPathSelect = document.getElementById('bulkConditionPathSelect');
+  const bulkConditionValueInput = document.getElementById('bulkConditionValueInput');
+  const bulkEditBtn = document.getElementById('bulkEditBtn');
+  const bulkEditStatus = document.getElementById('bulkEditStatus');
+
+  bulkModeSelect.addEventListener('change', () => {
+    const isArray = bulkModeSelect.value === 'array';
+    bulkFieldNameGroup.hidden = isArray;
+    bulkFieldValueGroup.hidden = isArray;
+    bulkArrayGroup.hidden = !isArray;
+  });
+
+  bulkEditBtn.addEventListener('click', async () => {
+    if (csvRows.length === 0) { setStatus(bulkEditStatus, 'No rows in memory — open or bulk-load a CSV first.', true); return; }
+    const path = bulkParentSelect.value;
+    const conditionPath = bulkConditionPathSelect.value;
+    const conditionValue = bulkConditionValueInput.value;
+    if (!path) { setStatus(bulkEditStatus, 'Parent element is required.', true); return; }
+    if (conditionPath && !conditionValue) { setStatus(bulkEditStatus, 'Condition value is required when a condition element is set.', true); return; }
+
+    if (bulkModeSelect.value === 'array') {
+      await runBulkArrayAdd(path, conditionPath, conditionValue);
+    } else {
+      await runBulkFieldEdit(path, conditionPath, conditionValue);
+    }
+  });
+
+  async function runBulkFieldEdit(path, conditionPath, conditionValue) {
+    const name = bulkFieldNameInput.value.trim();
+    const value = bulkFieldValueInput.value;
+    if (!name) { setStatus(bulkEditStatus, 'Field name is required.', true); return; }
+
+    const parser = new DOMParser();
+    let added = 0;
+    let updated = 0;
+    let skippedCondition = 0;
+    let missingParent = 0;
+
+    for (const row of csvRows) {
+      const doc = parser.parseFromString(row.xml, 'application/xml');
+      if (doc.querySelector('parsererror')) continue; // don't let one bad row abort the whole batch
+
+      if (conditionPath) {
+        const actualValue = doc.evaluate(conditionPath, doc, null, XPathResult.STRING_TYPE, null).stringValue;
+        if (actualValue !== conditionValue) { skippedCondition++; continue; }
+      }
+
+      const parent = doc.evaluate(path, doc, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
+      if (!parent) { missingParent++; continue; }
+
+      const existing = Array.from(parent.children).find((el) => el.tagName === name);
+      if (existing) {
+        existing.textContent = value;
+        updated++;
+      } else {
+        const el = doc.createElement(name);
+        el.textContent = value;
+        appendChildWithIndent(parent, el);
+        added++;
+      }
+
+      row.xml = serializeXmlDoc(doc);
+    }
+
+    try {
+      const saveMsg = await writeCsvToDisk(csvRows);
+      const conditionSummary = conditionPath ? `, ${skippedCondition} skipped (condition not met)` : '';
+      setStatus(
+        bulkEditStatus,
+        `${added} field(s) added, ${updated} field(s) updated${conditionSummary}, ${missingParent} row(s) skipped (parent not found at ${path}). ${saveMsg}`,
+        false,
+      );
+    } catch (err) {
+      if (err.name !== 'AbortError') setStatus(bulkEditStatus, 'Save failed: ' + err.message, true);
+      return;
+    }
+
+    renderCsvList();
+    populateBulkParentSelect();
+  }
+
+  // Adds one or more raw XML elements under `path`, on every matching row — e.g. pasting
+  // two <book> blocks under parent /catalog appends two new <book> siblings, each exactly
+  // as typed (nesting, attributes, whitespace all preserved via a straight node import).
+  // Always appends: matching elements already there (if any) are left untouched, never
+  // replaced or updated — an element name can legitimately repeat, so there's no single
+  // meaning of "already present" the way there is for a scalar field.
+  async function runBulkArrayAdd(path, conditionPath, conditionValue) {
+    const rawXml = bulkArrayXmlInput.value.trim().replace(/^\s*<\?xml[^>]*\?>\s*/, '');
+    if (!rawXml) { setStatus(bulkEditStatus, 'Paste one or more XML elements to add.', true); return; }
+
+    const wrapperDoc = new DOMParser().parseFromString(`<__items__>${rawXml}</__items__>`, 'application/xml');
+    const parseError = wrapperDoc.querySelector('parsererror');
+    if (parseError) {
+      setStatus(bulkEditStatus, 'Could not parse XML: ' + parseError.textContent.slice(0, 200), true);
+      return;
+    }
+    const itemTemplates = Array.from(wrapperDoc.documentElement.children);
+    if (itemTemplates.length === 0) {
+      setStatus(bulkEditStatus, 'No elements found — paste at least one, e.g. <book>...</book>.', true);
+      return;
+    }
+
+    const parser = new DOMParser();
+    let rowsChanged = 0;
+    let skippedCondition = 0;
+    let missingParent = 0;
+
+    for (const row of csvRows) {
+      const doc = parser.parseFromString(row.xml, 'application/xml');
+      if (doc.querySelector('parsererror')) continue; // don't let one bad row abort the whole batch
+
+      if (conditionPath) {
+        const actualValue = doc.evaluate(conditionPath, doc, null, XPathResult.STRING_TYPE, null).stringValue;
+        if (actualValue !== conditionValue) { skippedCondition++; continue; }
+      }
+
+      const parent = doc.evaluate(path, doc, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
+      if (!parent) { missingParent++; continue; }
+
+      for (const template of itemTemplates) {
+        appendChildWithIndent(parent, doc.importNode(template, true));
+      }
+      rowsChanged++;
+
+      row.xml = serializeXmlDoc(doc);
+    }
+
+    try {
+      const saveMsg = await writeCsvToDisk(csvRows);
+      const conditionSummary = conditionPath ? `, ${skippedCondition} skipped (condition not met)` : '';
+      setStatus(
+        bulkEditStatus,
+        `${itemTemplates.length} element(s) added to ${rowsChanged} row(s)${conditionSummary}, ${missingParent} row(s) skipped (parent not found at ${path}). ${saveMsg}`,
+        false,
+      );
+    } catch (err) {
+      if (err.name !== 'AbortError') setStatus(bulkEditStatus, 'Save failed: ' + err.message, true);
+      return;
+    }
+
+    renderCsvList();
+    populateBulkParentSelect();
+  }
+</script>
+</body>
+</html>
