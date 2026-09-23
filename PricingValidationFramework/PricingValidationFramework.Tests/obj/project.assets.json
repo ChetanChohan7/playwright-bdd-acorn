@@ -3391,11 +3391,11 @@
   "project": {
     "version": "1.0.0",
     "restore": {
-      "projectUniqueName": "c:\\Users\\SumeethRamessar\\Repo\\playwright-bdd-acorn\\PricingValidationFramework\\PricingValidationFramework.Tests\\PricingValidationFramework.Tests.csproj",
+      "projectUniqueName": "C:\\Users\\SumeethRamessar\\PricingValidationFramework\\PricingValidationFramework.Tests\\PricingValidationFramework.Tests.csproj",
       "projectName": "PricingValidationFramework.Tests",
-      "projectPath": "c:\\Users\\SumeethRamessar\\Repo\\playwright-bdd-acorn\\PricingValidationFramework\\PricingValidationFramework.Tests\\PricingValidationFramework.Tests.csproj",
+      "projectPath": "C:\\Users\\SumeethRamessar\\PricingValidationFramework\\PricingValidationFramework.Tests\\PricingValidationFramework.Tests.csproj",
       "packagesPath": "C:\\Users\\SumeethRamessar\\.nuget\\packages\\",
-      "outputPath": "c:\\Users\\SumeethRamessar\\Repo\\playwright-bdd-acorn\\PricingValidationFramework\\PricingValidationFramework.Tests\\obj\\",
+      "outputPath": "C:\\Users\\SumeethRamessar\\PricingValidationFramework\\PricingValidationFramework.Tests\\obj\\",
       "projectStyle": "PackageReference",
       "configFilePaths": [
         "C:\\Users\\SumeethRamessar\\AppData\\Roaming\\NuGet\\NuGet.Config"
@@ -3411,8 +3411,8 @@
           "framework": "net10.0",
           "targetAlias": "net10.0",
           "projectReferences": {
-            "c:\\Users\\SumeethRamessar\\Repo\\playwright-bdd-acorn\\PricingValidationFramework\\PricingValidationFramework.Core\\PricingValidationFramework.Core.csproj": {
-              "projectPath": "c:\\Users\\SumeethRamessar\\Repo\\playwright-bdd-acorn\\PricingValidationFramework\\PricingValidationFramework.Core\\PricingValidationFramework.Core.csproj"
+            "C:\\Users\\SumeethRamessar\\PricingValidationFramework\\PricingValidationFramework.Core\\PricingValidationFramework.Core.csproj": {
+              "projectPath": "C:\\Users\\SumeethRamessar\\PricingValidationFramework\\PricingValidationFramework.Core\\PricingValidationFramework.Core.csproj"
             }
           }
         }

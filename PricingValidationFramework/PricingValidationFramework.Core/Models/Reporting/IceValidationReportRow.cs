@@ -9,6 +9,5 @@ public class IceValidationReportRow
 	public string ProductCode { get; set; } = string.Empty;
 	public decimal IceValue { get; set; }
 	public decimal BaselineValue { get; set; }
-	public decimal Difference { get; set; }
 	public string Result { get; set; } = string.Empty;
 }

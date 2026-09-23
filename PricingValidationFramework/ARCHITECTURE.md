@@ -38,6 +38,9 @@ PricingValidationFramework.Core/
 │   └── XmlValueExtractor.cs
 ├── Logging/
 │   ├── IceTestRunLogger.cs
+
+NUnit ICE test
+  -> Read BUILD_BUILDID at runtime
 │   └── RadarTestRunLogger.cs
 ├── Matching/
 │   └── ThresholdMatcher.cs
@@ -62,6 +65,7 @@ PricingValidationFramework.Core/
 PricingValidationFramework.Tests/
 ├── Integration/
 │   ├── Ice/
+│   │   ├── IceTestSetup.cs
 │   │   └── IceValidationTests.cs
 │   └── Radar/
 ├── TestAssets/
@@ -74,7 +78,7 @@ PricingValidationFramework.Tests/
 └── appsettings*.json
 ```
 
-NUnit tests are the execution orchestrators. There is no application-level `ValidationOrchestrator`.
+NUnit tests are the execution orchestrators. `IceTestSetup` owns shared ICE fixture setup, while `IceValidationTests` executes one database-selected scenario per NUnit test case. There is no application-level `ValidationOrchestrator`.
 
 `TestResults/` is a runtime-generated output location, not a source-code folder. It must be excluded from source control. `Reports/` and `Logs/` must not exist as separate top-level folders outside `TestResults/`.
 
@@ -193,7 +197,7 @@ API clients own HTTP communication only. URL builders own URL composition, and t
 
 Radar execution is driven by `TB_REQUEST`. ICE execution is driven by passing baseline records from `TB_RESPONSE`; ICE does not read `TB_REQUEST`. Neither flow uses hardcoded test cases or static scenario definitions.
 
-Each selected database record represents one scenario execution unit. `RequestDataReader` is the Radar scenario source, and `BaselineDataReader` is the ICE scenario source.
+Each selected database record represents one scenario execution unit. `RequestDataReader` is the Radar scenario source, and `BaselineDataReader` is the ICE scenario source. ICE uses NUnit `TestCaseSource` so each selected scenario appears as a separate test case while one report is produced for the full run.
 
 ### Radar flow
 
@@ -343,24 +347,14 @@ The value applies independently to each Radar endpoint group and is configurable
 
 ## 5. Validation and Comparison Rules
 
-### Absolute difference
+### ICE validation rule
 
-The framework uses absolute-value difference matching:
+ICE does not use thresholds and does not calculate or report a `Difference` value.
 
-```text
-Difference = ActualValue - BaselineValue
-```
-
-For Radar:
+ICE validation is exact equality:
 
 ```text
-Difference = RadarValue - BaselineValue
-```
-
-For ICE:
-
-```text
-Difference = IceValue - BaselineValue
+passed = iceValue == baselineValue
 ```
 
 ### Radar comparison model
@@ -378,9 +372,9 @@ RadarValue
 
 The NUnit Radar test owns actual-value retrieval, baseline-value retrieval, difference calculation, `ThresholdMatcher` invocation, and report-row creation. `ThresholdMatcher` evaluates only the supplied `Difference`; it does not calculate values, create result objects, create reports, or perform assertions.
 
-ICE comparison is performed directly inside the NUnit ICE test. No matcher, comparison service, or validation engine participates in the ICE path. The test calculates the difference, applies the configured tolerance, asserts the result, and creates the report row.
+ICE comparison is performed directly inside the NUnit ICE test. ICE does not use pipeline thresholds, `ThresholdMatcher`, `MatchResult`, or another comparison service. The test performs an exact `IceValue == BaselineValue` comparison, asserts the result, and creates the ICE report row. ICE does not calculate or report `Difference` values.
 
-A result passes when:
+Radar results pass when:
 
 ```text
 Difference >= MinThreshold
@@ -670,26 +664,23 @@ Adding a scheme requires only a new `SchemeSettings` entry, XSD file, and test d
 
 ```text
 NUnit test
-  -> PipelineInputValidator
-  -> PipelineSettings
-    -> BaselineDataReader
-    -> TB_RESPONSE passing baseline scenarios
-    -> IceBaselineScenario
-    -> QuoteRef
-    -> IceUrlBuilder
-    -> Final ICE URL
-    -> IceSettings authentication and certificate
-    -> In-memory client certificate
-    -> IceApiClient
-    -> JSON response
-    -> JsonValueExtractor
-    -> ICE Premium
-    -> XmlValueExtractor
-    -> Baseline TotalAmount
-    -> Difference = IceValue - BaselineValue
-    -> NUnit assertion using configured thresholds
-    -> ICE CSV report
-    -> ICE log
+  -> BaselineDataReader
+  -> TB_RESPONSE passing baseline scenarios
+  -> IceBaselineScenario
+  -> QuoteRef
+  -> IceUrlBuilder
+  -> Final ICE URL
+  -> IceSettings authentication and certificate
+  -> In-memory client certificate
+  -> IceApiClient
+  -> JSON response
+  -> JsonValueExtractor
+  -> ICE Premium
+  -> XmlValueExtractor
+  -> Baseline TotalAmount
+  -> ICE validation: IceValue == BaselineValue
+  -> ICE CSV report
+  -> ICE log
 ```
 
 ICE must not:
@@ -736,7 +727,6 @@ SchemeCode
 ProductCode
 IceValue
 BaselineValue
-Difference
 Result
 ```
 
@@ -746,9 +736,10 @@ ICE report field ownership:
 
 - From `TB_RESPONSE`: `ScenarioId`, `QuoteRef`, `SchemeCode`, `ProductCode`.
 - From ICE: `IceValue`.
-- Calculated in `IceValidationTests`: `Difference`, `Result`.
+- From baseline XML: `BaselineValue`.
+- Calculated in `IceValidationTests`: `Result`.
 
-These fields remain correct for the final subtraction-based comparison model. `Difference` is the decimal result of `ActualValue - BaselineValue`.
+ICE validation is exact equality and does not calculate or report `Difference` values.
 
 `FuzzyMatch` remains on the Radar report for the existing report contract. It records whether the Radar difference is within the configured inclusive threshold range; it does not imply XML-specific matching.
 
@@ -878,7 +869,7 @@ Database reads and result updates use the database retry policy; API calls use t
 
 NUnit exposes one Radar test for the Radar workload and one ICE test for the ICE workload. The tests load scenarios once, create bounded asynchronous workers, and aggregate results. They do not create one NUnit test per scenario.
 
-Radar supports 2000+ scenarios through bounded concurrency controlled by `RadarMaxDegreeOfParallelism`. ICE uses `IceMaxDegreeOfParallelism` for its smaller workload and does not require endpoint throttling.
+Radar supports 2000+ scenarios through bounded concurrency controlled by `RadarMaxDegreeOfParallelism`. ICE uses database-driven NUnit test cases for its smaller workload and does not require endpoint throttling.
 
 ### Radar throttling
 
@@ -952,20 +943,19 @@ Duplicate records are prevented by assigning each scenario one terminal result a
 ## 18. Updated Radar Execution Flow
 
 ```text
-NUnit Radar test
-  -> PipelineInputValidator
-  -> Load PipelineSettings
-  -> RequestDataReader
-  -> TB_REQUEST scenarios
-  -> Bounded Radar workers
-  -> SchemeSettings[SchemeCode]
-  -> RadarEndpointSettings[RadarEndpointName]
+IceTestSetup
+  -> Load configuration and shared ICE dependencies
+  -> BaselineDataReader
+  -> TB_RESPONSE PASS scenarios
+  -> Latest PASS per ProductCode + SchemeCode
+  -> NUnit TestCaseSource
+  -> One IceValidationTests case per IceBaselineScenario
   -> RadarRequestThrottler
   -> RadarUrlBuilder
   -> RadarApiClient with transient retry policy
   -> XsdFileResolver
   -> XsdValidator
-  -> XmlValueExtractor
+  -> One Ice_<BuildId>.csv report per test run
   -> BaselineDataReader
   -> ThresholdMatcher
   -> ResultUpdater
@@ -979,14 +969,13 @@ If XSD validation fails, mark the scenario failed, log the validation errors, en
 ## 19. Updated ICE Execution Flow
 
 ```text
-NUnit ICE test
-  -> PipelineInputValidator
-  -> Load PipelineSettings
+IceTestSetup
+  -> Load configuration and shared ICE dependencies
   -> BaselineDataReader
   -> TB_RESPONSE PASS scenarios
   -> Latest PASS per ProductCode + SchemeCode
-  -> IceBaselineScenario
-  -> Bounded ICE workers
+  -> NUnit TestCaseSource
+  -> One IceValidationTests case per IceBaselineScenario
   -> QuoteRef
   -> IceUrlBuilder
   -> Final ICE URL
@@ -996,16 +985,18 @@ NUnit ICE test
   -> XmlValueExtractor
   -> Baseline Premium
   -> Difference calculation
-  -> Threshold evaluation
+  -> Exact value comparison
   -> NUnit assertion
   -> IceValidationReportRow
-  -> CsvReportWriter
+  -> One Ice_<BuildId>.csv report per run
   -> ICE log
 ```
 
 ICE remains independent from Radar. It does not resolve scheme configuration, use Radar authentication or throttling, perform XSD validation, call `ResultUpdater`, or update `TB_RESPONSE`.
 
 ICE does not read `TB_REQUEST`. It uses `BaselineDataReader` as its only database reader and performs comparison/assertion logic directly in the NUnit test.
+
+Each scenario is displayed as a separate NUnit test case. The test cases share one setup and produce one combined report per run, with one report row per scenario.
 
 ## 20. Classes to Rename
 
@@ -1038,22 +1029,23 @@ Remove:
 
 ## 22. Final Design Decisions
 
-- `BuildId`, `MinThreshold`, and `MaxThreshold` are required pipeline inputs.
-- `TestTag` and `RequestTime` are optional pipeline inputs.
+- `BuildId` is the required ICE report identifier.
+- `TestTag` and `RequestTime` are optional pipeline inputs for Radar only.
 - `RequestTime` uses the literal-`Z` format `yyyy-MM-ddZHH:mm:ss`; missing values use current UTC time.
-- `MinThreshold` and `MaxThreshold` are inclusive absolute-difference bounds and must satisfy `MinThreshold <= MaxThreshold`.
-- `Difference` in both report models means `ActualValue - BaselineValue`.
-- Threshold comparison is inclusive: `Difference >= MinThreshold && Difference <= MaxThreshold`.
-- `RadarValue`, `IceValue`, `BaselineValue`, `Difference`, `MinThreshold`, and `MaxThreshold` are all `decimal`.
-- `ThresholdMatcher` is used by Radar where required; ICE comparison remains inside the NUnit ICE test.
-- `ThresholdMatcher` evaluates only a supplied Radar `Difference` against the configured bounds.
-- Difference calculation, threshold evaluation, assertions, and report-row construction are owned by the NUnit tests.
+- ICE validation is exact equality: `IceValue == BaselineValue`.
+- ICE does not use thresholds, `MinThreshold`, `MaxThreshold`, or `ThresholdMatcher`.
+- ICE does not calculate or report `Difference` values.
+- `IceValue` and `BaselineValue` are `decimal`.
+- ICE reads `BUILD_BUILDID` at execution time for `BuildId` and report naming.
+- ICE passes only when `IceValue` exactly equals `BaselineValue`.
+- Equality comparison, assertion, and report-row construction remain owned by the NUnit ICE test.
 - Radar is driven by `TB_REQUEST`; ICE is driven by passing `TB_RESPONSE` baseline records selected by `BaselineDataReader`.
 - ICE uses `IceBaselineScenario` records and does not read `TB_REQUEST`.
 - `IceUrlBuilder` owns ICE URL composition; `IceApiClient` receives a fully built URL and never appends `QuoteRef`.
 - `RequestDataReader` reads only `TB_REQUEST`; `BaselineDataReader` reads baseline XML from `TB_RESPONSE`; `ResultUpdater` updates `TB_RESPONSE`.
 - ICE does not call `ResultUpdater` or update `TB_RESPONSE`.
 - `IceValidationTests` is the ICE pipeline orchestrator; no separate ICE application orchestrator is required.
+- ICE uses `TestCaseSource` for one NUnit test case per selected baseline scenario and one combined report per run.
 - Database and API retries are transient-only, configurable, exponentially backed off, jittered, cancellation-aware, and logged by flow.
 - `ResultUpdater` is retry-safe through scenario/build-scoped updates.
 - All DTOs, contracts, result models, report row models, and future enums belong under `Models`; service folders contain services only.

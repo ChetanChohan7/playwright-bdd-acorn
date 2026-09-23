@@ -15,7 +15,7 @@ public class CsvReportWriter
 		Directory.CreateDirectory(Path.GetDirectoryName(outputPath) ?? ".");
 
 		await using var writer = new StreamWriter(outputPath, false, new UTF8Encoding(false));
-		await writer.WriteLineAsync("BuildId,ScenarioId,QuoteRef,SchemeCode,ProductCode,IceValue,BaselineValue,Difference,Result");
+		await writer.WriteLineAsync("BuildId,ScenarioId,QuoteRef,SchemeCode,ProductCode,IceValue,BaselineValue,Result");
 
 		foreach (var row in rows.OrderBy(row => row.ScenarioId, StringComparer.Ordinal))
 		{
@@ -29,7 +29,6 @@ public class CsvReportWriter
 				row.ProductCode,
 				row.IceValue.ToString(CultureInfo.InvariantCulture),
 				row.BaselineValue.ToString(CultureInfo.InvariantCulture),
-				row.Difference.ToString(CultureInfo.InvariantCulture),
 				row.Result
 			};
 
