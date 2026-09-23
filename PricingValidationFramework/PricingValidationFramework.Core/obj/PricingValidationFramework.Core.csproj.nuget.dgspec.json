@@ -1,17 +1,17 @@
 {
   "format": 1,
   "restore": {
-    "C:\\Users\\SumeethRamessar\\PricingValidationFramework\\PricingValidationFramework.Core\\PricingValidationFramework.Core.csproj": {}
+    "C:\\Users\\SumeethRamessar\\Repo\\playwright-bdd-acorn\\PricingValidationFramework\\PricingValidationFramework.Core\\PricingValidationFramework.Core.csproj": {}
   },
   "projects": {
-    "C:\\Users\\SumeethRamessar\\PricingValidationFramework\\PricingValidationFramework.Core\\PricingValidationFramework.Core.csproj": {
+    "C:\\Users\\SumeethRamessar\\Repo\\playwright-bdd-acorn\\PricingValidationFramework\\PricingValidationFramework.Core\\PricingValidationFramework.Core.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "C:\\Users\\SumeethRamessar\\PricingValidationFramework\\PricingValidationFramework.Core\\PricingValidationFramework.Core.csproj",
+        "projectUniqueName": "C:\\Users\\SumeethRamessar\\Repo\\playwright-bdd-acorn\\PricingValidationFramework\\PricingValidationFramework.Core\\PricingValidationFramework.Core.csproj",
         "projectName": "PricingValidationFramework.Core",
-        "projectPath": "C:\\Users\\SumeethRamessar\\PricingValidationFramework\\PricingValidationFramework.Core\\PricingValidationFramework.Core.csproj",
+        "projectPath": "C:\\Users\\SumeethRamessar\\Repo\\playwright-bdd-acorn\\PricingValidationFramework\\PricingValidationFramework.Core\\PricingValidationFramework.Core.csproj",
         "packagesPath": "C:\\Users\\SumeethRamessar\\.nuget\\packages\\",
-        "outputPath": "C:\\Users\\SumeethRamessar\\PricingValidationFramework\\PricingValidationFramework.Core\\obj\\",
+        "outputPath": "C:\\Users\\SumeethRamessar\\Repo\\playwright-bdd-acorn\\PricingValidationFramework\\PricingValidationFramework.Core\\obj\\",
         "projectStyle": "PackageReference",
         "configFilePaths": [
           "C:\\Users\\SumeethRamessar\\AppData\\Roaming\\NuGet\\NuGet.Config"
