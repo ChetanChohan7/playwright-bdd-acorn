@@ -1,8 +1,8 @@
 {
   "version": 2,
-  "dgSpecHash": "5PQOWRHThLw=",
+  "dgSpecHash": "HlDtbFyFFeY=",
   "success": true,
-  "projectFilePath": "C:\\Users\\SumeethRamessar\\Repo\\playwright-bdd-acorn\\PricingValidationFramework\\PricingValidationFramework.Tests\\PricingValidationFramework.Tests.csproj",
+  "projectFilePath": "C:\\Users\\SumeethRamessar\\PricingValidationFramework\\PricingValidationFramework.Tests\\PricingValidationFramework.Tests.csproj",
   "expectedPackageFiles": [
     "C:\\Users\\SumeethRamessar\\.nuget\\packages\\azure.core\\1.47.1\\azure.core.1.47.1.nupkg.sha512",
     "C:\\Users\\SumeethRamessar\\.nuget\\packages\\azure.identity\\1.14.2\\azure.identity.1.14.2.nupkg.sha512",
@@ -26,6 +26,7 @@
     "C:\\Users\\SumeethRamessar\\.nuget\\packages\\microsoft.extensions.fileproviders.abstractions\\10.0.0\\microsoft.extensions.fileproviders.abstractions.10.0.0.nupkg.sha512",
     "C:\\Users\\SumeethRamessar\\.nuget\\packages\\microsoft.extensions.fileproviders.physical\\10.0.0\\microsoft.extensions.fileproviders.physical.10.0.0.nupkg.sha512",
     "C:\\Users\\SumeethRamessar\\.nuget\\packages\\microsoft.extensions.filesystemglobbing\\10.0.0\\microsoft.extensions.filesystemglobbing.10.0.0.nupkg.sha512",
+    "C:\\Users\\SumeethRamessar\\.nuget\\packages\\microsoft.extensions.logging\\10.0.0\\microsoft.extensions.logging.10.0.0.nupkg.sha512",
     "C:\\Users\\SumeethRamessar\\.nuget\\packages\\microsoft.extensions.logging.abstractions\\10.0.0\\microsoft.extensions.logging.abstractions.10.0.0.nupkg.sha512",
     "C:\\Users\\SumeethRamessar\\.nuget\\packages\\microsoft.extensions.options\\10.0.0\\microsoft.extensions.options.10.0.0.nupkg.sha512",
     "C:\\Users\\SumeethRamessar\\.nuget\\packages\\microsoft.extensions.primitives\\10.0.0\\microsoft.extensions.primitives.10.0.0.nupkg.sha512",
@@ -47,16 +48,20 @@
     "C:\\Users\\SumeethRamessar\\.nuget\\packages\\microsoft.testplatform.objectmodel\\17.14.0\\microsoft.testplatform.objectmodel.17.14.0.nupkg.sha512",
     "C:\\Users\\SumeethRamessar\\.nuget\\packages\\microsoft.testplatform.testhost\\17.14.0\\microsoft.testplatform.testhost.17.14.0.nupkg.sha512",
     "C:\\Users\\SumeethRamessar\\.nuget\\packages\\newtonsoft.json\\13.0.3\\newtonsoft.json.13.0.3.nupkg.sha512",
+    "C:\\Users\\SumeethRamessar\\.nuget\\packages\\nlog\\6.2.1\\nlog.6.2.1.nupkg.sha512",
+    "C:\\Users\\SumeethRamessar\\.nuget\\packages\\nlog.extensions.logging\\6.2.1\\nlog.extensions.logging.6.2.1.nupkg.sha512",
     "C:\\Users\\SumeethRamessar\\.nuget\\packages\\nunit\\4.3.2\\nunit.4.3.2.nupkg.sha512",
     "C:\\Users\\SumeethRamessar\\.nuget\\packages\\nunit.analyzers\\4.7.0\\nunit.analyzers.4.7.0.nupkg.sha512",
     "C:\\Users\\SumeethRamessar\\.nuget\\packages\\nunit3testadapter\\5.0.0\\nunit3testadapter.5.0.0.nupkg.sha512",
+    "C:\\Users\\SumeethRamessar\\.nuget\\packages\\restsharp\\114.0.0\\restsharp.114.0.0.nupkg.sha512",
     "C:\\Users\\SumeethRamessar\\.nuget\\packages\\system.clientmodel\\1.5.1\\system.clientmodel.1.5.1.nupkg.sha512",
     "C:\\Users\\SumeethRamessar\\.nuget\\packages\\system.configuration.configurationmanager\\9.0.4\\system.configuration.configurationmanager.9.0.4.nupkg.sha512",
     "C:\\Users\\SumeethRamessar\\.nuget\\packages\\system.diagnostics.eventlog\\9.0.4\\system.diagnostics.eventlog.9.0.4.nupkg.sha512",
     "C:\\Users\\SumeethRamessar\\.nuget\\packages\\system.identitymodel.tokens.jwt\\7.7.1\\system.identitymodel.tokens.jwt.7.7.1.nupkg.sha512",
     "C:\\Users\\SumeethRamessar\\.nuget\\packages\\system.memory.data\\8.0.1\\system.memory.data.8.0.1.nupkg.sha512",
     "C:\\Users\\SumeethRamessar\\.nuget\\packages\\system.security.cryptography.pkcs\\9.0.4\\system.security.cryptography.pkcs.9.0.4.nupkg.sha512",
-    "C:\\Users\\SumeethRamessar\\.nuget\\packages\\system.security.cryptography.protecteddata\\9.0.4\\system.security.cryptography.protecteddata.9.0.4.nupkg.sha512"
+    "C:\\Users\\SumeethRamessar\\.nuget\\packages\\system.security.cryptography.protecteddata\\9.0.4\\system.security.cryptography.protecteddata.9.0.4.nupkg.sha512",
+    "C:\\Users\\SumeethRamessar\\.nuget\\packages\\system.threading.ratelimiting\\10.0.0\\system.threading.ratelimiting.10.0.0.nupkg.sha512"
   ],
   "logs": []
 }

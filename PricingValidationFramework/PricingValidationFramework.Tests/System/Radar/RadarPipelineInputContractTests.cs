@@ -1,0 +1,107 @@
+using PricingValidationFramework.Core.ExternalAPIAccess.UrlBuilders;
+using PricingValidationFramework.Core.Models.Common;
+using PricingValidationFramework.Core.Validation;
+using PricingValidationFramework.Tests.Helpers.Setup;
+
+namespace PricingValidationFramework.Tests.System.Radar;
+
+[TestFixture]
+public class RadarPipelineInputContractTests
+{
+    [Test]
+    public void Pipeline_input_validator_should_require_build_id()
+    {
+        var settings = new PipelineSettings
+        {
+            BuildId = string.Empty,
+            MinThreshold = 0m,
+            MaxThreshold = 100m
+        };
+
+        var validator = new PipelineInputValidator();
+
+        Assert.That(() => validator.Validate(settings), Throws.ArgumentException.With.Message.Contains("BuildId"));
+    }
+
+    [Test]
+    public void Pipeline_input_validator_should_reject_invalid_threshold_range()
+    {
+        var settings = new PipelineSettings
+        {
+            BuildId = "build-1",
+            MinThreshold = 100m,
+            MaxThreshold = 50m
+        };
+
+        var validator = new PipelineInputValidator();
+
+        Assert.That(() => validator.Validate(settings), Throws.ArgumentException.With.Message.Contains("MinThreshold"));
+    }
+
+    [Test]
+    public void Pipeline_input_validator_should_reject_invalid_request_time_format()
+    {
+        var settings = new PipelineSettings
+        {
+            BuildId = "build-1",
+            MinThreshold = 0m,
+            MaxThreshold = 100m,
+            RequestTime = "2024-01-01T10:00:00Z"
+        };
+
+        var validator = new PipelineInputValidator();
+
+        Assert.That(() => validator.Validate(settings), Throws.ArgumentException.With.Message.Contains("RequestTime"));
+    }
+
+    [Test]
+    public void Request_time_formatter_should_generate_utc_value_when_missing()
+    {
+        var requestTime = RequestTimeFormatter.Resolve(null);
+
+        Assert.That(requestTime, Does.Match("\\d{4}-\\d{2}-\\d{2}Z\\d{2}:\\d{2}:\\d{2}"));
+    }
+
+    [Test]
+    public void Request_time_formatter_should_validate_exact_supplied_value()
+    {
+        var requestTime = RequestTimeFormatter.Resolve("2024-03-01Z09:30:45");
+
+        Assert.That(requestTime, Is.EqualTo("2024-03-01Z09:30:45"));
+    }
+
+    [Test]
+    public void Radar_test_setup_should_read_runtime_inputs_once_and_validate_them()
+    {
+        var originalBuildId = Environment.GetEnvironmentVariable("BUILD_BUILDID");
+        var originalMin = Environment.GetEnvironmentVariable("RADAR_MIN_THRESHOLD");
+        var originalMax = Environment.GetEnvironmentVariable("RADAR_MAX_THRESHOLD");
+        var originalRequestDate = Environment.GetEnvironmentVariable("RADAR_REQUEST_DATETIME");
+        var originalTestTag = Environment.GetEnvironmentVariable("TEST_TAG");
+
+        try
+        {
+            Environment.SetEnvironmentVariable("BUILD_BUILDID", "build-42");
+            Environment.SetEnvironmentVariable("RADAR_MIN_THRESHOLD", "10.50");
+            Environment.SetEnvironmentVariable("RADAR_MAX_THRESHOLD", "20.25");
+            Environment.SetEnvironmentVariable("RADAR_REQUEST_DATETIME", "2024-03-01Z09:30:45");
+            Environment.SetEnvironmentVariable("TEST_TAG", "smoke");
+
+            using var settings = RadarTestSetup.Create();
+
+            Assert.That(settings.BuildId, Is.EqualTo("build-42"));
+            Assert.That(settings.MinThreshold, Is.EqualTo(10.50m));
+            Assert.That(settings.MaxThreshold, Is.EqualTo(20.25m));
+            Assert.That(settings.RequestTime, Is.EqualTo("2024-03-01Z09:30:45"));
+            Assert.That(settings.TestTag, Is.EqualTo("smoke"));
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("BUILD_BUILDID", originalBuildId);
+            Environment.SetEnvironmentVariable("RADAR_MIN_THRESHOLD", originalMin);
+            Environment.SetEnvironmentVariable("RADAR_MAX_THRESHOLD", originalMax);
+            Environment.SetEnvironmentVariable("RADAR_REQUEST_DATETIME", originalRequestDate);
+            Environment.SetEnvironmentVariable("TEST_TAG", originalTestTag);
+        }
+    }
+}

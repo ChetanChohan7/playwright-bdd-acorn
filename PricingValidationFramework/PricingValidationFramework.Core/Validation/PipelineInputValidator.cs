@@ -18,7 +18,12 @@ public class PipelineInputValidator
 		}
 
 		if (!string.IsNullOrWhiteSpace(settings.RequestTime) &&
-			!DateTime.TryParseExact(settings.RequestTime, "yyyy-MM-dd'Z'HH:mm:ss", CultureInfo.InvariantCulture, DateTimeStyles.None, out _))
+			!DateTime.TryParseExact(
+				settings.RequestTime,
+				"yyyy-MM-dd'Z'HH:mm:ss",
+				CultureInfo.InvariantCulture,
+				DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal,
+				out _))
 		{
 			throw new ArgumentException("RequestTime must use yyyy-MM-ddZHH:mm:ss format.", nameof(settings));
 		}

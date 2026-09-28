@@ -7,18 +7,18 @@ using PricingValidationFramework.Core.Models.Database;
 
 public class RequestDataReader
 {
+	private readonly SqlConnectionFactory connectionFactory;
+	private readonly RetrySettings retrySettings;
+
 	private const string ScenarioColumns = """
 		Scenario_id AS ScenarioId,
 		Quote_ref AS QuoteRef,
 		Scheme_code AS SchemeCode,
 		Product_code AS ProductCode,
-		Xml_request AS XmlRequest,
+		XML_request AS XmlRequest,
 		Test_tags AS TestTags,
 		Created_date AS CreatedDate
 		""";
-
-	private readonly SqlConnectionFactory connectionFactory;
-	private readonly RetrySettings retrySettings;
 
 	public RequestDataReader(SqlConnectionFactory connectionFactory, RetrySettings? retrySettings = null)
 	{
@@ -28,18 +28,19 @@ public class RequestDataReader
 
 	public Task<IReadOnlyList<ScenarioRequest>> GetAllScenariosAsync(CancellationToken cancellationToken = default)
 	{
-		return QueryScenariosAsync($"SELECT {ScenarioColumns} FROM TB_REQUEST ORDER BY Created_date, Scenario_id;", null, cancellationToken);
+		return QueryScenariosAsync($"SELECT {ScenarioColumns} FROM xml_request ORDER BY Created_date, Scenario_id;", null, cancellationToken);
 	}
 
 	public Task<IReadOnlyList<ScenarioRequest>> GetScenariosByTestTagAsync(string testTag, CancellationToken cancellationToken = default)
 	{
-		const string sql = $"SELECT {ScenarioColumns} FROM TB_REQUEST WHERE Test_tags = @TestTag ORDER BY Created_date, Scenario_id;";
+		const string sql = $"SELECT {ScenarioColumns} FROM xml_request WHERE Test_tags = @TestTag ORDER BY Created_date, Scenario_id;";
 		return QueryScenariosAsync(sql, new { TestTag = testTag }, cancellationToken);
 	}
 
+// this is not used in the code remove it 
 	public async Task<ScenarioRequest?> GetScenarioByIdAsync(string scenarioId, CancellationToken cancellationToken = default)
 	{
-		const string sql = $"SELECT {ScenarioColumns} FROM TB_REQUEST WHERE Scenario_id = @ScenarioId;";
+		const string sql = $"SELECT {ScenarioColumns} FROM xml_request WHERE Scenario_id = @ScenarioId;";
 
 		for (var attempt = 0; ; attempt++)
 		{
@@ -79,3 +80,4 @@ public class RequestDataReader
 		}
 	}
 }
+// rename remove unused methods

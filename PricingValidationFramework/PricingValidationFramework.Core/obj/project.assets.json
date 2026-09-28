@@ -426,6 +426,19 @@
           }
         }
       },
+      "RestSharp/114.0.0": {
+        "type": "package",
+        "compile": {
+          "lib/net10.0/RestSharp.dll": {
+            "related": ".xml"
+          }
+        },
+        "runtime": {
+          "lib/net10.0/RestSharp.dll": {
+            "related": ".xml"
+          }
+        }
+      },
       "System.ClientModel/1.5.1": {
         "type": "package",
         "dependencies": {
@@ -553,6 +566,22 @@
         },
         "runtime": {
           "lib/net9.0/System.Security.Cryptography.ProtectedData.dll": {
+            "related": ".xml"
+          }
+        },
+        "build": {
+          "buildTransitive/net8.0/_._": {}
+        }
+      },
+      "System.Threading.RateLimiting/10.0.0": {
+        "type": "package",
+        "compile": {
+          "lib/net10.0/System.Threading.RateLimiting.dll": {
+            "related": ".xml"
+          }
+        },
+        "runtime": {
+          "lib/net10.0/System.Threading.RateLimiting.dll": {
             "related": ".xml"
           }
         },
@@ -1194,6 +1223,31 @@
         "microsoft.sqlserver.server.nuspec"
       ]
     },
+    "RestSharp/114.0.0": {
+      "sha512": "8pDO4q+K8nIqXbvGCb9ciKcngj36pCXGRDzOYPEPoS2IvBIL+mejmUMAtSNALt/NkDc9LQmHvM95kdniLSbGtg==",
+      "type": "package",
+      "path": "restsharp/114.0.0",
+      "files": [
+        ".nupkg.metadata",
+        ".signature.p7s",
+        "README.md",
+        "lib/net10.0/RestSharp.dll",
+        "lib/net10.0/RestSharp.xml",
+        "lib/net471/RestSharp.dll",
+        "lib/net471/RestSharp.xml",
+        "lib/net48/RestSharp.dll",
+        "lib/net48/RestSharp.xml",
+        "lib/net8.0/RestSharp.dll",
+        "lib/net8.0/RestSharp.xml",
+        "lib/net9.0/RestSharp.dll",
+        "lib/net9.0/RestSharp.xml",
+        "lib/netstandard2.0/RestSharp.dll",
+        "lib/netstandard2.0/RestSharp.xml",
+        "restsharp.114.0.0.nupkg.sha512",
+        "restsharp.nuspec",
+        "restsharp.png"
+      ]
+    },
     "System.ClientModel/1.5.1": {
       "sha512": "k2jKSO0X45IqhVOT9iQB4xralNN9foRQsRvXBTyRpAVxyzCJlG895T9qYrQWbcJ6OQXxOouJQ37x5nZH5XKK+A==",
       "type": "package",
@@ -1394,6 +1448,35 @@
         "system.security.cryptography.protecteddata.nuspec",
         "useSharedDesignerContext.txt"
       ]
+    },
+    "System.Threading.RateLimiting/10.0.0": {
+      "sha512": "0QWWGhde46NBFfMO/51QxfRNg7fnzhD8sxY38cP3HR5Sb1jkmSGpttKV1ILO2sJw7vSXQPtr3uqvXsN5iYsu5g==",
+      "type": "package",
+      "path": "system.threading.ratelimiting/10.0.0",
+      "files": [
+        ".nupkg.metadata",
+        ".signature.p7s",
+        "Icon.png",
+        "PACKAGE.md",
+        "THIRD-PARTY-NOTICES.TXT",
+        "buildTransitive/net461/System.Threading.RateLimiting.targets",
+        "buildTransitive/net462/_._",
+        "buildTransitive/net8.0/_._",
+        "buildTransitive/netcoreapp2.0/System.Threading.RateLimiting.targets",
+        "lib/net10.0/System.Threading.RateLimiting.dll",
+        "lib/net10.0/System.Threading.RateLimiting.xml",
+        "lib/net462/System.Threading.RateLimiting.dll",
+        "lib/net462/System.Threading.RateLimiting.xml",
+        "lib/net8.0/System.Threading.RateLimiting.dll",
+        "lib/net8.0/System.Threading.RateLimiting.xml",
+        "lib/net9.0/System.Threading.RateLimiting.dll",
+        "lib/net9.0/System.Threading.RateLimiting.xml",
+        "lib/netstandard2.0/System.Threading.RateLimiting.dll",
+        "lib/netstandard2.0/System.Threading.RateLimiting.xml",
+        "system.threading.ratelimiting.10.0.0.nupkg.sha512",
+        "system.threading.ratelimiting.nuspec",
+        "useSharedDesignerContext.txt"
+      ]
     }
   },
   "projectFileDependencyGroups": {
@@ -1401,7 +1484,9 @@
       "Dapper >= 2.1.66",
       "Microsoft.Data.SqlClient >= 6.1.2",
       "Microsoft.Extensions.Logging.Abstractions >= 10.0.0",
-      "Microsoft.Extensions.Options >= 10.0.0"
+      "Microsoft.Extensions.Options >= 10.0.0",
+      "RestSharp >= 114.0.0",
+      "System.Threading.RateLimiting >= 10.0.0"
     ]
   },
   "packageFolders": {
@@ -1410,11 +1495,11 @@
   "project": {
     "version": "1.0.0",
     "restore": {
-      "projectUniqueName": "C:\\Users\\SumeethRamessar\\Repo\\playwright-bdd-acorn\\PricingValidationFramework\\PricingValidationFramework.Core\\PricingValidationFramework.Core.csproj",
+      "projectUniqueName": "C:\\Users\\SumeethRamessar\\PricingValidationFramework\\PricingValidationFramework.Core\\PricingValidationFramework.Core.csproj",
       "projectName": "PricingValidationFramework.Core",
-      "projectPath": "C:\\Users\\SumeethRamessar\\Repo\\playwright-bdd-acorn\\PricingValidationFramework\\PricingValidationFramework.Core\\PricingValidationFramework.Core.csproj",
+      "projectPath": "C:\\Users\\SumeethRamessar\\PricingValidationFramework\\PricingValidationFramework.Core\\PricingValidationFramework.Core.csproj",
       "packagesPath": "C:\\Users\\SumeethRamessar\\.nuget\\packages\\",
-      "outputPath": "C:\\Users\\SumeethRamessar\\Repo\\playwright-bdd-acorn\\PricingValidationFramework\\PricingValidationFramework.Core\\obj\\",
+      "outputPath": "C:\\Users\\SumeethRamessar\\PricingValidationFramework\\PricingValidationFramework.Core\\obj\\",
       "projectStyle": "PackageReference",
       "configFilePaths": [
         "C:\\Users\\SumeethRamessar\\AppData\\Roaming\\NuGet\\NuGet.Config"
@@ -1462,6 +1547,14 @@
             "version": "[10.0.0, )"
           },
           "Microsoft.Extensions.Options": {
+            "target": "Package",
+            "version": "[10.0.0, )"
+          },
+          "RestSharp": {
+            "target": "Package",
+            "version": "[114.0.0, )"
+          },
+          "System.Threading.RateLimiting": {
             "target": "Package",
             "version": "[10.0.0, )"
           }

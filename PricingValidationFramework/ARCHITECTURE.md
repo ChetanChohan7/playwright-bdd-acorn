@@ -2,7 +2,7 @@
 
 ## Status
 
-This document freezes the architecture, naming, configuration structure, and responsibilities before implementation begins.
+This document describes the current architecture, naming, configuration structure, and responsibilities.
 
 ## 1. Folder Structure
 
@@ -11,12 +11,11 @@ PricingValidationFramework.Core/
 ├── Configuration/
 │   ├── DatabaseSettings.cs
 │   ├── IceSettings.cs
-│   ├── ParallelExecutionSettings.cs
 │   ├── RadarRateLimitSettings.cs
-│   ├── RadarAuthenticationSettings.cs
 │   ├── RadarEndpointSettings.cs
-│   ├── RetrySettings.cs
-│   └── SchemeSettings.cs
+│   ├── RadarRouteSettings.cs
+│   ├── RadarSettings.cs
+│   └── RetrySettings.cs
 ├── Database/
 │   ├── SqlConnectionFactory.cs
 │   ├── IBaselineDataReader.cs
@@ -32,7 +31,8 @@ PricingValidationFramework.Core/
 │   │   ├── IceUrlBuilder.cs
 │   │   └── RequestTimeFormatter.cs
 │   └── Throttling/
-│       └── RadarRequestThrottler.cs
+│       ├── IRadarRequestRateLimiter.cs
+│       └── RadarRequestRateLimiter.cs
 ├── Extraction/
 │   ├── JsonValueExtractor.cs
 │   └── XmlValueExtractor.cs
@@ -47,6 +47,9 @@ NUnit ICE test
 ├── Models/
 │   ├── Common/
 │   │   └── PipelineSettings.cs
+│   ├── External/
+│   │   └── RadarResponse.cs
+│   │   └── RadarJsonResponse.cs
 │   ├── Database/
 │   │   ├── ScenarioRequest.cs
 │   │   ├── IceBaselineScenario.cs
@@ -71,14 +74,15 @@ PricingValidationFramework.Tests/
 ├── TestAssets/
 │   ├── Ice/
 │   ├── Radar/
-│   └── Xsd/
+│   ├── Xsd/
+│   └── Json/
 ├── TestResults/
 │   ├── Reports/
 │   └── Logs/
 └── appsettings*.json
 ```
 
-NUnit tests are the execution orchestrators. `IceTestSetup` owns shared ICE fixture setup, while `IceValidationTests` executes one database-selected scenario per NUnit test case. There is no application-level `ValidationOrchestrator`.
+NUnit owns scenario discovery and scenario-level concurrency. The Radar fixture creates one test case per selected scenario and uses an assembly worker limit of four. `IceTestSetup` owns shared ICE fixture setup; ICE execution and business behavior remain separate from Radar. There is no application-level `ValidationOrchestrator` or internal Radar worker pool.
 
 `TestResults/` is a runtime-generated output location, not a source-code folder. It must be excluded from source control. `Reports/` and `Logs/` must not exist as separate top-level folders outside `TestResults/`.
 
@@ -87,13 +91,12 @@ NUnit tests are the execution orchestrators. `IceTestSetup` owns shared ICE fixt
 ### Configuration
 
 - `DatabaseSettings`: owns `ConnectionString`.
-- `SchemeSettings`: maps a scheme code to `RadarEndpointName`, `UrlKeyName`, and `XsdFile`.
-- `RadarEndpointSettings`: maps an endpoint group to `BaseUrl` and `ApiKeyValue`.
-- `RadarAuthenticationSettings`: owns the shared Radar `ApiKeyHeaderName`.
+- `RadarSettings`: owns the case-sensitive `Endpoints` and `Routes` dictionaries as configuration data only.
+- `RadarEndpointSettings`: owns one physical endpoint's `BaseUrl`, `ApiKeyHeaderName`, and `ApiKeyValue`.
+- `RadarRouteSettings`: owns one explicitly keyed route's `ProductCode`, `SchemeCode`, `EndpointName`, and `RouteKey`.
 - `IceSettings`: owns the ICE endpoint, API authentication, and mandatory client-certificate configuration, including local PFX or Key Vault PFX material.
-- `RetrySettings`: owns configurable database and API retry counts and delay settings.
-- `ParallelExecutionSettings`: owns Radar and ICE maximum degrees of parallelism.
-- `RadarRateLimitSettings`: owns the per-endpoint-group Radar request rate limit.
+- `RetrySettings`: owns configurable database and API retry counts and delay settings, including the maximum server-provided Radar `Retry-After` delay.
+- `RadarRateLimitSettings`: configures the mandatory Radar request rate for each logical endpoint. Requests-per-second and queue limit must be positive.
 - `PipelineInputValidator`: validates all pipeline inputs before database access, API calls, or report generation.
 
 ### Models
@@ -102,9 +105,11 @@ NUnit tests are the execution orchestrators. `IceTestSetup` owns shared ICE fixt
 - `Models/Database/ScenarioRequest`: represents a scenario read from `TB_REQUEST`.
 - `Models/Database/IceBaselineScenario`: represents one passing `TB_RESPONSE` baseline selected for ICE processing. It contains `ScenarioId`, `QuoteRef`, `SchemeCode`, `ProductCode`, `XmlResponse`, `Status`, and `LastUpdated`.
 - `Models/Database/ScenarioResponse`: represents baseline/result data associated with `TB_RESPONSE`.
+- `Models/External/RadarResponse`: represents only the currently consumed Radar response field, `TotalAmount`.
+- `Models/External/RadarJsonResponse`: empty placeholder for the future client JSON contract; it has no guessed fields or deserialization behavior.
 - `Models/Reporting/RadarValidationReportRow`: represents one Radar report row.
 - `Models/Reporting/IceValidationReportRow`: represents one ICE report row.
-- `Models/Enums`: standard location for future enums; no enum implementation is currently required.
+- `Models/Enums/ScenarioResult`: shared scenario outcome enum for PASS, FAIL, and ERROR semantics.
 
 ### Database
 
@@ -165,20 +170,20 @@ Created_date
 
 ### External API access
 
-- `ExternalAPIAccess/ApiClients/RadarApiClient`: sends XML requests to Radar using a resolved URL and endpoint-group API key.
+- `ExternalAPIAccess/ApiClients/RadarApiClient`: Radar HTTP boundary that sends XML POST requests with endpoint-specific authentication, retries transient failures, honors `Retry-After`, and preserves cancellation.
 - `ExternalAPIAccess/ApiClients/IceApiClient`: sends requests to ICE using a fully built URL, ICE authentication, and a client certificate. It does not construct URLs, append `QuoteRef`, or perform URL composition.
-- `ExternalAPIAccess/UrlBuilders/RadarUrlBuilder`: owns Radar URL composition.
+- `ExternalAPIAccess/UrlBuilders/RadarUrlBuilder`: URL-composition component that receives `BaseUrl`, `RouteKey`, and formatted request time. It does not resolve configuration, query `TB_REQUEST`, or apply auth.
 - `ExternalAPIAccess/UrlBuilders/IceUrlBuilder`: owns ICE URL composition.
 - `ExternalAPIAccess/UrlBuilders/RequestTimeFormatter`: owns Radar request-time validation and formatting.
-- `ExternalAPIAccess/Throttling/RadarRequestThrottler`: owns Radar request throttling per endpoint group.
+- `ExternalAPIAccess/Throttling/RadarRequestRateLimiter`: owns one independent sliding-window limiter per logical Radar endpoint for every outbound HTTP attempt, including retries.
 
 `IceApiClient` is the concrete ICE HTTP boundary. `CsvReportWriter` is the concrete CSV output service shared by Radar and ICE. No additional interface is required for either single implementation.
 
-API clients own HTTP communication only. URL builders own URL composition, and the Radar throttler owns Radar request throttling. These components are grouped under `ExternalAPIAccess` because they all support external service communication.
+API clients own HTTP communication only. `RadarApiClient` acquires a permit for the route's logical endpoint immediately before each outbound HTTP attempt and creates an independent `RestRequest` for that attempt. The endpoint-limiter registry is shared by every parallel Radar scenario; each endpoint has an independent budget. These components are grouped under `ExternalAPIAccess` because they support external service communication.
 
 ### Radar support
 
-- `XsdFileResolver`: resolves the XSD file named by scheme configuration.
+- `XsdFileResolver`: resolves the response XSD filename selected by the route-keyed `RadarSettings.ResponseXsdMappings` configuration.
 - `XsdValidator`: validates Radar XML responses.
 - `RadarTestRunLogger`: writes Radar-specific logs.
 
@@ -197,15 +202,28 @@ API clients own HTTP communication only. URL builders own URL composition, and t
 
 Radar execution is driven by `TB_REQUEST`. ICE execution is driven by passing baseline records from `TB_RESPONSE`; ICE does not read `TB_REQUEST`. Neither flow uses hardcoded test cases or static scenario definitions.
 
-Each selected database record represents one scenario execution unit. `RequestDataReader` is the Radar scenario source, and `BaselineDataReader` is the ICE scenario source. ICE uses NUnit `TestCaseSource` so each selected scenario appears as a separate test case while one report is produced for the full run.
+Each selected database record represents one scenario execution unit. `RequestDataReader` is the Radar scenario source, and `BaselineDataReader` is the ICE scenario source. Radar uses NUnit `TestCaseSource` so each selected scenario appears as a separate test case. Each Radar case receives an independent NUnit result; one consolidated report is written after the fixture completes. ICE remains separate and is not changed by Radar parallel execution.
 
 ### Radar flow
 
 ```text
 TB_REQUEST
-  -> Scenario
-  -> Radar processing
+  -> ScenarioRequest
+  -> Trim ProductCode and SchemeCode
+  -> Match exactly one RadarSettings.Routes entry by ProductCode and SchemeCode
+  -> Resolve the selected route's EndpointName
+  -> BaseUrl, RouteKey, ApiKeyValue
+  -> Radar URL construction
+  -> Radar request authentication
+  -> ValidateResponseXml using ResponseXsdMappings[RouteIdentifier], when mapped
+  -> Deserialize RadarResponse.TotalAmount
+  -> Radar response XSD validation before deserialization
+  -> NUnit scenario assertion
+  -> Thread-safe terminal-row collection
+  -> One sorted consolidated Radar CSV after all cases finish
 ```
+
+Scenario discovery preserves the existing test-tag filter and rejects duplicate `ScenarioId` values before execution. Test names include only a sanitized, bounded `ScenarioId`; discovery errors become one visible failed discovery case. The Radar fixture uses `[Parallelizable(ParallelScope.Children)]`, with `[assembly: LevelOfParallelism(4)]`. No internal worker pool or scenario scheduler exists.
 
 ### ICE flow
 
@@ -225,46 +243,40 @@ Adding or changing Radar scenarios is a data and configuration concern, not a co
 ConnectionString
 ```
 
-### SchemeSettings
+### RadarSettings and RadarEndpointSettings
 
-One entry per scheme:
+`RadarSettings.Endpoints` contains entries keyed by explicit physical endpoint codes such as `Endpoint1` and `Endpoint2`.
 
-```text
-RadarEndpointName
-UrlKeyName
-XsdFile
-```
+`RadarSettings.Routes` contains entries keyed by explicit user-supplied route codes such as `Route001` and `Route002`. Route dictionary keys have no business meaning and are not derived from scenario data.
 
-Example:
+`RadarSettings.ResponseXsdMappings` maps those existing route identifiers to response XSD filenames relative to `TestAssets/Xsd`. It is the only response schema registration point; schema names are not derived from ProductCode/SchemeCode and no schema count is fixed. Missing or empty mappings skip response schema validation.
 
-```text
-Home -> Endpoint1, Home, Home.xsd
-Motor -> Endpoint1, Motor, Motor.xsd
-Travel -> Endpoint2, Travel, Travel.xsd
-```
-
-A scheme does not own credentials. Multiple schemes may reference the same Radar endpoint group.
-
-### RadarEndpointSettings
-
-One entry per Radar endpoint group:
+Each `RadarEndpointSettings` entry contains:
 
 ```text
 BaseUrl
+ApiKeyHeaderName
 ApiKeyValue
 ```
 
-There are currently three groups: `Endpoint1`, `Endpoint2`, and `Endpoint3`.
-
-`ApiKeyValue` is a secret in UAT and must come from Azure Key Vault.
-
-### RadarAuthenticationSettings
+Each `RadarRouteSettings` entry contains:
 
 ```text
-ApiKeyHeaderName
+ProductCode
+SchemeCode
+EndpointName
+RouteKey
 ```
 
-All Radar endpoint groups use the same header name. Only `ApiKeyValue` changes by endpoint group.
+Radar requests have no XSD validation. Response schemas are selected by `ResponseXsdMappings[routeIdentifier]`.
+
+Runtime selection trims the database ProductCode and SchemeCode values, then performs case-sensitive field matching. Exactly one route must match. Zero or multiple matches are scenario ERRORs.
+
+`RadarSettings` contains no lookup, validation, or routing behavior. New combinations require configuration changes only; no switch statements or product-specific branches are permitted.
+
+The route dictionary key is not used to match database scenario values. The selected route's `RouteKey` is written to the `KeyName` URL query parameter.
+
+`ApiKeyValue` is a secret in UAT and must come from Azure Key Vault.
 
 ### IceSettings
 
@@ -322,30 +334,42 @@ DatabaseRetryCount
 DatabaseRetryDelaySeconds
 ApiRetryCount
 ApiRetryDelaySeconds
+ApiRetryAfterMaxDelaySeconds
 ```
 
-Retry counts mean the number of retries after the initial attempt. Delay values are base delays for exponential backoff. Retry settings are configurable and are not hard-coded in clients or database classes.
+Retry counts mean the number of retries after the initial attempt. Delay values are base delays for exponential backoff. `ApiRetryAfterMaxDelaySeconds` caps a valid server-provided Radar `Retry-After` delay; local exponential backoff is not capped by this setting. Retry settings are configurable and are not hard-coded in clients or database classes. The configured default cap is 60 seconds.
 
 Recommended starting values are three retries and a two-second base delay for both database and API operations. Backoff should be capped at 30 seconds with bounded jitter. These are operational defaults and remain configurable through the environment settings.
-
-### ParallelExecutionSettings
-
-```text
-RadarMaxDegreeOfParallelism
-IceMaxDegreeOfParallelism
-```
-
-These values control concurrent scenario workers. They are upper bounds, not guarantees that all workers will be active simultaneously.
 
 ### RadarRateLimitSettings
 
 ```text
-RequestsPerSecondPerEndpoint
+RequestsPerSecond
+QueueLimit
 ```
 
-The value applies independently to each Radar endpoint group and is configurable. It must not be hard-coded.
+Radar limiting is mandatory and cannot be disabled. Checked-in configuration uses `RequestsPerSecond = 2` and `QueueLimit = 4`. Each configured logical endpoint receives one independent `SlidingWindowRateLimiter` with a one-second window divided into 10 segments, oldest-first queueing, and automatic replenishment. Every initial attempt and retry consumes a permit from that endpoint's limiter. There is no concurrent in-flight request limit.
 
 ## 5. Validation and Comparison Rules
+
+### Shared scenario result model
+
+ICE and Radar share the same scenario result vocabulary:
+
+```text
+PASS = validation completed and passed
+FAIL = validation completed but business rule failed
+ERROR = validation could not be completed because of technical or operational failure
+Cancellation = cancellation is not an ERROR result and is allowed to propagate as OperationCanceledException
+```
+
+`Models/Enums/ScenarioResult` defines:
+
+```text
+Pass
+Fail
+Error
+```
 
 ### ICE validation rule
 
@@ -356,6 +380,8 @@ ICE validation is exact equality:
 ```text
 passed = iceValue == baselineValue
 ```
+
+If comparison cannot complete because of a technical failure, the row is written with `ScenarioResult.Error` and nullable values. Cancellation remains cancellation and is not converted into an ERROR result.
 
 ### Radar comparison model
 
@@ -405,10 +431,10 @@ Shared structure and non-secret defaults only:
   "DatabaseSettings": {
     "ConnectionString": ""
   },
-  "SchemeSettings": {},
-  "RadarEndpointSettings": {},
-  "RadarAuthenticationSettings": {
-    "ApiKeyHeaderName": "X-API-KEY"
+  "RadarSettings": {
+    "Endpoints": {},
+    "Routes": {},
+    "ResponseXsdMappings": {}
   },
   "IceSettings": {
     "IceEndpoint": "",
@@ -420,14 +446,15 @@ Shared structure and non-secret defaults only:
     "DatabaseRetryCount": 3,
     "DatabaseRetryDelaySeconds": 2,
     "ApiRetryCount": 3,
-    "ApiRetryDelaySeconds": 2
+    "ApiRetryDelaySeconds": 2,
+    "ApiRetryAfterMaxDelaySeconds": 60
   },
-  "ParallelExecutionSettings": {
-    "RadarMaxDegreeOfParallelism": 20,
-    "IceMaxDegreeOfParallelism": 4
+  "RadarJsonSettings": {
+    "ResponseContractFile": "TestAssets/Json/placeholder-response.json"
   },
   "RadarRateLimitSettings": {
-    "RequestsPerSecondPerEndpoint": 2
+    "RequestsPerSecond": 2,
+    "QueueLimit": 4
   }
 }
 ```
@@ -441,39 +468,37 @@ Do not store API key values, certificate passwords, certificate content, pipelin
   "DatabaseSettings": {
     "ConnectionString": "Server=localhost;Database=PricingValidation;Trusted_Connection=True;"
   },
-  "SchemeSettings": {
-    "Home": {
-      "RadarEndpointName": "Endpoint1",
-      "UrlKeyName": "Home",
-      "XsdFile": "Home.xsd"
+  "RadarSettings": {
+    "Endpoints": {
+      "Endpoint1": {
+        "BaseUrl": "https://placeholder-radar-1.example.com/quote",
+        "ApiKeyHeaderName": "PLACEHOLDER-HEADER-1",
+        "ApiKeyValue": "development-placeholder-value-1"
+      },
+      "Endpoint2": {
+        "BaseUrl": "https://placeholder-radar-2.example.com/quote",
+        "ApiKeyHeaderName": "PLACEHOLDER-HEADER-2",
+        "ApiKeyValue": "development-placeholder-value-2"
+      }
     },
-    "Motor": {
-      "RadarEndpointName": "Endpoint1",
-      "UrlKeyName": "Motor",
-      "XsdFile": "Motor.xsd"
+    "Routes": {
+      "Route001": {
+        "ProductCode": "HOME",
+        "SchemeCode": "ABC",
+        "EndpointName": "Endpoint1",
+        "RouteKey": "home-abc"
+      },
+      "Route002": {
+        "ProductCode": "HOME",
+        "SchemeCode": "XYZ",
+        "EndpointName": "Endpoint1",
+        "RouteKey": "home-xyz"
+      }
     },
-    "Travel": {
-      "RadarEndpointName": "Endpoint2",
-      "UrlKeyName": "Travel",
-      "XsdFile": "Travel.xsd"
+    "ResponseXsdMappings": {
+      "Route001": "Home_ABC.xsd",
+      "Route002": "Home_XYZ.xsd"
     }
-  },
-  "RadarEndpointSettings": {
-    "Endpoint1": {
-      "BaseUrl": "https://localhost/radar/endpoint1/quote",
-      "ApiKeyValue": "development-radar-key-a"
-    },
-    "Endpoint2": {
-      "BaseUrl": "https://localhost/radar/endpoint2/quote",
-      "ApiKeyValue": "development-radar-key-b"
-    },
-    "Endpoint3": {
-      "BaseUrl": "https://localhost/radar/endpoint3/quote",
-      "ApiKeyValue": "development-radar-key-c"
-    }
-  },
-  "RadarAuthenticationSettings": {
-    "ApiKeyHeaderName": "X-API-KEY"
   },
   "IceSettings": {
     "IceEndpoint": "https://localhost/ice/quote",
@@ -487,14 +512,15 @@ Do not store API key values, certificate passwords, certificate content, pipelin
     "DatabaseRetryCount": 3,
     "DatabaseRetryDelaySeconds": 2,
     "ApiRetryCount": 3,
-    "ApiRetryDelaySeconds": 2
+    "ApiRetryDelaySeconds": 2,
+    "ApiRetryAfterMaxDelaySeconds": 60
   },
-  "ParallelExecutionSettings": {
-    "RadarMaxDegreeOfParallelism": 20,
-    "IceMaxDegreeOfParallelism": 4
+  "RadarJsonSettings": {
+    "ResponseContractFile": "TestAssets/Json/placeholder-response.json"
   },
   "RadarRateLimitSettings": {
-    "RequestsPerSecondPerEndpoint": 2
+    "RequestsPerSecond": 2,
+    "QueueLimit": 4
   }
 }
 ```
@@ -506,36 +532,30 @@ Do not store API key values, certificate passwords, certificate content, pipelin
   "DatabaseSettings": {
     "ConnectionString": "Server=uat-db;Database=PricingValidation;Trusted_Connection=True;"
   },
-  "SchemeSettings": {
-    "Home": {
-      "RadarEndpointName": "Endpoint1",
-      "UrlKeyName": "Home",
-      "XsdFile": "Home.xsd"
+  "RadarSettings": {
+    "Endpoints": {
+      "Endpoint1": {
+        "BaseUrl": "https://placeholder-radar-1.example.com/quote",
+        "ApiKeyHeaderName": "PLACEHOLDER-HEADER-1",
+        "ApiKeyValue": "development-placeholder-value-1"
+      },
+      "Endpoint2": {
+        "BaseUrl": "https://placeholder-radar-2.example.com/quote",
+        "ApiKeyHeaderName": "PLACEHOLDER-HEADER-2",
+        "ApiKeyValue": "development-placeholder-value-2"
+      }
     },
-    "Motor": {
-      "RadarEndpointName": "Endpoint1",
-      "UrlKeyName": "Motor",
-      "XsdFile": "Motor.xsd"
+    "Routes": {
+      "Route001": {
+        "ProductCode": "HOME",
+        "SchemeCode": "ABC",
+        "EndpointName": "Endpoint1",
+        "RouteKey": "home-abc"
+      }
     },
-    "Travel": {
-      "RadarEndpointName": "Endpoint2",
-      "UrlKeyName": "Travel",
-      "XsdFile": "Travel.xsd"
+    "ResponseXsdMappings": {
+      "Route001": "Home_ABC.xsd"
     }
-  },
-  "RadarEndpointSettings": {
-    "Endpoint1": {
-      "BaseUrl": "https://uat-radar-1.example.com/quote"
-    },
-    "Endpoint2": {
-      "BaseUrl": "https://uat-radar-2.example.com/quote"
-    },
-    "Endpoint3": {
-      "BaseUrl": "https://uat-radar-3.example.com/quote"
-    }
-  },
-  "RadarAuthenticationSettings": {
-    "ApiKeyHeaderName": "X-API-KEY"
   },
   "IceSettings": {
     "IceEndpoint": "https://uat-ice.example.com/quote",
@@ -546,14 +566,15 @@ Do not store API key values, certificate passwords, certificate content, pipelin
     "DatabaseRetryCount": 3,
     "DatabaseRetryDelaySeconds": 2,
     "ApiRetryCount": 3,
-    "ApiRetryDelaySeconds": 2
+    "ApiRetryDelaySeconds": 2,
+    "ApiRetryAfterMaxDelaySeconds": 60
   },
-  "ParallelExecutionSettings": {
-    "RadarMaxDegreeOfParallelism": 20,
-    "IceMaxDegreeOfParallelism": 4
+  "RadarJsonSettings": {
+    "ResponseContractFile": "TestAssets/Json/placeholder-response.json"
   },
   "RadarRateLimitSettings": {
-    "RequestsPerSecondPerEndpoint": 2
+    "RequestsPerSecond": 2,
+    "QueueLimit": 4
   }
 }
 ```
@@ -565,9 +586,9 @@ UAT must not contain Radar API key values, the ICE API key value, certificate pa
 Recommended configuration keys:
 
 ```text
-RadarEndpointSettings--Endpoint1--ApiKeyValue
-RadarEndpointSettings--Endpoint2--ApiKeyValue
-RadarEndpointSettings--Endpoint3--ApiKeyValue
+RadarSettings--Endpoints--Endpoint1--ApiKeyValue
+RadarSettings--Endpoints--Endpoint2--ApiKeyValue
+RadarSettings--Endpoints--Endpoint3--ApiKeyValue
 IceSettings--ApiKeyHeaderValue
 IceSettings--CertificatePassword
 IceSettings--PfxCertificateBase64
@@ -585,7 +606,7 @@ URL builders are grouped under `ExternalAPIAccess/UrlBuilders` because they exis
 
 ```text
 BaseUrl
-UrlKeyName
+RouteKey
 RequestTime
 ```
 
@@ -598,12 +619,16 @@ Rules:
 - URL-encode parameter values.
 - Keep timestamp formatting out of `RadarApiClient`.
 
-`RadarApiClient` only sends the XML request and applies:
+`RadarApiClient` sends the XML request and applies:
 
 ```text
-RadarAuthenticationSettings.ApiKeyHeaderName
-RadarEndpointSettings[EndpointName].ApiKeyValue
+RadarSettings.Endpoints[routeSettings.EndpointName].ApiKeyHeaderName
+RadarSettings.Endpoints[routeSettings.EndpointName].ApiKeyValue
 ```
+
+Radar requests use `POST`, `Content-Type: application/xml`, and `Accept: application/xml`. The workload-level `RestClient` is configured once with automatic gzip, deflate, and brotli decompression. Radar retries HTTP 408, 429, 500, 502, 503, and 504 plus statusless transient network failures using `RetrySettings`. A valid `Retry-After` delta-seconds or HTTP-date is capped by `ApiRetryAfterMaxDelaySeconds`, then combined with local exponential backoff using the longer delay. When capped, the warning records the supplied value, configured maximum, and effective delay. Each attempt consumes a permit from its logical endpoint's limiter.
+
+`RouteKey` is used during URL construction and remains distinct from the API key secret.
 
 `IceUrlBuilder` owns ICE URL composition. It receives:
 
@@ -636,10 +661,9 @@ NUnit test
   -> PipelineSettings
     -> RequestDataReader
     -> TB_REQUEST scenarios
-    -> SchemeCode
-    -> SchemeSettings[SchemeCode]
-    -> RadarEndpointName, UrlKeyName, XsdFile
-    -> RadarEndpointSettings[RadarEndpointName]
+    -> Trim ProductCode and SchemeCode
+    -> Match exactly one configured route by fields
+    -> Resolve selected route EndpointName
     -> BaseUrl, ApiKeyValue
     -> RadarUrlBuilder
     -> RadarApiClient
@@ -658,7 +682,7 @@ NUnit test
     -> Radar log
 ```
 
-Adding a scheme requires only a new `SchemeSettings` entry, XSD file, and test data. No switch statements or scheme-specific branching are permitted.
+Adding a product and scheme endpoint combination requires only a new `RadarSettings.Endpoints` entry. No switch statements or product/scheme-specific branching are permitted.
 
 ## 10. ICE Execution Flow
 
@@ -686,8 +710,7 @@ NUnit test
 ICE must not:
 
 - Resolve `SchemeCode`.
-- Read `SchemeSettings`.
-- Read `UrlKeyName`.
+- Read `RadarSettings`.
 - Use Radar endpoint settings or Radar authentication.
 - Perform XSD validation.
 - Call `ResultUpdater`.
@@ -717,7 +740,7 @@ FuzzyMatch
 
 ### ICE report
 
-`Models/Reporting/IceValidationReportRow` contains:
+`Models/Reporting/IceValidationReportRow` contains only:
 
 ```text
 BuildId
@@ -729,6 +752,8 @@ IceValue
 BaselineValue
 Result
 ```
+
+The `Result` field uses `ScenarioResult` and serializes to `PASS`, `FAIL`, or `ERROR` in CSV. `Difference`, `MinThreshold`, `MaxThreshold`, `FuzzyMatch`, request XML, response XML, and failure-reason fields are not part of the ICE report.
 
 `CsvReportWriter` writes the ICE report to `Ice_<BuildId>.csv`.
 
@@ -750,27 +775,29 @@ Radar report field ownership:
 - From the baseline response: `BaselineValue`.
 - Calculated in the NUnit Radar test: `Difference`, `Result`, `FuzzyMatch`.
 
+ICE and Radar use the same operational logging standard but different report columns.
+
 Radar and ICE produce separate CSV reports and separate log files.
 
 Radar logs contain:
 
-- Request XML
-- `ApiResponsePayload` containing response XML
-- Database and API retry attempts
-- XSD validation results
-- Matching results
+- Lifecycle start and completion
+- API retry attempts
+- Operational exceptions
 - Cancellation events
-- Errors
+
+Radar logs do not include request or response XML, API-key values, validation outcomes, report rows, or financial values. Radar logs are written to `Radar_<BuildId>.log`; ICE logs remain in `Ice_<BuildId>.log`.
 
 ICE logs contain:
 
-- Request URL
-- `ApiResponsePayload` containing JSON
-- Database and API retry attempts
-- Comparison results
-- Certificate errors
+- Lifecycle start and completion
+- API retry warnings
+- Operational exceptions
 - Cancellation events
-- Errors
+- Certificate, database, and HTTP failures
+- Unexpected execution diagnostics
+
+ICE logs do not include PASS/FAIL/ERROR outcome values, report rows, or validation summaries.
 
 ### Output structure and naming
 
@@ -816,7 +843,7 @@ PricingValidationFramework.Tests/
         └── Travel.xsd
 ```
 
-`XsdFileResolver` resolves the configured `SchemeSettings.XsdFile` value relative to `TestAssets/Xsd`. Scheme onboarding requires a new configuration entry, XSD file, and test data only.
+Future XSD-to-combination configuration is outside the endpoint model prepared here. `RadarEndpointSettings` remains limited to `BaseUrl` and `ApiKeyValue`.
 
 ## 13. Certificate Strategy
 
@@ -857,9 +884,9 @@ Read operations may retry the same read operation because they do not mutate sta
 
 API retry behavior applies to `RadarApiClient` and `IceApiClient`.
 
-Retry HTTP 408, 429, 500, 502, 503, and 504, plus transient DNS, network, and socket failures. Do not retry HTTP 400, 401, 403, or 404. Respect `Retry-After` for HTTP 429 when present, subject to a configured maximum delay.
+Retry HTTP 408, 429, 500, 502, 503, and 504, plus transient DNS, network, and socket failures. Do not retry HTTP 400, 401, 403, or 404. For a valid `Retry-After` delta-seconds or HTTP-date, cap the server delay at `ApiRetryAfterMaxDelaySeconds`, then wait for the maximum of local exponential backoff and the capped value. Missing or invalid values use local backoff; invalid values are logged without including the header value.
 
-Use `ApiRetryCount` and exponential backoff based on `ApiRetryDelaySeconds`, with bounded jitter and cancellation support. Retry attempts are written to the Radar or ICE log that owns the operation.
+Use `ApiRetryCount` and exponential backoff based on `ApiRetryDelaySeconds`, with cancellation support. Retry attempts are written to the Radar or ICE log that owns the operation. Radar retry warnings contain status or transient-network category, attempt, maximum attempts, and delay only.
 
 Database reads and result updates use the database retry policy; API calls use the API retry policy. Permanent SQL errors are never retried.
 
@@ -867,24 +894,13 @@ Database reads and result updates use the database retry policy; API calls use t
 
 ### Execution model
 
-NUnit exposes one Radar test for the Radar workload and one ICE test for the ICE workload. The tests load scenarios once, create bounded asynchronous workers, and aggregate results. They do not create one NUnit test per scenario.
-
-Radar supports 2000+ scenarios through bounded concurrency controlled by `RadarMaxDegreeOfParallelism`. ICE uses database-driven NUnit test cases for its smaller workload and does not require endpoint throttling.
+NUnit owns Radar scenario discovery and concurrency. Each selected scenario is one NUnit case marked `[Parallelizable(ParallelScope.Children)]`; the assembly-level worker limit is four. There is no internal worker pool, `Task.WhenAll` across scenarios, or custom scenario scheduler. `RadarScenarioProcessor` continues to process exactly one scenario. ICE remains separate and is not changed by Radar parallel execution.
 
 ### Radar throttling
 
-`ExternalAPIAccess/Throttling/RadarRequestThrottler` determines the endpoint group from the resolved `SchemeSettings.RadarEndpointName` and applies the configured `RequestsPerSecondPerEndpoint` limit independently for each group.
+One run-level `RadarRequestRateLimiter` registry is shared by every parallel Radar scenario and injected into `RadarApiClient`. It contains one .NET `SlidingWindowRateLimiter` per configured logical endpoint, keyed case-insensitively. Each has a one-second window divided into 10 segments, permits 2 starts per window, and queues up to 4 waiting attempts in oldest-first order. These budgets are independent: saturation on `PricingA` does not consume `PricingB` or `PricingC` capacity. Limiting is mandatory, cannot be disabled, and there is no separate in-flight request limit.
 
-Parallelism and throttling are separate controls:
-
-```text
-RadarMaxDegreeOfParallelism = 20
-RequestsPerSecondPerEndpoint = 2
-```
-
-Up to 20 workers may exist, but each endpoint group may send no more than its configured rate. Throttling always gates the request before `RadarApiClient` sends it. Waiting workers observe cancellation and do not start a request after cancellation.
-
-The throttler must use monotonic timing, avoid a single global lock across endpoint groups, and maintain bounded in-memory state. It must not accumulate an unbounded queue of scenarios.
+`RadarTestSetup` binds and validates the required settings, rejects case-insensitive duplicate endpoint keys, and verifies every route points to a configured endpoint before database discovery. It creates and disposes the registry once for the Radar run. `RadarApiClient` acquires the selected endpoint's permit immediately before each outbound attempt and creates an independent `RestRequest`. Each retry first waits for local backoff or valid `Retry-After` (whichever is longer), then acquires another permit from that same endpoint limiter. Queue rejection sends no HTTP request and becomes a technical ERROR. Exhausted HTTP 429 likewise remains a technical ERROR without PASS/FAIL persistence.
 
 ## 16. Cancellation Strategy
 
@@ -902,15 +918,15 @@ Cancellation applies to:
 - `CsvReportWriter`
 - `RadarTestRunLogger`
 - `IceTestRunLogger`
-- `RadarRequestThrottler`
+- `IRadarRequestRateLimiter`
 
 When cancellation is requested:
 
-1. Stop scheduling new scenarios.
-2. Stop workers waiting for Radar throttling.
+1. Let NUnit stop or cancel active scenario cases.
+2. Cancel cases waiting for a Radar limiter permit.
 3. Do not start additional API requests.
 4. Allow safe in-flight operations to observe cancellation and finish or abort according to their API contract.
-5. Flush accepted report records and log entries.
+5. Write completed terminal report rows once from fixture teardown.
 6. Dispose HTTP, certificate, database, and writer resources.
 7. Record a cancellation event in the relevant flow-specific log.
 8. Exit without treating cancellation as a normal scenario failure.
@@ -919,52 +935,35 @@ Cancellation must not be swallowed by retry policies or converted into a retryab
 
 ## 17. Thread-Safe Reporting and Logging
 
-Parallel workers must never write directly to shared CSV or log files. Each flow uses a bounded producer/consumer channel:
-
-```text
-Scenario workers
-  -> bounded report/log channel
-  -> single flow-specific writer
-  -> CSV or log file
-```
-
-The preferred strategy is one single writer per output file, with records enqueued by workers. This provides atomic record ordering, prevents interleaved log entries, avoids corrupted CSV rows, and gives cancellation a clear flush point. The bounded channel applies backpressure so output cannot grow without limit.
+Radar cases never write directly to a shared CSV. Each case creates one terminal `RadarValidationReportRow` locally and adds it to a fixture-level `ConcurrentDictionary` keyed by `ScenarioId`. A duplicate terminal row throws rather than replacing or silently dropping a result. NUnit waits for child cases before `OneTimeTearDown`; teardown snapshots rows in ordinal `ScenarioId` order, writes one temporary CSV with the existing writer, then atomically moves it to the sanitized `Radar_<BuildId>.csv` final path. Failed writes remove the temporary file, retain collected rows, log only the error type, and surface as teardown failures.
 
 ### Report ordering
 
 Reports must be deterministic and sorted by `ScenarioId` ascending before final CSV generation. Radar report rows are sorted by `ScenarioId` ascending before writing `Radar_<BuildId>.csv`. ICE report rows are sorted by `ScenarioId` ascending before writing `Ice_<BuildId>.csv`.
 
-Parallel execution order and scenario completion order are irrelevant to final report ordering. The report writer collects accepted terminal report rows, sorts them by `ScenarioId` ascending, and then performs final CSV generation. The same scenario set therefore produces consistent report ordering across executions. Log entries use timestamped, atomic entries in completion order because logs describe execution events rather than a business result sequence.
+Parallel completion order does not affect report ordering. ICE reporting and logging remain separate and are not changed by this Radar implementation.
 
-Radar and ICE each have independent report and log channels. There is no shared execution log and no shared file lock between flows. A writer owns file creation, header emission, record serialization, flush, and final disposal.
+Database readers and `ResultUpdater` create and dispose an independent SQL connection per operation; no connection is shared across NUnit cases, and there is no transaction around an API call. `ResultUpdater` retains existing affected-row validation and PASS/FAIL update semantics. No scenario-specific state is stored in fixture-global or NLog global context.
 
-Duplicate records are prevented by assigning each scenario one terminal result and enqueueing that result exactly once. The writer does not deduplicate silently; duplicate terminal results are treated as an internal error and logged.
+NLog keeps separate ICE and Radar targets. Build identifiers may remain in `GlobalDiagnosticsContext`; scenario identifiers are structured event properties. Radar logging records exception type only and does not emit exception payloads, request/response XML, API keys, authorization headers, passwords, certificates, or connection strings. `IceTestSetup` does not call process-wide `LogManager.Shutdown` during fixture disposal, so it cannot terminate Radar logging in the same test process.
 
 ## 18. Updated Radar Execution Flow
 
 ```text
-IceTestSetup
-  -> Load configuration and shared ICE dependencies
-  -> BaselineDataReader
-  -> TB_RESPONSE PASS scenarios
-  -> Latest PASS per ProductCode + SchemeCode
-  -> NUnit TestCaseSource
-  -> One IceValidationTests case per IceBaselineScenario
-  -> RadarRequestThrottler
-  -> RadarUrlBuilder
-  -> RadarApiClient with transient retry policy
-  -> XsdFileResolver
-  -> XsdValidator
-  -> One Ice_<BuildId>.csv report per test run
-  -> BaselineDataReader
-  -> ThresholdMatcher
-  -> ResultUpdater
-  -> Radar report channel
-  -> Radar log channel
-  -> Single Radar report/log writers
+RequestDataReader
+  -> Selected TB_REQUEST scenarios and optional test-tag filter
+  -> Reject duplicate ScenarioIds
+  -> NUnit TestCaseSource: one Radar test case per scenario
+  -> Up to four NUnit child cases execute concurrently
+  -> Each case loads its own baseline and processes one scenario
+  -> RadarApiClient acquires shared limiter permit per HTTP attempt
+  -> RadarScenarioProcessor: URL, optional response XSD by route ID, typed TotalAmount, comparison
+  -> Persist existing PASS or FAIL result semantics
+  -> Add exactly one terminal report row to concurrent collection
+  -> One Radar CSV sorted by ScenarioId in OneTimeTearDown
 ```
 
-If XSD validation fails, mark the scenario failed, log the validation errors, enqueue one Radar report entry, call `UpdateFailResultAsync`, skip extraction/difference/matching, and continue processing remaining scenarios. A single scenario failure does not terminate the run.
+Each case asserts its own PASS, FAIL, or ERROR outcome, so one failed scenario does not prevent unrelated cases from completing. Request XML is not XSD-validated. Response XSD validation runs only when `ResponseXsdMappings` contains a nonempty filename for the selected route identifier; otherwise it is skipped. The typed Radar response currently contains only the evidenced `TotalAmount`; additional response fields await confirmed schema and validation requirements. Future JSON contracts and payloads belong under `TestAssets/Json`, with the placeholder `RadarJsonResponse` populated only after the client contract is received. Cancellation propagates separately and does not add a normal comparison row. ICE remains a separate flow and is not changed by this Radar implementation.
 
 ## 19. Updated ICE Execution Flow
 
@@ -974,8 +973,7 @@ IceTestSetup
   -> BaselineDataReader
   -> TB_RESPONSE PASS scenarios
   -> Latest PASS per ProductCode + SchemeCode
-  -> NUnit TestCaseSource
-  -> One IceValidationTests case per IceBaselineScenario
+  -> One explicit IceValidationTests workload
   -> QuoteRef
   -> IceUrlBuilder
   -> Final ICE URL
@@ -996,7 +994,7 @@ ICE remains independent from Radar. It does not resolve scheme configuration, us
 
 ICE does not read `TB_REQUEST`. It uses `BaselineDataReader` as its only database reader and performs comparison/assertion logic directly in the NUnit test.
 
-Each scenario is displayed as a separate NUnit test case. The test cases share one setup and produce one combined report per run, with one report row per scenario.
+ICE remains its existing single workload test, iterating its selected baselines and producing one combined report. This Radar change does not alter ICE execution or business behavior.
 
 ## 20. Classes to Rename
 
@@ -1015,15 +1013,15 @@ Remove:
 
 - `ValidationOrchestrator`: NUnit tests orchestrate execution.
 - `EndpointResolver`: direct configuration lookup is sufficient.
-- `SchemeConfig`: replaced by `SchemeSettings`.
-- `EndpointSettings`: replaced by `RadarEndpointSettings` and `IceSettings`.
+- `SchemeConfig`: replaced by direct `RadarSettings` product/scheme lookup.
+- `EndpointSettings`: replaced by `RadarSettings`, `RadarEndpointSettings`, and `IceSettings`.
 - `XmlToleranceMatcher`: replaced by `ThresholdMatcher`.
 - `ValueDifferenceMatcher`: replaced by `ThresholdMatcher`.
 - `IIceApiClient`: removed because ICE has one concrete API client.
 - `ICsvReportWriter`: removed because one concrete CSV writer serves both report models.
 - `MatchResult`: removed because it has no genuine consumer; ICE comparison is inline in `IceValidationTests` and Radar does not require the model.
 - Dapper with `Microsoft.Data.SqlClient` is the database standard; SQL remains explicit, parameterized, strongly typed, and cancellation-aware.
-- No additional interfaces, abstractions, service layers, comparison layers, validation engines, result hierarchies, or generic managers are introduced.
+- The focused `IRadarRequestRateLimiter` is the Radar API-boundary contract; no generic concurrency, retry, workflow, or reporting frameworks are introduced.
 
 `RadarUrlBuilder` is a focused URL-building service, not a generic endpoint resolver.
 
@@ -1045,15 +1043,14 @@ Remove:
 - `RequestDataReader` reads only `TB_REQUEST`; `BaselineDataReader` reads baseline XML from `TB_RESPONSE`; `ResultUpdater` updates `TB_RESPONSE`.
 - ICE does not call `ResultUpdater` or update `TB_RESPONSE`.
 - `IceValidationTests` is the ICE pipeline orchestrator; no separate ICE application orchestrator is required.
-- ICE uses `TestCaseSource` for one NUnit test case per selected baseline scenario and one combined report per run.
+- ICE retains its existing single workload test over selected baseline scenarios and one combined report per run.
 - Database and API retries are transient-only, configurable, exponentially backed off, jittered, cancellation-aware, and logged by flow.
 - `ResultUpdater` is retry-safe through scenario/build-scoped updates.
 - All DTOs, contracts, result models, report row models, and future enums belong under `Models`; service folders contain services only.
 - Business failures, validation failures, mismatches, and configuration failures are never retried.
-- Radar and ICE use bounded parallel workers; Radar additionally applies independent per-endpoint rate limiting.
-- Reports and logs use bounded producer/consumer channels with one writer per output file.
-- Reports are sorted by `ScenarioId` ascending before final CSV generation; logs preserve atomic event entries in completion order.
-- Cancellation stops scheduling, throttling waits, and new requests, then flushes output and disposes resources.
+- NUnit owns Radar concurrency with four workers; each logical endpoint has an independent 2-per-second sliding-window budget and a queue of four waiting attempts. Every retry consumes another permit. There is no in-flight request limit, and ICE behavior is unchanged.
+- Radar cases collect one terminal row each in a thread-safe keyed collection; fixture teardown writes one deterministic CSV. NLog remains flow-separated and scenario values use structured properties, not global context.
+- Cancellation stops active work and limiter waits without turning cancellation into FAIL or ERROR.
 - Radar uses one shared header name and endpoint-group-specific API key values.
 - ICE always requires a client certificate; there is no optional certificate flag.
 - UAT Radar keys, ICE API key values, certificate passwords, and PFX content come from Azure Key Vault.
@@ -1063,11 +1060,11 @@ Remove:
 - XSD files are resolved from `PricingValidationFramework.Tests/TestAssets/Xsd`.
 - Radar XSD failure is scenario-level: log, report, call `UpdateFailResultAsync`, skip extraction and matching, then continue with the next scenario.
 
-The architecture is frozen: NUnit tests orchestrate execution, schemes select Radar endpoint groups, endpoint groups own Radar credentials, and ICE is an independent reporting-only path.
+NUnit owns scenario execution, schemes select Radar endpoint groups, endpoint groups own Radar credentials, and ICE remains an independent validation path.
 
-## 23. Implementation Readiness Confirmation
+## 23. Current Implementation Confirmation
 
-The architecture is ready for implementation:
+The architecture reflects the current implementation:
 
 - Folder structure and ownership boundaries are defined.
 - Business naming is finalized for Radar, ICE, baseline data, validation, matching, reporting, and logging.
@@ -1075,7 +1072,7 @@ The architecture is ready for implementation:
 - `IceUrlBuilder` centralizes ICE URL construction and `IceApiClient` owns only HTTP execution.
 - `ExternalAPIAccess/ApiClients/` contains `RadarApiClient` and `IceApiClient`.
 - `ExternalAPIAccess/UrlBuilders/` contains `RadarUrlBuilder`, `IceUrlBuilder`, and `RequestTimeFormatter`; API clients never build URLs.
-- `ExternalAPIAccess/Throttling/` contains `RadarRequestThrottler`; throttling is Radar-specific and ICE does not require endpoint throttling.
+- `ExternalAPIAccess/Throttling/` contains `IRadarRequestRateLimiter` and `RadarRequestRateLimiter`; Radar limiting is shared across parallel cases and ICE does not use it.
 - Configuration separates scheme metadata, Radar endpoint groups, shared Radar authentication, ICE authentication, and certificate material.
 - Azure Key Vault supplies UAT Radar keys, ICE secrets, and certificate material.
 - ICE certificates are mandatory and loaded in memory without agent certificate-store installation.
@@ -1088,7 +1085,9 @@ The architecture is ready for implementation:
 - Radar XSD failures are isolated to the current scenario and do not stop the run.
 - Radar and ICE have separate reports, logs, output names, and flow-specific responsibilities.
 - XSD files have a fixed location and are resolved from scheme configuration.
-- Retry, concurrency, throttling, cancellation, and output-writer behavior are defined.
+- NUnit owns Radar concurrency with four workers; there is no internal scenario worker pool.
+- Radar rate limiting is mandatory with the checked-in 2 requests-per-second and 4 queued attempts per endpoint.
+- Every Radar HTTP retry acquires the same endpoint's permit after the longer of local backoff and valid `Retry-After`; one sorted report is written after scenario cases complete.
 - Result update retry safety is defined through idempotent scenario/build-scoped updates.
 - Radar and ICE report ordering is deterministic and independent of parallel scenario completion order.
 - Radar reports include `SchemeCode` for endpoint-routing diagnostics.
@@ -1096,4 +1095,4 @@ The architecture is ready for implementation:
 - Dapper database standards, explicit SQL ownership, and SQL-side filtering/ranking are documented.
 - NUnit tests remain the orchestration and comparison layer; no additional abstractions were introduced.
 
-The architecture is fully aligned with the physical solution structure and ready for implementation.
+The architecture is aligned with the current solution structure and implementation.

@@ -1,24 +1,33 @@
 namespace PricingValidationFramework.Core.ExternalAPIAccess.ApiClients;
 
-using System.Net.Http.Headers;
 using System.Net;
 using System.Security.Cryptography.X509Certificates;
 using Microsoft.Extensions.Logging;
 using PricingValidationFramework.Core.Configuration;
+using RestSharp;
 
 public class IceApiClient : IDisposable
 {
-	private readonly HttpClient httpClient;
+	private readonly RestClient restClient;
 	private readonly IceSettings settings;
 	private readonly RetrySettings retrySettings;
 	private readonly ILogger<IceApiClient> logger;
 
 	public IceApiClient(IceSettings settings, ILogger<IceApiClient> logger, RetrySettings? retrySettings = null)
+		: this(settings, logger, retrySettings, CreateRestClient(settings))
+	{
+	}
+
+	public IceApiClient(
+		IceSettings settings,
+		ILogger<IceApiClient> logger,
+		RetrySettings? retrySettings,
+		RestClient restClient)
 	{
 		this.settings = settings;
 		this.logger = logger;
 		this.retrySettings = retrySettings ?? new RetrySettings();
-		httpClient = CreateHttpClient(settings);
+		this.restClient = restClient ?? throw new ArgumentNullException(nameof(restClient));
 	}
 
 	public async Task<string> GetAsync(string url, CancellationToken cancellationToken = default)
@@ -27,22 +36,42 @@ public class IceApiClient : IDisposable
 		{
 			try
 			{
-				using var request = new HttpRequestMessage(HttpMethod.Get, url);
-				request.Headers.TryAddWithoutValidation(settings.ApiKeyHeaderName, settings.ApiKeyHeaderValue);
-				using var response = await httpClient.SendAsync(request, cancellationToken);
-				var payload = await response.Content.ReadAsStringAsync(cancellationToken);
-				if (!IsTransient(response.StatusCode) || attempt >= retrySettings.ApiRetryCount)
+				var request = new RestRequest(url, Method.Get)
+					.AddOrUpdateHeader(settings.ApiKeyHeaderName, settings.ApiKeyHeaderValue);
+				var response = await restClient.ExecuteAsync(request, cancellationToken);
+				cancellationToken.ThrowIfCancellationRequested();
+
+				if (response.StatusCode != 0 && !IsSuccess(response.StatusCode))
 				{
-					response.EnsureSuccessStatusCode();
-					return payload;
+					if (IsTransient(response.StatusCode) && attempt < retrySettings.ApiRetryCount)
+					{
+						var retryAfter = GetRetryAfter(response);
+						var delay = retryAfter ?? TimeSpan.FromSeconds(retrySettings.ApiRetryDelaySeconds * Math.Pow(2, attempt));
+						logger.LogWarning("Retrying ICE request after HTTP {StatusCode}; attempt {Attempt}.", (int)response.StatusCode, attempt + 1);
+						await Task.Delay(delay, cancellationToken);
+						continue;
+					}
+
+					EnsureSuccessStatusCode(response);
 				}
 
-				var retryAfter = response.Headers.RetryAfter?.Delta;
-				var delay = retryAfter ?? TimeSpan.FromSeconds(retrySettings.ApiRetryDelaySeconds * Math.Pow(2, attempt));
-				logger.LogWarning("Retrying ICE request after HTTP {StatusCode}; attempt {Attempt}.", (int)response.StatusCode, attempt + 1);
-				await Task.Delay(delay, cancellationToken);
+				if (response.ResponseStatus != ResponseStatus.Completed)
+				{
+					throw new HttpRequestException(response.ErrorMessage, response.ErrorException);
+				}
+
+				return response.Content ?? string.Empty;
 			}
-			catch (HttpRequestException) when (attempt < retrySettings.ApiRetryCount)
+			catch (OperationCanceledException) when (
+				!cancellationToken.IsCancellationRequested &&
+				attempt < retrySettings.ApiRetryCount)
+			{
+				logger.LogWarning("Retrying ICE request after a timeout; attempt {Attempt}.", attempt + 1);
+				await Task.Delay(TimeSpan.FromSeconds(retrySettings.ApiRetryDelaySeconds * Math.Pow(2, attempt)), cancellationToken);
+			}
+			catch (HttpRequestException exception) when (
+				attempt < retrySettings.ApiRetryCount &&
+				exception.StatusCode is null)
 			{
 				logger.LogWarning("Retrying ICE request after a transient network failure; attempt {Attempt}.", attempt + 1);
 				await Task.Delay(TimeSpan.FromSeconds(retrySettings.ApiRetryDelaySeconds * Math.Pow(2, attempt)), cancellationToken);
@@ -52,16 +81,17 @@ public class IceApiClient : IDisposable
 
 	public void Dispose()
 	{
-		httpClient.Dispose();
+		restClient.Dispose();
 	}
 
-	private HttpClient CreateHttpClient(IceSettings iceSettings)
+	private static RestClient CreateRestClient(IceSettings iceSettings) 
 	{
-		var handler = new HttpClientHandler();
-		var certificate = LoadCertificate(iceSettings);
-		handler.ClientCertificates.Add(certificate);
+		var options = new RestClientOptions
+		{
+			ClientCertificates = [LoadCertificate(iceSettings)]
+		};
 
-		return new HttpClient(handler, disposeHandler: true);
+		return new RestClient(options);
 	}
 
 	private static X509Certificate2 LoadCertificate(IceSettings iceSettings)
@@ -80,10 +110,38 @@ public class IceApiClient : IDisposable
 			X509KeyStorageFlags.EphemeralKeySet);
 	}
 
-	private static bool IsTransient(HttpStatusCode statusCode)
+	private static TimeSpan? GetRetryAfter(RestResponse response) // same for this IS THIS COMMON IN BOTH RADARA AND  icd 
+	{
+		var value = response.Headers?
+			.FirstOrDefault(header => string.Equals(header.Name, "Retry-After", StringComparison.OrdinalIgnoreCase))
+			?.Value?.ToString();
+
+		return int.TryParse(value, out var seconds) ? TimeSpan.FromSeconds(seconds) : null;
+	}
+
+	private static void EnsureSuccessStatusCode(RestResponse response) // this to ensure the response indicates a successful HTTP status code
+	{
+		if ((int)response.StatusCode is >= 200 and <= 299)
+		{
+			return;
+		}
+
+		throw new HttpRequestException(
+			$"Response status code does not indicate success: {(int)response.StatusCode} ({response.StatusDescription}).",
+			response.ErrorException,
+			response.StatusCode);
+	}
+
+	private static bool IsSuccess(HttpStatusCode statusCode) // this as well utils class for HTTP status codes
+	{
+		return (int)statusCode is >= 200 and <= 299;
+	}
+
+	private static bool IsTransient(HttpStatusCode statusCode) // can we not have this in a common utility class for HTTP status codes?
 	{
 		return statusCode is HttpStatusCode.RequestTimeout or HttpStatusCode.TooManyRequests or
 			HttpStatusCode.InternalServerError or HttpStatusCode.BadGateway or
 			HttpStatusCode.ServiceUnavailable or HttpStatusCode.GatewayTimeout;
 	}
 }
+// refactor class 

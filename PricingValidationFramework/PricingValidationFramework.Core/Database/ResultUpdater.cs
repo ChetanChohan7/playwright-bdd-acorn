@@ -16,45 +16,47 @@ public class ResultUpdater
 		this.retrySettings = retrySettings ?? new RetrySettings();
 	}
 
-	public Task UpdatePassResultAsync(ScenarioResponse response, CancellationToken cancellationToken = default)
+	public async Task UpdatePassResultAsync(ScenarioResponse response, CancellationToken cancellationToken = default)
 	{
 		const string sql = """
-			UPDATE TB_RESPONSE
+			UPDATE xml_response
 			SET Status = @Status,
 			    Build_id = @BuildId,
-			    LastUpdated = SYSUTCDATETIME(),
-			    Xml_response = @XmlResponse
+			    Last_updated = SYSUTCDATETIME(),
+			    XML_response = @XmlResponse
 			WHERE Scenario_id = @ScenarioId;
 			""";
 
-		return ExecuteAsync(sql, new
+		var affectedRows = await ExecuteAsync(sql, new
 		{
 			response.Status,
 			response.BuildId,
 			response.XmlResponse,
 			response.ScenarioId
 		}, cancellationToken);
+		EnsureSingleRowUpdated(response.ScenarioId, affectedRows);
 	}
 
-	public Task UpdateFailResultAsync(ScenarioResponse response, CancellationToken cancellationToken = default)
+	public async Task UpdateFailResultAsync(ScenarioResponse response, CancellationToken cancellationToken = default)
 	{
 		const string sql = """
-			UPDATE TB_RESPONSE
+			UPDATE xml_response
 			SET Status = @Status,
 			    Build_id = @BuildId,
-			    LastUpdated = SYSUTCDATETIME()
+			    Last_updated = SYSUTCDATETIME()
 			WHERE Scenario_id = @ScenarioId;
 			""";
 
-		return ExecuteAsync(sql, new
+		var affectedRows = await ExecuteAsync(sql, new
 		{
 			response.Status,
 			response.BuildId,
 			response.ScenarioId
 		}, cancellationToken);
+		EnsureSingleRowUpdated(response.ScenarioId, affectedRows);
 	}
 
-	private async Task ExecuteAsync(string sql, object parameters, CancellationToken cancellationToken)
+	private async Task<int> ExecuteAsync(string sql, object parameters, CancellationToken cancellationToken)
 	{
 		for (var attempt = 0; ; attempt++)
 		{
@@ -63,8 +65,7 @@ public class ResultUpdater
 				await using var connection = connectionFactory.Create();
 				await connection.OpenAsync(cancellationToken);
 				var command = new CommandDefinition(sql, parameters, cancellationToken: cancellationToken);
-				await connection.ExecuteAsync(command);
-				return;
+				return await connection.ExecuteAsync(command);
 			}
 			catch (SqlException) when (attempt < retrySettings.DatabaseRetryCount)
 			{
@@ -72,4 +73,14 @@ public class ResultUpdater
 			}
 		}
 	}
+
+	private static void EnsureSingleRowUpdated(string scenarioId, int affectedRows)
+	{
+		if (affectedRows != 1)
+		{
+			throw new InvalidOperationException(
+				$"Expected exactly one xml_response row to be updated for ScenarioId '{scenarioId}', but {affectedRows} rows were updated.");
+		}
+	}
 }
+//rename 
