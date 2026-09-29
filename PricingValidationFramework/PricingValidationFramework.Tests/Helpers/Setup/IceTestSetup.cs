@@ -60,8 +60,11 @@ public sealed class IceTestSetup : IDisposable
             ?? throw new InvalidOperationException("DatabaseSettings is missing.");
         var iceSettings = configuration.GetSection("IceSettings").Get<IceSettings>()
             ?? throw new InvalidOperationException("IceSettings is missing.");
+        iceSettings.Validate();
         var retrySettings = configuration.GetSection("RetrySettings").Get<RetrySettings>()
             ?? throw new InvalidOperationException("RetrySettings is missing.");
+        retrySettings.ValidateDatabaseRetrySettings();
+        retrySettings.ValidateIceApiRetrySettings();
 
         var buildId = Environment.GetEnvironmentVariable("BUILD_BUILDID") ?? "local";
 
@@ -112,13 +115,13 @@ public sealed class IceTestSetup : IDisposable
         return builder.Build();
     }
 
-    private static Dictionary<string, string?> GetEnvironmentVariables()
+    internal static Dictionary<string, string?> GetEnvironmentVariables()
     {
         var values = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var key in Environment.GetEnvironmentVariables().Keys.Cast<string>())
         {
-            values[key] = Environment.GetEnvironmentVariable(key);
+            values[key.Replace("__", ":", StringComparison.Ordinal)] = Environment.GetEnvironmentVariable(key);
         }
 
         return values;

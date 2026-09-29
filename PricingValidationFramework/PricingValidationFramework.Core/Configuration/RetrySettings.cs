@@ -2,6 +2,8 @@ namespace PricingValidationFramework.Core.Configuration;
 
 public class RetrySettings
 {
+	private const double MaxTaskDelaySeconds = (uint.MaxValue - 1d) / 1000d;
+
 	public int DatabaseRetryCount { get; set; } = 3;
 	public int DatabaseRetryDelaySeconds { get; set; } = 2;
 	public int ApiRetryCount { get; set; } = 3;
@@ -10,11 +12,62 @@ public class RetrySettings
 
 	public void Validate() // what are you validating here? change hte name of the method 
 	{
-		if (ApiRetryAfterMaxDelaySeconds <= 0)
+		ValidateDatabaseRetrySettings();
+		ValidateRadarApiRetrySettings();
+	}
+
+	public void ValidateDatabaseRetrySettings()
+	{
+		ValidateRetryValues(
+			DatabaseRetryCount,
+			DatabaseRetryDelaySeconds,
+			nameof(DatabaseRetryCount),
+			nameof(DatabaseRetryDelaySeconds));
+	}
+
+	public void ValidateIceApiRetrySettings()
+	{
+		ValidateRetryValues(
+			ApiRetryCount,
+			ApiRetryDelaySeconds,
+			nameof(ApiRetryCount),
+			nameof(ApiRetryDelaySeconds));
+	}
+
+	public void ValidateRadarApiRetrySettings()
+	{
+		ValidateIceApiRetrySettings();
+		if (ApiRetryAfterMaxDelaySeconds < 0 || ApiRetryAfterMaxDelaySeconds > MaxTaskDelaySeconds)
 		{
 			throw new ArgumentOutOfRangeException(
 				nameof(ApiRetryAfterMaxDelaySeconds),
-				"ApiRetryAfterMaxDelaySeconds must be greater than zero.");
+				$"{nameof(ApiRetryAfterMaxDelaySeconds)} must be between zero and {MaxTaskDelaySeconds} seconds.");
+		}
+	}
+
+	private static void ValidateRetryValues(int retryCount, int delaySeconds, string retryCountName, string delayName)
+	{
+		if (retryCount < 0)
+		{
+			throw new ArgumentOutOfRangeException(retryCountName, $"{retryCountName} must be zero or greater.");
+		}
+
+		if (delaySeconds < 0)
+		{
+			throw new ArgumentOutOfRangeException(delayName, $"{delayName} must be zero or greater.");
+		}
+
+		if (retryCount == 0 || delaySeconds == 0)
+		{
+			return;
+		}
+
+		var maximumDelaySeconds = delaySeconds * Math.Pow(2, retryCount - 1);
+		if (!double.IsFinite(maximumDelaySeconds) || maximumDelaySeconds > MaxTaskDelaySeconds)
+		{
+			throw new ArgumentOutOfRangeException(
+				delayName,
+				$"The configured retry count and {delayName} can exceed the supported Task.Delay range of {MaxTaskDelaySeconds} seconds.");
 		}
 	}
 }

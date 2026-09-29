@@ -720,6 +720,54 @@ public class RadarApiClientTests
 		}
 	}
 
+    [Test]
+    public async Task PostAsync_should_wait_for_retry_delay_before_acquiring_the_next_permit()
+    {
+        var events = new List<string>();
+        var callCount = 0;
+        using var client = CreateClient(
+            _ =>
+            {
+                callCount++;
+                if (callCount == 1)
+                {
+                    var response = new HttpResponseMessage(HttpStatusCode.ServiceUnavailable);
+                    response.Headers.TryAddWithoutValidation("Retry-After", "0");
+                    return response;
+                }
+
+                return SuccessResponse();
+            },
+            new RecordingRateLimiter(events),
+            new RetrySettings { ApiRetryCount = 1, ApiRetryDelaySeconds = 1 },
+            (_, _) =>
+            {
+                events.Add("delay");
+                return Task.CompletedTask;
+            });
+
+        await client.PostAsync("Endpoint1", "https://placeholder-radar.example.com/quote", "X-API-KEY", "secret-value", "<Request />");
+
+        Assert.That(events, Is.EqualTo(new[] { "permit", "delay", "permit" }));
+    }
+
+    private sealed class RecordingRateLimiter : IRadarRequestRateLimiter
+    {
+        private readonly ICollection<string> events;
+
+        public RecordingRateLimiter(ICollection<string> events)
+        {
+            this.events = events;
+        }
+
+        public ValueTask WaitAsync(string endpointName, CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            events.Add("permit");
+            return ValueTask.CompletedTask;
+        }
+    }
+
 	private sealed class NullScope : IDisposable
 	{
 		public static NullScope Instance { get; } = new();

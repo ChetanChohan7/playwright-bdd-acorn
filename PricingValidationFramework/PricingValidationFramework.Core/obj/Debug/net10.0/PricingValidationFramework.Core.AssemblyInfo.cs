@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("PricingValidationFramework.Core")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+9e48a8b724b89433937f50ab976bffa86d248f66")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+3d645031a41633a54a930ac8e4e97d59c503a99f")]
 [assembly: System.Reflection.AssemblyProductAttribute("PricingValidationFramework.Core")]
 [assembly: System.Reflection.AssemblyTitleAttribute("PricingValidationFramework.Core")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

@@ -96,7 +96,10 @@ public class CsvReportWriter
 
 	private static string Escape(string value)
 	{
-		return value.Contains(',', StringComparison.Ordinal) || value.Contains('"', StringComparison.Ordinal)
+		return value.Contains(',', StringComparison.Ordinal) ||
+			value.Contains('"', StringComparison.Ordinal) ||
+			value.Contains('\r', StringComparison.Ordinal) ||
+			value.Contains('\n', StringComparison.Ordinal)
 			? $"\"{value.Replace("\"", "\"\"", StringComparison.Ordinal)}\""
 			: value;
 	}

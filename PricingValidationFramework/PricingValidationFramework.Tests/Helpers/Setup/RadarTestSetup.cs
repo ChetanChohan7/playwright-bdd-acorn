@@ -67,20 +67,7 @@ public sealed class RadarTestSetup : IDisposable
         var radarConfiguration = LoadAndValidateRadarConfiguration(configuration);
         var databaseSettings = configuration.GetSection("DatabaseSettings").Get<DatabaseSettings>()
             ?? throw new InvalidOperationException("DatabaseSettings is missing.");
-        var retrySettings = configuration.GetSection("RetrySettings").Get<RetrySettings>()
-            ?? throw new InvalidOperationException("RetrySettings is missing.");
-        retrySettings.Validate();
-
-        var pipelineSettings = new PipelineSettings
-        {
-            BuildId = ReadRequiredBuildId(),
-            MinThreshold = ReadRequiredDecimal("RADAR_MIN_THRESHOLD"),
-            MaxThreshold = ReadRequiredDecimal("RADAR_MAX_THRESHOLD"),
-            RequestTime = RequestTimeFormatter.Resolve(Environment.GetEnvironmentVariable("RADAR_REQUEST_DATETIME")),
-            TestTag = Environment.GetEnvironmentVariable("TEST_TAG") ?? string.Empty
-        };
-
-        new PipelineInputValidator().Validate(pipelineSettings);
+        var (pipelineSettings, retrySettings) = LoadValidatedPipelineInputs(configuration);
         var rateLimiter = new RadarRequestRateLimiter(
             radarConfiguration.RateLimitSettings,
             radarConfiguration.RadarSettings.Endpoints.Keys);
@@ -126,6 +113,19 @@ public sealed class RadarTestSetup : IDisposable
     {
         var configuration = LoadConfiguration();
         var radarConfiguration = LoadAndValidateRadarConfiguration(configuration);
+        var (pipelineSettings, retrySettings) = LoadValidatedPipelineInputs(configuration);
+        var databaseSettings = configuration.GetSection("DatabaseSettings").Get<DatabaseSettings>()
+            ?? throw new InvalidOperationException("DatabaseSettings is missing.");
+        var reader = new RequestDataReader(new SqlConnectionFactory(databaseSettings), retrySettings);
+
+        return string.IsNullOrWhiteSpace(pipelineSettings.TestTag)
+            ? await reader.GetAllScenariosAsync(cancellationToken)
+            : await reader.GetScenariosByTestTagAsync(pipelineSettings.TestTag, cancellationToken);
+    }
+
+    private static (PipelineSettings PipelineSettings, RetrySettings RetrySettings) LoadValidatedPipelineInputs(
+        IConfiguration configuration)
+    {
         var retrySettings = configuration.GetSection("RetrySettings").Get<RetrySettings>()
             ?? throw new InvalidOperationException("RetrySettings is missing.");
         retrySettings.Validate();
@@ -140,14 +140,7 @@ public sealed class RadarTestSetup : IDisposable
         };
         new PipelineInputValidator().Validate(pipelineSettings);
 
-        var databaseSettings = configuration.GetSection("DatabaseSettings").Get<DatabaseSettings>()
-            ?? throw new InvalidOperationException("DatabaseSettings is missing.");
-        var reader = new RequestDataReader(new SqlConnectionFactory(databaseSettings), retrySettings);
-        var testTag = Environment.GetEnvironmentVariable("TEST_TAG");
-
-        return string.IsNullOrWhiteSpace(testTag)
-            ? await reader.GetAllScenariosAsync(cancellationToken)
-            : await reader.GetScenariosByTestTagAsync(testTag, cancellationToken);
+        return (pipelineSettings, retrySettings);
     }
 
     public void Dispose()
@@ -281,6 +274,24 @@ public sealed class RadarTestSetup : IDisposable
             {
                 throw new InvalidOperationException("Radar logical endpoint names must be unique ignoring case.");
             }
+
+            var endpoint = radarSettings.Endpoints[endpointName];
+            if (endpoint is null ||
+                !Uri.TryCreate(endpoint.BaseUrl, UriKind.Absolute, out var baseUri) ||
+                (baseUri.Scheme != Uri.UriSchemeHttp && baseUri.Scheme != Uri.UriSchemeHttps))
+            {
+                throw new InvalidOperationException("Every Radar endpoint must have an absolute HTTP or HTTPS BaseUrl.");
+            }
+
+            if (string.IsNullOrWhiteSpace(endpoint.ApiKeyHeaderName))
+            {
+                throw new InvalidOperationException("Every Radar endpoint must have an ApiKeyHeaderName.");
+            }
+
+            if (string.IsNullOrWhiteSpace(endpoint.ApiKeyValue))
+            {
+                throw new InvalidOperationException("Every Radar endpoint must have an ApiKeyValue.");
+            }
         }
 
         if (radarSettings.Routes is null)
@@ -288,12 +299,27 @@ public sealed class RadarTestSetup : IDisposable
             throw new InvalidOperationException("Radar routes are missing.");
         }
 
+        if (radarSettings.Routes.Count == 0)
+        {
+            throw new InvalidOperationException("At least one Radar route must be configured.");
+        }
+
         foreach (var route in radarSettings.Routes)
         {
-            if (route.Value is null || string.IsNullOrWhiteSpace(route.Value.EndpointName) ||
-                !endpointNames.Contains(route.Value.EndpointName))
+            if (string.IsNullOrWhiteSpace(route.Value?.ProductCode) ||
+                string.IsNullOrWhiteSpace(route.Value.SchemeCode))
+            {
+                throw new InvalidOperationException("Every Radar route must have ProductCode and SchemeCode values.");
+            }
+
+            if (string.IsNullOrWhiteSpace(route.Value.EndpointName) || !endpointNames.Contains(route.Value.EndpointName))
             {
                 throw new InvalidOperationException("Every Radar route must reference a configured logical endpoint.");
+            }
+
+            if (string.IsNullOrWhiteSpace(route.Value.RouteKey))
+            {
+                throw new InvalidOperationException("Every Radar route must have a RouteKey.");
             }
         }
 
@@ -304,7 +330,7 @@ public sealed class RadarTestSetup : IDisposable
 
         foreach (var mapping in radarSettings.ResponseXsdMappings)
         {
-            if (!radarSettings.Routes.ContainsKey(mapping.Key))
+            if (string.IsNullOrWhiteSpace(mapping.Key) || !radarSettings.Routes.ContainsKey(mapping.Key))
             {
                 throw new InvalidOperationException("Every Radar response XSD mapping must reference a configured route identifier.");
             }

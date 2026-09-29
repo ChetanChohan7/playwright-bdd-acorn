@@ -12,6 +12,7 @@ public class IceApiClient : IDisposable
 	private readonly IceSettings settings;
 	private readonly RetrySettings retrySettings;
 	private readonly ILogger<IceApiClient> logger;
+	private readonly Func<TimeSpan, CancellationToken, Task> retryDelayAsync;
 
 	public IceApiClient(IceSettings settings, ILogger<IceApiClient> logger, RetrySettings? retrySettings = null)
 		: this(settings, logger, retrySettings, CreateRestClient(settings))
@@ -22,12 +23,15 @@ public class IceApiClient : IDisposable
 		IceSettings settings,
 		ILogger<IceApiClient> logger,
 		RetrySettings? retrySettings,
-		RestClient restClient)
+		RestClient restClient,
+		Func<TimeSpan, CancellationToken, Task>? retryDelayAsync = null)
 	{
 		this.settings = settings;
 		this.logger = logger;
 		this.retrySettings = retrySettings ?? new RetrySettings();
+		this.retrySettings.ValidateIceApiRetrySettings();
 		this.restClient = restClient ?? throw new ArgumentNullException(nameof(restClient));
+		this.retryDelayAsync = retryDelayAsync ?? Task.Delay;
 	}
 
 	public async Task<string> GetAsync(string url, CancellationToken cancellationToken = default)
@@ -45,10 +49,9 @@ public class IceApiClient : IDisposable
 				{
 					if (IsTransient(response.StatusCode) && attempt < retrySettings.ApiRetryCount)
 					{
-						var retryAfter = GetRetryAfter(response);
-						var delay = retryAfter ?? TimeSpan.FromSeconds(retrySettings.ApiRetryDelaySeconds * Math.Pow(2, attempt));
+						var delay = GetLocalRetryDelay(attempt);
 						logger.LogWarning("Retrying ICE request after HTTP {StatusCode}; attempt {Attempt}.", (int)response.StatusCode, attempt + 1);
-						await Task.Delay(delay, cancellationToken);
+						await retryDelayAsync(delay, cancellationToken);
 						continue;
 					}
 
@@ -67,14 +70,14 @@ public class IceApiClient : IDisposable
 				attempt < retrySettings.ApiRetryCount)
 			{
 				logger.LogWarning("Retrying ICE request after a timeout; attempt {Attempt}.", attempt + 1);
-				await Task.Delay(TimeSpan.FromSeconds(retrySettings.ApiRetryDelaySeconds * Math.Pow(2, attempt)), cancellationToken);
+				await retryDelayAsync(GetLocalRetryDelay(attempt), cancellationToken);
 			}
 			catch (HttpRequestException exception) when (
 				attempt < retrySettings.ApiRetryCount &&
 				exception.StatusCode is null)
 			{
 				logger.LogWarning("Retrying ICE request after a transient network failure; attempt {Attempt}.", attempt + 1);
-				await Task.Delay(TimeSpan.FromSeconds(retrySettings.ApiRetryDelaySeconds * Math.Pow(2, attempt)), cancellationToken);
+				await retryDelayAsync(GetLocalRetryDelay(attempt), cancellationToken);
 			}
 		}
 	}
@@ -82,6 +85,11 @@ public class IceApiClient : IDisposable
 	public void Dispose()
 	{
 		restClient.Dispose();
+	}
+
+	private TimeSpan GetLocalRetryDelay(int attempt)
+	{
+		return TimeSpan.FromSeconds(retrySettings.ApiRetryDelaySeconds * Math.Pow(2, attempt));
 	}
 
 	private static RestClient CreateRestClient(IceSettings iceSettings) 

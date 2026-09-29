@@ -43,6 +43,30 @@ public class XsdValidatorTests
     }
 
     [Test]
+    public void Validate_should_throw_for_an_invalid_schema()
+    {
+        var xsdPath = Path.Combine(Path.GetTempPath(), $"invalid-schema-{Guid.NewGuid():N}.xsd");
+        File.WriteAllText(xsdPath, "<xs:schema xmlns:xs=\"http://www.w3.org/2001/XMLSchema\"><xs:element>");
+
+        try
+        {
+            Assert.Catch<Exception>(() => new XsdValidator().Validate("<Response />", xsdPath));
+        }
+        finally
+        {
+            File.Delete(xsdPath);
+        }
+    }
+
+    [Test]
+    public void Validate_should_throw_when_the_schema_file_is_missing()
+    {
+        var missingPath = Path.Combine(Path.GetTempPath(), $"missing-schema-{Guid.NewGuid():N}.xsd");
+
+        Assert.Throws<FileNotFoundException>(() => new XsdValidator().Validate("<Response />", missingPath));
+    }
+
+    [Test]
     public void Validate_should_block_external_dtd_resolution()
     {
         var xml = "<!DOCTYPE Response [<!ENTITY external SYSTEM 'file:///outside-the-trusted-directory'>]><Response><TotalAmount>&external;</TotalAmount></Response>";

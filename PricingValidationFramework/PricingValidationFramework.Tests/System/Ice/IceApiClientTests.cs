@@ -33,6 +33,85 @@ public class IceApiClientTests
 		});
 	}
 
+	[TestCase(null)]
+	[TestCase("30")]
+	[TestCase("0")]
+	[TestCase("-5")]
+	[TestCase("invalid")]
+	[TestCase("Wed, 21 Oct 2030 07:28:00 GMT")]
+	[TestCase("999999999999999999999999999999999999")]
+	[TestCase(" ")]
+	[TestCase("malformed value")]
+	public async Task GetAsync_should_use_local_backoff_regardless_of_retry_after_header(string? retryAfter)
+	{
+		var callCount = 0;
+		var delays = new List<TimeSpan>();
+		using var client = CreateClient((_, _) =>
+		{
+			callCount++;
+			if (callCount > 1)
+			{
+				return Task.FromResult(Response(HttpStatusCode.OK));
+			}
+
+			var response = Response(HttpStatusCode.ServiceUnavailable);
+			if (retryAfter is not null)
+			{
+				response.Headers.TryAddWithoutValidation("Retry-After", retryAfter);
+			}
+
+			return Task.FromResult(response);
+		}, new RetrySettings { ApiRetryCount = 1, ApiRetryDelaySeconds = 3 }, (delay, _) =>
+		{
+			delays.Add(delay);
+			return Task.CompletedTask;
+		});
+
+		await client.GetAsync("https://ice.example.test/quote");
+
+		Assert.Multiple(() =>
+		{
+			Assert.That(callCount, Is.EqualTo(2));
+			Assert.That(delays, Is.EqualTo(new[] { TimeSpan.FromSeconds(3) }));
+		});
+	}
+
+	[Test]
+	public void GetAsync_should_propagate_cancellation_during_local_retry_delay()
+	{
+		using var cancellationTokenSource = new CancellationTokenSource();
+		var delays = new List<TimeSpan>();
+		using var client = CreateClient((_, _) =>
+			Task.FromResult(Response(HttpStatusCode.ServiceUnavailable)),
+			new RetrySettings { ApiRetryCount = 1, ApiRetryDelaySeconds = 30 },
+			(delay, cancellationToken) =>
+			{
+				delays.Add(delay);
+				cancellationTokenSource.Cancel();
+				return Task.Delay(delay, cancellationToken);
+			});
+
+		Assert.That(async () => await client.GetAsync(
+			"https://ice.example.test/quote",
+			cancellationTokenSource.Token), Throws.InstanceOf<OperationCanceledException>());
+		Assert.That(delays, Is.EqualTo(new[] { TimeSpan.FromSeconds(30) }));
+	}
+
+	[Test]
+	public void GetAsync_should_exhaust_transient_http_retries()
+	{
+		var callCount = 0;
+		using var client = CreateClient((_, _) =>
+		{
+			callCount++;
+			return Task.FromResult(Response(HttpStatusCode.ServiceUnavailable));
+		}, new RetrySettings { ApiRetryCount = 2, ApiRetryDelaySeconds = 0 }, (_, _) => Task.CompletedTask);
+
+		Assert.ThrowsAsync<HttpRequestException>(async () =>
+			await client.GetAsync("https://ice.example.test/quote"));
+		Assert.That(callCount, Is.EqualTo(3));
+	}
+
 	[TestCase(HttpStatusCode.BadRequest)]
 	[TestCase(HttpStatusCode.Unauthorized)]
 	[TestCase(HttpStatusCode.Forbidden)]
@@ -124,20 +203,27 @@ public class IceApiClientTests
 	}
 
 	private static IceApiClient CreateClient(
-		Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>> responseHandler)
+		Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>> responseHandler,
+		RetrySettings? retrySettings = null,
+		Func<TimeSpan, CancellationToken, Task>? retryDelayAsync = null)
 	{
-		var retrySettings = new RetrySettings
+		var defaultRetrySettings = new RetrySettings
 		{
 			ApiRetryCount = 2,
 			ApiRetryDelaySeconds = 0
 		};
-		var settings = new IceSettings
+		var iceSettings = new IceSettings
 		{
 			ApiKeyHeaderName = "X-ICE-API-KEY",
 			ApiKeyHeaderValue = "test-key"
 		};
 		var restClient = new RestClient(new HttpClient(new StubHttpMessageHandler(responseHandler)));
-		return new IceApiClient(settings, NullLogger<IceApiClient>.Instance, retrySettings, restClient);
+		return new IceApiClient(
+			iceSettings,
+			NullLogger<IceApiClient>.Instance,
+			retrySettings ?? defaultRetrySettings,
+			restClient,
+			retryDelayAsync);
 	}
 
 	private static HttpResponseMessage Response(HttpStatusCode statusCode)

@@ -24,6 +24,7 @@ public class RequestDataReader
 	{
 		this.connectionFactory = connectionFactory;
 		this.retrySettings = retrySettings ?? new RetrySettings();
+		this.retrySettings.ValidateDatabaseRetrySettings();
 	}
 
 	public Task<IReadOnlyList<ScenarioRequest>> GetAllScenariosAsync(CancellationToken cancellationToken = default)

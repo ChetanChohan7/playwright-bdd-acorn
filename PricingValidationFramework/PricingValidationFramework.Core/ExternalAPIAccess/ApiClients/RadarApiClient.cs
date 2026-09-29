@@ -27,7 +27,7 @@ public class RadarApiClient : IDisposable
 		this.restClient = restClient ?? new RestClient();
 		this.logger = logger ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<RadarApiClient>.Instance;
 		this.retrySettings = retrySettings ?? new RetrySettings();
-		this.retrySettings.Validate();
+		this.retrySettings.ValidateRadarApiRetrySettings();
 		this.retryDelayAsync = retryDelayAsync ?? Task.Delay;
 	}
 
@@ -43,52 +43,23 @@ public class RadarApiClient : IDisposable
 		string? productCode = null,
 		string? schemeCode = null)
 	{
-		if (string.IsNullOrWhiteSpace(url))
-		{
-			throw new ArgumentException("Radar request URL is required.", nameof(url));
-		}
-
-		if (string.IsNullOrWhiteSpace(apiKeyHeaderName))
-		{
-			throw new ArgumentException("Radar API key header name is required.", nameof(apiKeyHeaderName));
-		}
-
-		if (string.IsNullOrWhiteSpace(apiKeyValue))
-		{
-			throw new ArgumentException("Radar API key value is required.", nameof(apiKeyValue));
-		}
-
-		if (string.IsNullOrWhiteSpace(requestXml))
-		{
-			throw new ArgumentException("Radar request XML is required.", nameof(requestXml));
-		}
+		ValidateRequestInputs(url, apiKeyHeaderName, apiKeyValue, requestXml);
 
 		cancellationToken.ThrowIfCancellationRequested();
+		var diagnostics = new RequestDiagnostics(endpointName, scenarioId, quoteRef, productCode, schemeCode);
 
 		for (var attempt = 0; ; attempt++)
 		{
 			try
 			{
-				var permitWaitStart = Stopwatch.GetTimestamp();
-				await rateLimiter.WaitAsync(endpointName, cancellationToken);
-
-				logger.LogDebug(
-					"Radar request permit acquired. ScenarioId={ScenarioId}, QuoteRef={QuoteRef}, ProductCode={ProductCode}, SchemeCode={SchemeCode}, EndpointName={EndpointName}, Attempt={Attempt}, ExecutionStage={ExecutionStage}, PermitWaitDuration={PermitWaitDuration}.",
-					scenarioId,
-					quoteRef,
-					productCode,
-					schemeCode,
-					endpointName,
-					attempt + 1,
-					"RateLimitPermit",
-					Stopwatch.GetElapsedTime(permitWaitStart));
-				var request = new RestRequest(url, Method.Post)
-					.AddHeader(apiKeyHeaderName, apiKeyValue)
-					.AddHeader("Accept", "application/xml")
-					.AddStringBody(requestXml, ContentType.Xml);
-
-				var response = await restClient.ExecuteAsync(request, cancellationToken);
-				cancellationToken.ThrowIfCancellationRequested();
+				var response = await ExecuteAttemptAsync(
+					url,
+					apiKeyHeaderName,
+					apiKeyValue,
+					requestXml,
+					diagnostics,
+					attempt,
+					cancellationToken);
 
 				if (response.StatusCode != 0 && !IsSuccess(response.StatusCode))
 				{
@@ -96,13 +67,9 @@ public class RadarApiClient : IDisposable
 					{
 						await DelayBeforeRetryAsync(
 							response,
-							endpointName,
 							attempt,
 							cancellationToken,
-							scenarioId,
-							quoteRef,
-							productCode,
-							schemeCode);
+							diagnostics);
 						continue;
 					}
 
@@ -127,11 +94,11 @@ public class RadarApiClient : IDisposable
 				var delay = GetLocalRetryDelay(attempt);
 				logger.LogWarning(
 					"Retrying Radar request after a request timeout. ScenarioId={ScenarioId}, QuoteRef={QuoteRef}, ProductCode={ProductCode}, SchemeCode={SchemeCode}, EndpointName={EndpointName}, Attempt={Attempt}, MaxAttempts={MaxAttempts}, RetryDelay={RetryDelay}, ExecutionStage={ExecutionStage}.",
-					scenarioId,
-					quoteRef,
-					productCode,
-					schemeCode,
-					endpointName,
+				diagnostics.ScenarioId,
+				diagnostics.QuoteRef,
+				diagnostics.ProductCode,
+				diagnostics.SchemeCode,
+				diagnostics.EndpointName,
 					attempt + 1,
 					retrySettings.ApiRetryCount,
 					delay,
@@ -147,11 +114,11 @@ public class RadarApiClient : IDisposable
 				var delay = GetLocalRetryDelay(attempt);
 				logger.LogWarning(
 					"Retrying Radar request after a transient network failure. ScenarioId={ScenarioId}, QuoteRef={QuoteRef}, ProductCode={ProductCode}, SchemeCode={SchemeCode}, EndpointName={EndpointName}, Attempt={Attempt}, MaxAttempts={MaxAttempts}, RetryDelay={RetryDelay}, RetryAfterUsed={RetryAfterUsed}, ExecutionStage={ExecutionStage}.",
-					scenarioId,
-					quoteRef,
-					productCode,
-					schemeCode,
-					endpointName,
+					diagnostics.ScenarioId,
+					diagnostics.QuoteRef,
+					diagnostics.ProductCode,
+					diagnostics.SchemeCode,
+					diagnostics.EndpointName,
 					attempt + 1,
 					retrySettings.ApiRetryCount,
 					delay,
@@ -162,6 +129,62 @@ public class RadarApiClient : IDisposable
 		}
 	}
 
+	private static void ValidateRequestInputs(string url, string apiKeyHeaderName, string apiKeyValue, string requestXml)
+	{
+		if (string.IsNullOrWhiteSpace(url))
+		{
+			throw new ArgumentException("Radar request URL is required.", nameof(url));
+		}
+
+		if (string.IsNullOrWhiteSpace(apiKeyHeaderName))
+		{
+			throw new ArgumentException("Radar API key header name is required.", nameof(apiKeyHeaderName));
+		}
+
+		if (string.IsNullOrWhiteSpace(apiKeyValue))
+		{
+			throw new ArgumentException("Radar API key value is required.", nameof(apiKeyValue));
+		}
+
+		if (string.IsNullOrWhiteSpace(requestXml))
+		{
+			throw new ArgumentException("Radar request XML is required.", nameof(requestXml));
+		}
+	}
+
+	private async Task<RestResponse> ExecuteAttemptAsync(
+		string url,
+		string apiKeyHeaderName,
+		string apiKeyValue,
+		string requestXml,
+		RequestDiagnostics diagnostics,
+		int attempt,
+		CancellationToken cancellationToken)
+	{
+		var permitWaitStart = Stopwatch.GetTimestamp();
+		await rateLimiter.WaitAsync(diagnostics.EndpointName, cancellationToken);
+
+		logger.LogDebug(
+			"Radar request permit acquired. ScenarioId={ScenarioId}, QuoteRef={QuoteRef}, ProductCode={ProductCode}, SchemeCode={SchemeCode}, EndpointName={EndpointName}, Attempt={Attempt}, ExecutionStage={ExecutionStage}, PermitWaitDuration={PermitWaitDuration}.",
+			diagnostics.ScenarioId,
+			diagnostics.QuoteRef,
+			diagnostics.ProductCode,
+			diagnostics.SchemeCode,
+			diagnostics.EndpointName,
+			attempt + 1,
+			"RateLimitPermit",
+			Stopwatch.GetElapsedTime(permitWaitStart));
+
+		var request = new RestRequest(url, Method.Post)
+			.AddHeader(apiKeyHeaderName, apiKeyValue)
+			.AddHeader("Accept", "application/xml")
+			.AddStringBody(requestXml, ContentType.Xml);
+
+		var response = await restClient.ExecuteAsync(request, cancellationToken);
+		cancellationToken.ThrowIfCancellationRequested();
+		return response;
+	}
+
 	public void Dispose()
 	{
 		restClient.Dispose();
@@ -169,31 +192,23 @@ public class RadarApiClient : IDisposable
 
 	private async Task DelayBeforeRetryAsync(
 		RestResponse response,
-		string endpointName,
 		int attempt,
 		CancellationToken cancellationToken,
-		string? scenarioId,
-		string? quoteRef,
-		string? productCode,
-		string? schemeCode)
+		RequestDiagnostics diagnostics)
 	{
 		var delay = GetRetryDelay(
 			response,
-			endpointName,
 			attempt,
 			out var retryAfterUsed,
-			scenarioId,
-			quoteRef,
-			productCode,
-			schemeCode);
+			diagnostics);
 		logger.LogWarning(
 			"Retrying Radar request after HTTP {StatusCode}. ScenarioId={ScenarioId}, QuoteRef={QuoteRef}, ProductCode={ProductCode}, SchemeCode={SchemeCode}, EndpointName={EndpointName}, Attempt={Attempt}, MaxAttempts={MaxAttempts}, RetryDelay={RetryDelay}, RetryAfterUsed={RetryAfterUsed}, ExecutionStage={ExecutionStage}.",
 			(int)response.StatusCode,
-			scenarioId,
-			quoteRef,
-			productCode,
-			schemeCode,
-			endpointName,
+			diagnostics.ScenarioId,
+			diagnostics.QuoteRef,
+			diagnostics.ProductCode,
+			diagnostics.SchemeCode,
+			diagnostics.EndpointName,
 			attempt + 1,
 			retrySettings.ApiRetryCount,
 			delay,
@@ -209,13 +224,9 @@ public class RadarApiClient : IDisposable
 
 	private TimeSpan GetRetryDelay(
 		RestResponse response,
-		string endpointName,
 		int attempt,
 		out bool retryAfterUsed,
-		string? scenarioId,
-		string? quoteRef,
-		string? productCode,
-		string? schemeCode)
+		RequestDiagnostics diagnostics)
 	{
 		var localDelay = GetLocalRetryDelay(attempt);
 		var retryAfterValue = response.Headers?
@@ -238,7 +249,7 @@ public class RadarApiClient : IDisposable
 		{
 			logger.LogWarning(
 				"Radar Retry-After was capped. EndpointName={EndpointName}, Attempt={Attempt}, SuppliedRetryAfter={SuppliedRetryAfter}, ConfiguredMaximum={ConfiguredMaximum}, EffectiveDelay={EffectiveDelay}.",
-				endpointName,
+				diagnostics.EndpointName,
 				attempt + 1,
 				retryAfterValue,
 				maximumRetryAfterDelay,
@@ -249,11 +260,11 @@ public class RadarApiClient : IDisposable
 		{
 			logger.LogWarning(
 				"Radar response contained an invalid Retry-After value. ScenarioId={ScenarioId}, QuoteRef={QuoteRef}, ProductCode={ProductCode}, SchemeCode={SchemeCode}, EndpointName={EndpointName}, Attempt={Attempt}, ExecutionStage={ExecutionStage}.",
-				scenarioId,
-				quoteRef,
-				productCode,
-				schemeCode,
-				endpointName,
+				diagnostics.ScenarioId,
+				diagnostics.QuoteRef,
+				diagnostics.ProductCode,
+				diagnostics.SchemeCode,
+				diagnostics.EndpointName,
 				attempt + 1,
 				"RetryAfterParsing");
 		}
@@ -317,4 +328,11 @@ public class RadarApiClient : IDisposable
 			response.ErrorException,
 			response.StatusCode);
 	}
+
+	private readonly record struct RequestDiagnostics(
+		string EndpointName,
+		string? ScenarioId,
+		string? QuoteRef,
+		string? ProductCode,
+		string? SchemeCode);
 }

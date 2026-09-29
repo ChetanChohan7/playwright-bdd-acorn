@@ -7,14 +7,9 @@ public class XsdValidator
 {
 	public XsdValidationResult Validate(string responseXml, string xsdPath)
 	{
-		if (string.IsNullOrWhiteSpace(responseXml))
-		{
-			return new XsdValidationResult(false, new[] { "Response XML is empty." });
-		}
-
 		if (string.IsNullOrWhiteSpace(xsdPath))
 		{
-			return new XsdValidationResult(false, new[] { "XSD path is empty." });
+			throw new ArgumentException("XSD path is required.", nameof(xsdPath));
 		}
 
 		var settings = new XmlReaderSettings
@@ -26,6 +21,7 @@ public class XsdValidator
 
 		var schemaSet = new XmlSchemaSet();
 		schemaSet.Add(null, xsdPath);
+		schemaSet.Compile();
 		settings.Schemas = schemaSet;
 
 		var errors = new List<string>();
@@ -33,6 +29,11 @@ public class XsdValidator
 		{
 			errors.Add(args.Message);
 		};
+
+		if (string.IsNullOrWhiteSpace(responseXml))
+		{
+			return new XsdValidationResult(false, new[] { "Response XML is empty." });
+		}
 
 		try
 		{
@@ -45,11 +46,6 @@ public class XsdValidator
 		{
 			errors.Add(ex.Message);
 		}
-		catch (Exception ex)
-		{
-			errors.Add(ex.Message);
-		}
-
 		return new XsdValidationResult(errors.Count == 0, errors);
 	}
 }

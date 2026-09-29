@@ -149,6 +149,7 @@ public sealed class RadarScenarioProcessor
         CancellationToken cancellationToken)
     {
         var radarResponseXml = string.Empty;
+        var executionStage = "RequestExecution";
         try
         {
             radarResponseXml = await ExecuteRequestAsync(
@@ -158,15 +159,19 @@ public sealed class RadarScenarioProcessor
                 requestTime,
                 cancellationToken);
 
-            return ValidateAndBuildResult(
+            var result = ValidateAndBuildResult(
                 scenario,
                 routeIdentifier,
                 routeSettings,
+                endpointSettings.ApiKeyValue,
                 buildId,
                 radarResponseXml,
                 baselineValue,
                 minThreshold,
-                maxThreshold);
+                maxThreshold,
+                ref executionStage);
+            cancellationToken.ThrowIfCancellationRequested();
+            return result;
         }
         catch (Exception ex) when (
             ex is OperationCanceledException or RadarRequestRateLimitException ||
@@ -180,7 +185,8 @@ public sealed class RadarScenarioProcessor
                 scenario,
                 Redact(ex.Message, endpointSettings.ApiKeyValue),
                 routeSettings.EndpointName,
-                "ScenarioProcessing");
+                executionStage,
+                endpointSettings.ApiKeyValue);
             return BuildErrorRow(scenario, buildId, radarResponseXml, baselineValue, minThreshold, maxThreshold);
         }
     }
@@ -189,34 +195,42 @@ public sealed class RadarScenarioProcessor
         ScenarioRequest scenario,
         string routeIdentifier,
         RadarRouteSettings routeSettings,
+        string apiKeyValue,
         string buildId,
         string radarResponseXml,
         decimal baselineValue,
         decimal minThreshold,
-        decimal maxThreshold)
+        decimal maxThreshold,
+        ref string executionStage)
     {
         // TODO: Register each received response schema in RadarSettings.ResponseXsdMappings under its route identifier.
         var responseXsdFile = radarSettings.ResponseXsdMappings.TryGetValue(routeIdentifier, out var mappedXsdFile)
             ? mappedXsdFile
             : string.Empty;
-        var responseValidation = ValidateResponseXml(radarResponseXml, responseXsdFile);
+        var responseValidation = ValidateResponseXml(radarResponseXml, responseXsdFile, ref executionStage);
         if (responseValidation is { IsValid: false })
         {
             RecordError(
                 scenario,
                 $"Radar response XSD validation failed. Errors: {string.Join(" | ", responseValidation.Errors)}",
                 routeSettings.EndpointName,
-                "ResponseValidation");
-            return BuildErrorRow(scenario, buildId, radarResponseXml, baselineValue, minThreshold, maxThreshold);
+                "XsdValidation",
+                apiKeyValue);
+            executionStage = "ResultConstruction";
+            return BuildValidationFailureRow(scenario, buildId, radarResponseXml, baselineValue, minThreshold, maxThreshold);
         }
 
+        executionStage = "ResponseDeserialization";
         var radarResponse = DeserializeResponse(radarResponseXml);
         var radarValue = radarResponse.TotalAmount;
+
+        executionStage = "BaselineComparison";
         var difference = radarValue - baselineValue;
         var result = thresholdMatcher.IsWithinThreshold(difference, minThreshold, maxThreshold)
             ? ScenarioResult.Pass
             : ScenarioResult.Fail;
 
+        executionStage = "ResultConstruction";
         return RadarReportingHelper.BuildRow(
             buildId,
             scenario.ScenarioId,
@@ -255,11 +269,20 @@ public sealed class RadarScenarioProcessor
             scenario.SchemeCode);
     }
 
-    private XsdValidationResult? ValidateResponseXml(string responseXml, string? xsdFile)
+    private XsdValidationResult? ValidateResponseXml(
+        string responseXml,
+        string? xsdFile,
+        ref string executionStage)
     {
-        return string.IsNullOrWhiteSpace(xsdFile)
+        executionStage = "XsdResolution";
+        var resolvedXsdPath = string.IsNullOrWhiteSpace(xsdFile)
             ? null
-            : xsdValidator.Validate(responseXml, xsdFileResolver.Resolve(xsdFile));
+            : xsdFileResolver.Resolve(xsdFile);
+
+        executionStage = "XsdValidation";
+        return resolvedXsdPath is null
+            ? null
+            : xsdValidator.Validate(responseXml, resolvedXsdPath);
     }
 
     private static RadarResponse DeserializeResponse(string responseXml)
@@ -275,9 +298,10 @@ public sealed class RadarScenarioProcessor
         ScenarioRequest scenario,
         string reason,
         string? endpointName = null,
-        string executionStage = "ScenarioProcessing")
+        string executionStage = "ScenarioProcessing",
+        string? apiKeyValue = null)
     {
-        var safeReason = Redact(reason, null);
+        var safeReason = Redact(reason, apiKeyValue);
         logger.ExecutionFailed(
             scenario.ScenarioId,
             scenario.QuoteRef,
@@ -285,7 +309,8 @@ public sealed class RadarScenarioProcessor
             scenario.SchemeCode,
             endpointName,
             executionStage,
-            new InvalidOperationException(safeReason));
+            new InvalidOperationException(safeReason),
+            safeDetail: safeReason);
     }
 
     private static string Redact(string reason, string? apiKeyValue)
@@ -320,5 +345,29 @@ public sealed class RadarScenarioProcessor
             minThreshold,
             maxThreshold,
             ScenarioResult.Error);
+    }
+
+    private static RadarValidationReportRow BuildValidationFailureRow(
+        ScenarioRequest scenario,
+        string buildId,
+        string radarResponseXml,
+        decimal baselineValue,
+        decimal minThreshold,
+        decimal maxThreshold)
+    {
+        return RadarReportingHelper.BuildRow(
+            buildId,
+            scenario.ScenarioId,
+            scenario.QuoteRef,
+            scenario.SchemeCode,
+            scenario.ProductCode,
+            scenario.XmlRequest,
+            radarResponseXml,
+            null,
+            baselineValue,
+            null,
+            minThreshold,
+            maxThreshold,
+            ScenarioResult.Fail);
     }
 }

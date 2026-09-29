@@ -14,6 +14,7 @@ public class ResultUpdater
 	{
 		this.connectionFactory = connectionFactory;
 		this.retrySettings = retrySettings ?? new RetrySettings();
+		this.retrySettings.ValidateDatabaseRetrySettings();
 	}
 
 	public async Task UpdatePassResultAsync(ScenarioResponse response, CancellationToken cancellationToken = default)

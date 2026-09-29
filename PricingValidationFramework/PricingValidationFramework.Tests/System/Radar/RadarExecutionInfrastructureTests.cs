@@ -152,6 +152,72 @@ public class RadarExecutionInfrastructureTests
 	}
 
 	[Test]
+	public void Retry_settings_should_accept_zero_retries_delays_and_retry_after_cap()
+	{
+		var settings = new RetrySettings
+		{
+			DatabaseRetryCount = 0,
+			DatabaseRetryDelaySeconds = 0,
+			ApiRetryCount = 0,
+			ApiRetryDelaySeconds = 0,
+			ApiRetryAfterMaxDelaySeconds = 0
+		};
+
+		Assert.DoesNotThrow(settings.Validate);
+	}
+
+	[Test]
+	public void Retry_settings_should_accept_defaults()
+	{
+		Assert.DoesNotThrow(() => new RetrySettings().Validate());
+	}
+
+	[TestCase(-1, 0, 0, 0)]
+	[TestCase(0, -1, 0, 0)]
+	[TestCase(0, 0, -1, 0)]
+	[TestCase(0, 0, 0, -1)]
+	public void Retry_settings_should_reject_negative_counts_and_delays(
+		int databaseRetryCount,
+		int databaseDelay,
+		int apiRetryCount,
+		int apiDelay)
+	{
+		var settings = new RetrySettings
+		{
+			DatabaseRetryCount = databaseRetryCount,
+			DatabaseRetryDelaySeconds = databaseDelay,
+			ApiRetryCount = apiRetryCount,
+			ApiRetryDelaySeconds = apiDelay
+		};
+
+		Assert.Throws<ArgumentOutOfRangeException>(settings.Validate);
+	}
+
+	[Test]
+	public void Retry_settings_should_reject_delay_calculations_beyond_task_delay_range()
+	{
+		Assert.Throws<ArgumentOutOfRangeException>(() => new RetrySettings
+		{
+			ApiRetryCount = 32,
+			ApiRetryDelaySeconds = 1
+		}.Validate());
+
+		Assert.Throws<ArgumentOutOfRangeException>(() => new RetrySettings
+		{
+			ApiRetryAfterMaxDelaySeconds = int.MaxValue
+		}.Validate());
+	}
+
+	[Test]
+	public void Ice_retry_validation_should_not_require_a_radar_retry_after_cap()
+	{
+		Assert.DoesNotThrow(() => new RetrySettings
+		{
+			ApiRetryAfterMaxDelaySeconds = -1
+		}.ValidateIceApiRetrySettings());
+	}
+
+	[Test]
 	public async Task Endpoint_limiters_should_have_independent_budgets_and_bounded_cancellable_queues()
 	{
 		using var limiter = new RadarRequestRateLimiter(
@@ -189,7 +255,6 @@ public class RadarExecutionInfrastructureTests
 
 	[TestCase("RadarRateLimitSettings__RequestsPerSecond", "0")]
 	[TestCase("RadarRateLimitSettings__QueueLimit", "-1")]
-	[TestCase("RetrySettings__ApiRetryAfterMaxDelaySeconds", "0")]
 	[TestCase("RetrySettings__ApiRetryAfterMaxDelaySeconds", "-1")]
 	public void Radar_setup_should_reject_invalid_limiter_configuration_before_database_discovery(
 		string environmentVariable,
@@ -235,14 +300,85 @@ public class RadarExecutionInfrastructureTests
 		{
 			Endpoints = new Dictionary<string, RadarEndpointSettings>(StringComparer.Ordinal)
 			{
-				["PricingA"] = new(),
+				["PricingA"] = new()
+				{
+					BaseUrl = "https://radar.example.test",
+					ApiKeyHeaderName = "X-API-KEY",
+					ApiKeyValue = "test-value"
+				},
 				["pricinga"] = new()
+				{
+					BaseUrl = "https://radar.example.test",
+					ApiKeyHeaderName = "X-API-KEY",
+					ApiKeyValue = "test-value"
+				}
 			}
 		};
 
 		Assert.That(
 			() => RadarTestSetup.ValidateRadarConfiguration(radarSettings, new RadarRateLimitSettings()),
 			Throws.InvalidOperationException.With.Message.Contains("unique ignoring case"));
+	}
+
+	[Test]
+	public void Radar_configuration_should_accept_complete_endpoint_and_route_settings()
+	{
+		Assert.DoesNotThrow(() => RadarTestSetup.ValidateRadarConfiguration(
+			CreateValidRadarSettings(),
+			new RadarRateLimitSettings()));
+	}
+
+	[TestCase("url")]
+	[TestCase("header")]
+	[TestCase("credential")]
+	[TestCase("product")]
+	[TestCase("scheme")]
+	[TestCase("endpoint")]
+	[TestCase("routeKey")]
+	public void Radar_configuration_should_reject_missing_endpoint_or_route_values_without_secrets(string field)
+	{
+		const string secret = "test-secret-that-must-not-appear";
+		var settings = CreateValidRadarSettings();
+		settings.Endpoints["PricingA"].ApiKeyValue = secret;
+
+		switch (field)
+		{
+			case "url":
+				settings.Endpoints["PricingA"].BaseUrl = string.Empty;
+				break;
+			case "header":
+				settings.Endpoints["PricingA"].ApiKeyHeaderName = string.Empty;
+				break;
+			case "credential":
+				settings.Endpoints["PricingA"].ApiKeyValue = string.Empty;
+				break;
+			case "product":
+				settings.Routes["Route001"].ProductCode = string.Empty;
+				break;
+			case "scheme":
+				settings.Routes["Route001"].SchemeCode = string.Empty;
+				break;
+			case "endpoint":
+				settings.Routes["Route001"].EndpointName = string.Empty;
+				break;
+			case "routeKey":
+				settings.Routes["Route001"].RouteKey = string.Empty;
+				break;
+		}
+
+		var exception = Assert.Throws<InvalidOperationException>(() =>
+			RadarTestSetup.ValidateRadarConfiguration(settings, new RadarRateLimitSettings()));
+		Assert.That(exception!.Message, Does.Not.Contain(secret));
+	}
+
+	[Test]
+	public void Radar_configuration_should_reject_xsd_mapping_for_unknown_route()
+	{
+		var settings = CreateValidRadarSettings();
+		settings.ResponseXsdMappings["UnknownRoute"] = "unavailable-schema.xsd";
+
+		Assert.Throws<InvalidOperationException>(() =>
+			RadarTestSetup.ValidateRadarConfiguration(settings, new RadarRateLimitSettings()));
 	}
 
 	private static ScenarioRequest CreateScenario(string scenarioId, string testTags)
@@ -255,6 +391,36 @@ public class RadarExecutionInfrastructureTests
 			SchemeCode = "ABC",
 			XmlRequest = "<Request>secret XML</Request>",
 			TestTags = testTags
+		};
+	}
+
+	private static RadarSettings CreateValidRadarSettings()
+	{
+		return new RadarSettings
+		{
+			Endpoints = new Dictionary<string, RadarEndpointSettings>(StringComparer.Ordinal)
+			{
+				["PricingA"] = new()
+				{
+					BaseUrl = "https://radar.example.test/quote",
+					ApiKeyHeaderName = "X-API-KEY",
+					ApiKeyValue = "test-value"
+				}
+			},
+			Routes = new Dictionary<string, RadarRouteSettings>(StringComparer.Ordinal)
+			{
+				["Route001"] = new()
+				{
+					ProductCode = "HOME",
+					SchemeCode = "ABC",
+					EndpointName = "PricingA",
+					RouteKey = "home-abc"
+				}
+			},
+			ResponseXsdMappings = new Dictionary<string, string>(StringComparer.Ordinal)
+			{
+				["Route001"] = string.Empty
+			}
 		};
 	}
 

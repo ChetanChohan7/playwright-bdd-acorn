@@ -14,6 +14,7 @@ using PricingValidationFramework.Core.Models.Reporting;
 using PricingValidationFramework.Core.Validation;
 using PricingValidationFramework.Tests.Helpers.Reporting;
 using PricingValidationFramework.Tests.Helpers.Validation;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using RestSharp;
 
@@ -161,16 +162,17 @@ public class RadarSystemFlowTests
     }
 
     [Test]
-    public async Task Radar_system_flow_should_validate_response_xml_before_deserializing()
+    public async Task Radar_system_flow_should_classify_response_schema_violation_as_business_failure()
     {
         var requestCount = 0;
         var settings = CreateSettings();
         settings.ResponseXsdMappings["Route001"] = "RadarSystemTest.xsd";
+        var log = new CapturingLogger<RadarTestRunLogger>();
         var (processor, apiClient) = CreateProcessor(new StubHttpMessageHandler(_ =>
         {
             requestCount++;
             return RawResponse("<Response><Invalid>oops</Invalid></Response>");
-        }), settings);
+        }), settings, new RadarTestRunLogger(log));
         using var _ = apiClient;
 
         var row = await processor.ProcessAsync(
@@ -183,8 +185,75 @@ public class RadarSystemFlowTests
 
         Assert.Multiple(() =>
         {
-            Assert.That(row.Result, Is.EqualTo(ScenarioResult.Error));
+            Assert.That(row.Result, Is.EqualTo(ScenarioResult.Fail));
+            Assert.That(row.RadarResponseXml, Is.EqualTo("<Response><Invalid>oops</Invalid></Response>"));
             Assert.That(requestCount, Is.EqualTo(1));
+            Assert.That(log.Messages.Single(), Does.Contain("ExecutionStage=XsdValidation"));
+        });
+    }
+
+    [Test]
+    public async Task Radar_system_flow_should_classify_missing_response_schema_as_technical_error()
+    {
+        var settings = CreateSettings();
+        settings.ResponseXsdMappings["Route001"] = "missing-schema.xsd";
+        settings.Endpoints["Endpoint1"].ApiKeyValue = "test-secret-value";
+        var log = new CapturingLogger<RadarTestRunLogger>();
+        var (processor, apiClient) = CreateProcessor(
+            new StubHttpMessageHandler(_ => SuccessResponse("101.00")),
+            settings,
+            new RadarTestRunLogger(log));
+        using var _ = apiClient;
+
+        var row = await processor.ProcessAsync(
+            CreateScenario("SCENARIO-MISSING-XSD", "QUOTE-MISSING-XSD"),
+            "build-1",
+            100.00m,
+            -5.00m,
+            5.00m,
+            RequestTime);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(row.Result, Is.EqualTo(ScenarioResult.Error));
+            Assert.That(log.Messages.Single(), Does.Contain("ExecutionStage=XsdResolution"));
+            Assert.That(log.Messages.Single(), Does.Contain("missing-schema.xsd"));
+            Assert.That(log.Messages.Single(), Does.Not.Contain("test-secret-value"));
+        });
+    }
+
+    [Test]
+    public async Task Radar_system_flow_should_keep_processing_stages_isolated_between_concurrent_scenarios()
+    {
+        var settings = CreateSettings();
+        settings.ResponseXsdMappings["Route001"] = "missing-schema.xsd";
+        var log = new CapturingLogger<RadarTestRunLogger>();
+        var (processor, apiClient) = CreateProcessor(new StubHttpMessageHandler(request =>
+        {
+            var requestXml = request.Content!.ReadAsStringAsync().GetAwaiter().GetResult();
+            return requestXml.Contains("REQUEST-FAIL", StringComparison.Ordinal)
+                ? new HttpResponseMessage(HttpStatusCode.BadRequest)
+                : SuccessResponse("101.00");
+        }), settings, new RadarTestRunLogger(log));
+        using var _ = apiClient;
+
+        var requestFailure = CreateScenario("SCENARIO-REQUEST-STAGE", "QUOTE-REQUEST-STAGE");
+        requestFailure.XmlRequest = "<Request>REQUEST-FAIL</Request>";
+        var xsdFailure = CreateScenario("SCENARIO-XSD-STAGE", "QUOTE-XSD-STAGE");
+
+        var rows = await Task.WhenAll(
+            processor.ProcessAsync(requestFailure, "build-1", 100.00m, -5.00m, 5.00m, RequestTime),
+            processor.ProcessAsync(xsdFailure, "build-1", 100.00m, -5.00m, 5.00m, RequestTime));
+
+        var requestFailureLog = log.Messages.Single(message => message.Contains("SCENARIO-REQUEST-STAGE", StringComparison.Ordinal));
+        var xsdFailureLog = log.Messages.Single(message => message.Contains("SCENARIO-XSD-STAGE", StringComparison.Ordinal));
+        Assert.Multiple(() =>
+        {
+            Assert.That(rows, Has.All.Property(nameof(RadarValidationReportRow.Result)).EqualTo(ScenarioResult.Error));
+            Assert.That(requestFailureLog, Does.Contain("ExecutionStage=RequestExecution"));
+            Assert.That(requestFailureLog, Does.Not.Contain("ExecutionStage=XsdResolution"));
+            Assert.That(xsdFailureLog, Does.Contain("ExecutionStage=XsdResolution"));
+            Assert.That(xsdFailureLog, Does.Not.Contain("ExecutionStage=RequestExecution"));
         });
     }
 
@@ -194,7 +263,11 @@ public class RadarSystemFlowTests
     {
         var settings = CreateSettings();
         settings.ResponseXsdMappings.Remove("Route001");
-        var (processor, apiClient) = CreateProcessor(new StubHttpMessageHandler(_ => RawResponse(responseXml)), settings);
+        var log = new CapturingLogger<RadarTestRunLogger>();
+        var (processor, apiClient) = CreateProcessor(
+			new StubHttpMessageHandler(_ => RawResponse(responseXml)),
+			settings,
+			new RadarTestRunLogger(log));
         using var _ = apiClient;
 
         var row = await processor.ProcessAsync(
@@ -205,7 +278,11 @@ public class RadarSystemFlowTests
             5.00m,
             RequestTime);
 
-        Assert.That(row.Result, Is.EqualTo(ScenarioResult.Error));
+        Assert.Multiple(() =>
+        {
+            Assert.That(row.Result, Is.EqualTo(ScenarioResult.Error));
+            Assert.That(log.Messages.Single(), Does.Contain("ExecutionStage=ResponseDeserialization"));
+        });
     }
 
     [Test]
@@ -361,7 +438,7 @@ public class RadarSystemFlowTests
     }
 
     [Test]
-    public async Task Radar_system_flow_should_record_xsd_error_before_extraction()
+    public async Task Radar_system_flow_should_record_schema_failure_before_extraction()
     {
         var xsdSummary = new ValidationSummary();
         var (xsdProcessor, apiClient) = CreateProcessor(
@@ -380,7 +457,7 @@ public class RadarSystemFlowTests
         var xsdFailure = GetFailureText(xsdSummary);
         Assert.Multiple(() =>
         {
-            Assert.That(xsdRow.Result, Is.EqualTo(ScenarioResult.Error));
+            Assert.That(xsdRow.Result, Is.EqualTo(ScenarioResult.Fail));
             Assert.That(xsdRow.RadarResponseXml, Is.EqualTo("<Response><Invalid>oops</Invalid></Response>"));
             Assert.That(xsdFailure, Does.Contain("ScenarioId=SCENARIO-011"));
         });
@@ -545,7 +622,8 @@ public class RadarSystemFlowTests
 
     private static (RadarScenarioProcessor Processor, RadarApiClient ApiClient) CreateProcessor(
         StubHttpMessageHandler handler,
-        RadarSettings? settings = null)
+        RadarSettings? settings = null,
+        RadarTestRunLogger? runLogger = null)
     {
         var apiClient = new RadarApiClient(
             new CountingRateLimiter(),
@@ -563,7 +641,7 @@ public class RadarSystemFlowTests
             new XsdFileResolver(),
             new XsdValidator(),
             new ThresholdMatcher(),
-            new RadarTestRunLogger(NullLogger<RadarTestRunLogger>.Instance));
+            runLogger ?? new RadarTestRunLogger(NullLogger<RadarTestRunLogger>.Instance));
 
         return (processor, apiClient);
     }
@@ -676,5 +754,29 @@ public class RadarSystemFlowTests
             cancellationToken.ThrowIfCancellationRequested();
             return ValueTask.CompletedTask;
         }
+    }
+
+    private sealed class CapturingLogger<T> : ILogger<T>
+    {
+        public ConcurrentQueue<string> Messages { get; } = new();
+
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => NullScope.Instance;
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(
+            LogLevel logLevel,
+            EventId eventId,
+            TState state,
+            Exception? exception,
+            Func<TState, Exception?, string> formatter)
+        {
+            Messages.Enqueue(formatter(state, exception));
+        }
+    }
+
+    private sealed class NullScope : IDisposable
+    {
+        public static NullScope Instance { get; } = new();
+        public void Dispose() { }
     }
 }

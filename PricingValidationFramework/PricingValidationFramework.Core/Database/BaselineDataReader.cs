@@ -14,6 +14,7 @@ public class BaselineDataReader : IBaselineDataReader
 	{
 		this.connectionFactory = connectionFactory;
 		this.retrySettings = retrySettings ?? new RetrySettings();
+		this.retrySettings.ValidateDatabaseRetrySettings();
 	}
 
    // might need to update query check on run time 
