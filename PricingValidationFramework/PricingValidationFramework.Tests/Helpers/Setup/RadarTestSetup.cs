@@ -79,6 +79,11 @@ public sealed class RadarTestSetup : IDisposable
         var xmlExtractor = new XmlValueExtractor();
         var logger = new RadarTestRunLogger(loggerFactory.CreateLogger<RadarTestRunLogger>());
         GlobalDiagnosticsContext.Set("RadarBuildId", pipelineSettings.BuildId);
+        if (!radarConfiguration.RadarSettings.ValidateResponseXsd)
+        {
+            logger.ResponseXsdValidationDisabled();
+        }
+
         var radarRestClient = new RestClient(new RestClientOptions
         {
             AutomaticDecompression = DecompressionMethods.All
