@@ -17,7 +17,6 @@ public class BaselineDataReader : IBaselineDataReader
 		this.retrySettings.ValidateDatabaseRetrySettings();
 	}
 
-   // might need to update query check on run time 
 	public async Task<IReadOnlyList<IceBaselineScenario>> GetPassingBaselineScenariosAsync(CancellationToken cancellationToken = default)
 	{
 		const string sql = """

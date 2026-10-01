@@ -38,27 +38,6 @@ public class RequestDataReader
 		return QueryScenariosAsync(sql, new { TestTag = testTag }, cancellationToken);
 	}
 
-// this is not used in the code remove it 
-	public async Task<ScenarioRequest?> GetScenarioByIdAsync(string scenarioId, CancellationToken cancellationToken = default)
-	{
-		const string sql = $"SELECT {ScenarioColumns} FROM xml_request WHERE Scenario_id = @ScenarioId;";
-
-		for (var attempt = 0; ; attempt++)
-		{
-			try
-			{
-				await using var connection = connectionFactory.Create();
-				await connection.OpenAsync(cancellationToken);
-				var command = new CommandDefinition(sql, new { ScenarioId = scenarioId }, cancellationToken: cancellationToken);
-				return await connection.QuerySingleOrDefaultAsync<ScenarioRequest>(command);
-			}
-			catch (SqlException) when (attempt < retrySettings.DatabaseRetryCount)
-			{
-				await Task.Delay(TimeSpan.FromSeconds(retrySettings.DatabaseRetryDelaySeconds * Math.Pow(2, attempt)), cancellationToken);
-			}
-		}
-	}
-
 	private async Task<IReadOnlyList<ScenarioRequest>> QueryScenariosAsync(
 		string sql,
 		object? parameters,
@@ -81,4 +60,3 @@ public class RequestDataReader
 		}
 	}
 }
-// rename remove unused methods

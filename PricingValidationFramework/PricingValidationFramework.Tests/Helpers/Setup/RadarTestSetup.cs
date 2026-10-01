@@ -11,7 +11,6 @@ using PricingValidationFramework.Core.ExternalAPIAccess.UrlBuilders;
 using PricingValidationFramework.Core.Extraction;
 using PricingValidationFramework.Core.Logging;
 using PricingValidationFramework.Core.Matching;
-using PricingValidationFramework.Core.Models.Common;
 using PricingValidationFramework.Core.Models.Database;
 using PricingValidationFramework.Core.Validation;
 using PricingValidationFramework.Tests.Helpers.Validation;
@@ -20,14 +19,14 @@ namespace PricingValidationFramework.Tests.Helpers.Setup;
 
 public sealed class RadarTestSetup : IDisposable
 {
-    private readonly PipelineSettings settings;
+    private readonly RadarPipelineSettings settings;
     private readonly RadarRequestRateLimiter rateLimiter;
     private readonly RadarApiClient apiClient;
     private readonly ILoggerFactory loggerFactory;
     private bool disposed;
 
     private RadarTestSetup(
-        PipelineSettings settings,
+        RadarPipelineSettings settings,
         RadarRequestRateLimiter rateLimiter,
         BaselineDataReader baselineReader,
         ResultUpdater resultUpdater,
@@ -62,7 +61,7 @@ public sealed class RadarTestSetup : IDisposable
 
     public static RadarTestSetup Create()
     {
-        var configuration = LoadConfiguration();
+        var configuration = TestConfigurationLoader.Load();
         var radarConfiguration = LoadAndValidateRadarConfiguration(configuration);
         var databaseSettings = configuration.GetSection("DatabaseSettings").Get<DatabaseSettings>()
             ?? throw new InvalidOperationException("DatabaseSettings is missing.");
@@ -110,7 +109,7 @@ public sealed class RadarTestSetup : IDisposable
 
     public static async Task<IReadOnlyList<ScenarioRequest>> DiscoverScenariosAsync(CancellationToken cancellationToken = default)
     {
-        var configuration = LoadConfiguration();
+        var configuration = TestConfigurationLoader.Load();
         var radarConfiguration = LoadAndValidateRadarConfiguration(configuration);
         var (pipelineSettings, retrySettings) = LoadValidatedPipelineInputs(configuration);
         var databaseSettings = configuration.GetSection("DatabaseSettings").Get<DatabaseSettings>()
@@ -122,14 +121,14 @@ public sealed class RadarTestSetup : IDisposable
             : await reader.GetScenariosByTestTagAsync(pipelineSettings.TestTag, cancellationToken);
     }
 
-    private static (PipelineSettings PipelineSettings, RetrySettings RetrySettings) LoadValidatedPipelineInputs(
+    private static (RadarPipelineSettings PipelineSettings, RetrySettings RetrySettings) LoadValidatedPipelineInputs(
         IConfiguration configuration)
     {
         var retrySettings = configuration.GetSection("RetrySettings").Get<RetrySettings>()
             ?? throw new InvalidOperationException("RetrySettings is missing.");
-        retrySettings.Validate();
+        retrySettings.ValidateRadarPipelineSettings();
 
-        var pipelineSettings = new PipelineSettings
+        var pipelineSettings = new RadarPipelineSettings
         {
             BuildId = ReadRequiredBuildId(),
             MinThreshold = ReadRequiredDecimal(configuration, "RADAR_MIN_THRESHOLD", "MinThreshold"),
@@ -191,33 +190,6 @@ public sealed class RadarTestSetup : IDisposable
         }
 
         return parsed;
-    }
-
-    private static IConfiguration LoadConfiguration()
-    {
-        var environmentName = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT")
-            ?? Environment.GetEnvironmentVariable("DOTNET_ENVIRONMENT")
-            ?? "Development";
-
-        var builder = new ConfigurationBuilder()
-            .SetBasePath(TestContext.CurrentContext.TestDirectory)
-            .AddJsonFile("appsettings.json", optional: false)
-            .AddJsonFile($"appsettings.{environmentName}.json", optional: true);
-
-        if (string.Equals(environmentName, "local", StringComparison.OrdinalIgnoreCase))
-        {
-            builder.AddJsonFile("appsettings.Development.json", optional: true);
-        }
-
-        var values = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
-        foreach (var key in Environment.GetEnvironmentVariables().Keys.Cast<string>())
-        {
-            values[key.Replace("__", ":", StringComparison.Ordinal)] = Environment.GetEnvironmentVariable(key);
-        }
-
-        return builder
-            .AddInMemoryCollection(values)
-            .Build();
     }
 
     private static RadarRunConfiguration LoadAndValidateRadarConfiguration(IConfiguration configuration)

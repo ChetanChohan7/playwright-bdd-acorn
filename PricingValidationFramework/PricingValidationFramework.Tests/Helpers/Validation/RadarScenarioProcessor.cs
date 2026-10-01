@@ -289,8 +289,7 @@ public sealed class RadarScenarioProcessor
 
     private static RadarResponse DeserializeResponse(string responseXml)
     {
-		// TODO: Expand the typed response only after the client supplies the response schema/contract.
-        // TODO: Integrate RadarJsonResponse deserialization here only if the client supplies a JSON contract.
+        // TODO: Expand the typed response (XML now, JSON too if the client ends up using it) once the schema/contract is confirmed.
         using var reader = new StringReader(responseXml);
         return (RadarResponse?)responseSerializer.Deserialize(reader)
             ?? throw new InvalidDataException("Radar response XML did not contain a response document.");

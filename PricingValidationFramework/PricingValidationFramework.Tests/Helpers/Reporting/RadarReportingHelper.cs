@@ -3,7 +3,6 @@ namespace PricingValidationFramework.Tests.Helpers.Reporting;
 using PricingValidationFramework.Core.Models.Enums;
 using PricingValidationFramework.Core.Models.Reporting;
 using PricingValidationFramework.Core.Reporting;
-using Regex = global::System.Text.RegularExpressions.Regex;
 
 public static class RadarReportingHelper
 {
@@ -22,10 +21,10 @@ public static class RadarReportingHelper
         decimal maxThreshold,
         ScenarioResult result)
     {
-        var normalizedRequestXml = NormalizeXml(requestXml);
+        var normalizedRequestXml = CsvReportWriter.NormalizeXml(requestXml);
         var normalizedRadarResponseXml = string.IsNullOrWhiteSpace(radarResponseXml)
             ? string.Empty
-            : NormalizeXml(radarResponseXml);
+            : CsvReportWriter.NormalizeXml(radarResponseXml);
 
         if (result == ScenarioResult.Error)
         {
@@ -50,7 +49,7 @@ public static class RadarReportingHelper
         };
     }
 
-    public static async Task WriteReportAsync(
+    public static Task WriteReportAsync(
         string buildId,
         IReadOnlyCollection<RadarValidationReportRow> reportRows,
         CancellationToken cancellationToken)
@@ -60,30 +59,11 @@ public static class RadarReportingHelper
             "TestResults",
             "Reports");
         Directory.CreateDirectory(reportDirectory);
-        var reportFileName = $"Radar_{SanitizeBuildId(buildId)}.csv";
-        var reportPath = Path.Combine(reportDirectory, reportFileName);
-        var temporaryPath = Path.Combine(reportDirectory, $".{reportFileName}.{Guid.NewGuid():N}.tmp");
+        var reportPath = Path.Combine(reportDirectory, $"Radar_{SanitizeBuildId(buildId)}.csv");
 
-        try
-        {
-            await new CsvReportWriter().WriteRadarReportAsync(
-                temporaryPath,
-                buildId,
-                reportRows,
-                cancellationToken);
-            File.Move(temporaryPath, reportPath, overwrite: true);
-        }
-        catch
-        {
-            try
-            {
-                File.Delete(temporaryPath);
-            }
-            catch
-            {
-            }
-            throw;
-        }
+        return AtomicReportWriter.WriteAsync(
+            reportPath,
+            temporaryPath => new CsvReportWriter().WriteRadarReportAsync(temporaryPath, buildId, reportRows, cancellationToken));
     }
 
     private static string SanitizeBuildId(string buildId)
@@ -94,12 +74,5 @@ public static class RadarReportingHelper
             .ToArray());
 
         return string.IsNullOrWhiteSpace(safeBuildId) ? "local" : safeBuildId;
-    }
-
-    private static string NormalizeXml(string xml)
-    {
-        return string.IsNullOrWhiteSpace(xml)
-            ? string.Empty
-            : Regex.Replace(xml, @"\s+", " ").Trim();
     }
 }

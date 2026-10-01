@@ -21,7 +21,8 @@ public class XmlValueExtractor
 		return baselineValue;
 	}
 
-//remove if statements into utils once we get the xsd's 
+	/// Stricter than ExtractBaselineValue: Radar's XSD isn't available yet, so these manual
+	/// missing/duplicate/empty checks stand in for schema validation until it is.
 	public decimal ExtractTotalAmount(string xmlResponse)
 	{
 		if (string.IsNullOrWhiteSpace(xmlResponse))

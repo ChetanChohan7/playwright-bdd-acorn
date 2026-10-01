@@ -1,9 +1,9 @@
 namespace PricingValidationFramework.Core.ExternalAPIAccess.ApiClients;
 
-using System.Net;
 using System.Security.Cryptography.X509Certificates;
 using Microsoft.Extensions.Logging;
 using PricingValidationFramework.Core.Configuration;
+using PricingValidationFramework.Core.ExternalAPIAccess;
 
 public class IceApiClient : IDisposable
 {
@@ -28,7 +28,7 @@ public class IceApiClient : IDisposable
 		this.settings = settings;
 		this.logger = logger;
 		this.retrySettings = retrySettings ?? new RetrySettings();
-		this.retrySettings.ValidateIceApiRetrySettings();
+		this.retrySettings.ValidateApiRetrySettings();
 		this.httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
 		this.retryDelayAsync = retryDelayAsync ?? Task.Delay;
 	}
@@ -44,9 +44,9 @@ public class IceApiClient : IDisposable
 				using var response = await httpClient.SendAsync(request, cancellationToken);
 				cancellationToken.ThrowIfCancellationRequested();
 
-				if (!IsSuccess(response.StatusCode))
+				if (!HttpRetryPolicy.IsSuccess(response.StatusCode))
 				{
-					if (IsTransient(response.StatusCode) && attempt < retrySettings.ApiRetryCount)
+					if (HttpRetryPolicy.IsTransient(response.StatusCode) && attempt < retrySettings.ApiRetryCount)
 					{
 						var delay = GetLocalRetryDelay(attempt);
 						logger.LogWarning("Retrying ICE request after HTTP {StatusCode}; attempt {Attempt}.", (int)response.StatusCode, attempt + 1);
@@ -54,7 +54,7 @@ public class IceApiClient : IDisposable
 						continue;
 					}
 
-					EnsureSuccessStatusCode(response);
+					HttpRetryPolicy.EnsureSuccessStatusCode(response, "Ice");
 				}
 
 				return response.Content is null ? string.Empty : await response.Content.ReadAsStringAsync(cancellationToken);
@@ -81,10 +81,7 @@ public class IceApiClient : IDisposable
 		httpClient.Dispose();
 	}
 
-	private TimeSpan GetLocalRetryDelay(int attempt)
-	{
-		return TimeSpan.FromSeconds(retrySettings.ApiRetryDelaySeconds * Math.Pow(2, attempt));
-	}
+	private TimeSpan GetLocalRetryDelay(int attempt) => HttpRetryPolicy.GetExponentialDelay(attempt, retrySettings.ApiRetryDelaySeconds);
 
 	private static HttpClient CreateHttpClient(IceSettings iceSettings)
 	{
@@ -112,30 +109,4 @@ public class IceApiClient : IDisposable
 			iceSettings.CertificatePassword,
 			X509KeyStorageFlags.EphemeralKeySet);
 	}
-
-	private static void EnsureSuccessStatusCode(HttpResponseMessage response) // this to ensure the response indicates a successful HTTP status code
-	{
-		if ((int)response.StatusCode is >= 200 and <= 299)
-		{
-			return;
-		}
-
-		throw new HttpRequestException(
-			$"Response status code does not indicate success: {(int)response.StatusCode} ({response.ReasonPhrase}).",
-			null,
-			response.StatusCode);
-	}
-
-	private static bool IsSuccess(HttpStatusCode statusCode) // this as well utils class for HTTP status codes
-	{
-		return (int)statusCode is >= 200 and <= 299;
-	}
-
-	private static bool IsTransient(HttpStatusCode statusCode) // can we not have this in a common utility class for HTTP status codes?
-	{
-		return statusCode is HttpStatusCode.RequestTimeout or HttpStatusCode.TooManyRequests or
-			HttpStatusCode.InternalServerError or HttpStatusCode.BadGateway or
-			HttpStatusCode.ServiceUnavailable or HttpStatusCode.GatewayTimeout;
-	}
-}
-// refactor class 
+} 

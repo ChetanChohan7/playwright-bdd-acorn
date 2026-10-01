@@ -28,7 +28,7 @@ public static class IceReportingHelper
         };
     }
 
-    public static async Task WriteReportAsync(
+    public static Task WriteReportAsync(
         string buildId,
         IReadOnlyCollection<IceValidationReportRow> reportRows,
         CancellationToken cancellationToken)
@@ -38,30 +38,9 @@ public static class IceReportingHelper
             "TestResults",
             "Reports",
             $"Ice_{buildId}.csv");
-        var temporaryPath = Path.Combine(
-            Path.GetDirectoryName(reportPath)!,
-            $".{Path.GetFileName(reportPath)}.{Guid.NewGuid():N}.tmp");
 
-        try
-        {
-            await new CsvReportWriter().WriteIceReportAsync(
-                temporaryPath,
-                buildId,
-                reportRows,
-                cancellationToken);
-            File.Move(temporaryPath, reportPath, overwrite: true);
-        }
-        catch
-        {
-            try
-            {
-                File.Delete(temporaryPath);
-            }
-            catch
-            {
-            }
-
-            throw;
-        }
+        return AtomicReportWriter.WriteAsync(
+            reportPath,
+            temporaryPath => new CsvReportWriter().WriteIceReportAsync(temporaryPath, buildId, reportRows, cancellationToken));
     }
 }

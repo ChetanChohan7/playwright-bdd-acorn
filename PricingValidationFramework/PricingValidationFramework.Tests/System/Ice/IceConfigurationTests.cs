@@ -41,7 +41,7 @@ public class IceConfigurationTests
 					["IceSettings:ApiKeyHeaderValue"] = "json-secret-value",
 					["RetrySettings:ApiRetryCount"] = "3"
 				})
-				.AddInMemoryCollection(IceTestSetup.GetEnvironmentVariables())
+				.AddInMemoryCollection(TestConfigurationLoader.GetEnvironmentVariables())
 				.Build();
 			var iceSettings = configuration.GetSection("IceSettings").Get<IceSettings>()!;
 			var retrySettings = configuration.GetSection("RetrySettings").Get<RetrySettings>()!;

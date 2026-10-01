@@ -39,9 +39,6 @@ public class RadarTestRunLogger
 			queueRejected,
 			safeDetail);
 
-	public void ResponseXsdValidationDisabled()
-		=> logger.LogWarning("Radar response XSD validation is disabled (RadarSettings:ValidateResponseXsd = false); responses are not checked against their schemas.");
-
 	public void ReportGenerationFailed(Exception exception)
 		=> logger.LogError(
 			"Radar report generation failed. ErrorType={ErrorType}.",

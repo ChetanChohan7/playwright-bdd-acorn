@@ -54,7 +54,7 @@ public sealed class IceTestSetup : IDisposable
 
     public static IceTestSetup Create(CancellationToken cancellationToken)
     {
-        var configuration = LoadConfiguration();
+        var configuration = TestConfigurationLoader.Load();
 
         var databaseSettings = configuration.GetSection("DatabaseSettings").Get<DatabaseSettings>()
             ?? throw new InvalidOperationException("DatabaseSettings is missing.");
@@ -64,7 +64,7 @@ public sealed class IceTestSetup : IDisposable
         var retrySettings = configuration.GetSection("RetrySettings").Get<RetrySettings>()
             ?? throw new InvalidOperationException("RetrySettings is missing.");
         retrySettings.ValidateDatabaseRetrySettings();
-        retrySettings.ValidateIceApiRetrySettings();
+        retrySettings.ValidateApiRetrySettings();
 
         var buildId = Environment.GetEnvironmentVariable("BUILD_BUILDID") ?? "local";
 
@@ -92,39 +92,6 @@ public sealed class IceTestSetup : IDisposable
             new IceTestRunLogger(loggerFactory.CreateLogger<IceTestRunLogger>()),
             loggerFactory,
             cancellationToken);
-    }
-
-    private static IConfiguration LoadConfiguration()
-    {
-        var environmentName = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT")
-            ?? Environment.GetEnvironmentVariable("DOTNET_ENVIRONMENT")
-            ?? "Development";
-
-        var builder = new ConfigurationBuilder()
-            .SetBasePath(TestContext.CurrentContext.TestDirectory)
-            .AddJsonFile("appsettings.json", optional: false)
-            .AddJsonFile($"appsettings.{environmentName}.json", optional: true);
-
-        if (string.Equals(environmentName, "local", StringComparison.OrdinalIgnoreCase))
-        {
-            builder.AddJsonFile("appsettings.Development.json", optional: true);
-        }
-
-        builder.AddInMemoryCollection(GetEnvironmentVariables());
-
-        return builder.Build();
-    }
-
-    internal static Dictionary<string, string?> GetEnvironmentVariables()
-    {
-        var values = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
-
-        foreach (var key in Environment.GetEnvironmentVariables().Keys.Cast<string>())
-        {
-            values[key.Replace("__", ":", StringComparison.Ordinal)] = Environment.GetEnvironmentVariable(key);
-        }
-
-        return values;
     }
 
     public void Dispose()

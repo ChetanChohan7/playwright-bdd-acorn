@@ -10,7 +10,9 @@ public class RetrySettings
 	public int ApiRetryDelaySeconds { get; set; } = 2;
 	public int ApiRetryAfterMaxDelaySeconds { get; set; } = 60;
 
-	public void Validate() // what are you validating here? change hte name of the method 
+	/// Everything the Radar pipeline needs validated up front: its database retries plus its API
+	/// retries (which, via ValidateRadarApiRetrySettings, include the generic API check too).
+	public void ValidateRadarPipelineSettings()
 	{
 		ValidateDatabaseRetrySettings();
 		ValidateRadarApiRetrySettings();
@@ -25,7 +27,7 @@ public class RetrySettings
 			nameof(DatabaseRetryDelaySeconds));
 	}
 
-	public void ValidateIceApiRetrySettings()
+	public void ValidateApiRetrySettings()
 	{
 		ValidateRetryValues(
 			ApiRetryCount,
@@ -36,7 +38,7 @@ public class RetrySettings
 
 	public void ValidateRadarApiRetrySettings()
 	{
-		ValidateIceApiRetrySettings();
+		ValidateApiRetrySettings();
 		if (ApiRetryAfterMaxDelaySeconds < 0 || ApiRetryAfterMaxDelaySeconds > MaxTaskDelaySeconds)
 		{
 			throw new ArgumentOutOfRangeException(

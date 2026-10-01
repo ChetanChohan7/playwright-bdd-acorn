@@ -1,11 +1,13 @@
 namespace PricingValidationFramework.Core.Configuration;
 
 public sealed class RadarRateLimitSettings
-{     // we specifiying this here to give it a default value why are we checking if its o 
+{
 	public int RequestsPerSecond { get; init; } = 2;
 	public int QueueLimit { get; init; } = 4;
 
-	public void Validate() // what are you validating here why if you are specifying a default > 0
+	/// Defaults above are only what's used if config doesn't set these - Validate() still has to
+	/// run after binding, since config can override them with zero or a negative value.
+	public void Validate()
 	{
 		if (RequestsPerSecond <= 0)
 		{

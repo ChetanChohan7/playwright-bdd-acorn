@@ -87,7 +87,7 @@ public class CsvReportWriter
 		};
 	}
 
-	private static string NormalizeXml(string xml)
+	public static string NormalizeXml(string xml)
 	{
 		return string.IsNullOrWhiteSpace(xml)
 			? string.Empty

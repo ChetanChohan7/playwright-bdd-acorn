@@ -2,7 +2,7 @@ using PricingValidationFramework.Core.Models.Database;
 
 namespace PricingValidationFramework.Core.Database;
 
-public interface IBaselineDataReader   // is there a need for this interfeace 
+public interface IBaselineDataReader
 {
     Task<IReadOnlyList<IceBaselineScenario>> GetPassingBaselineScenariosAsync(CancellationToken cancellationToken = default);
 

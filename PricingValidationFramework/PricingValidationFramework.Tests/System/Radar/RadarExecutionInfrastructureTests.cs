@@ -163,13 +163,13 @@ public class RadarExecutionInfrastructureTests
 			ApiRetryAfterMaxDelaySeconds = 0
 		};
 
-		Assert.DoesNotThrow(settings.Validate);
+		Assert.DoesNotThrow(settings.ValidateRadarPipelineSettings);
 	}
 
 	[Test]
 	public void Retry_settings_should_accept_defaults()
 	{
-		Assert.DoesNotThrow(() => new RetrySettings().Validate());
+		Assert.DoesNotThrow(() => new RetrySettings().ValidateRadarPipelineSettings());
 	}
 
 	[TestCase(-1, 0, 0, 0)]
@@ -190,7 +190,7 @@ public class RadarExecutionInfrastructureTests
 			ApiRetryDelaySeconds = apiDelay
 		};
 
-		Assert.Throws<ArgumentOutOfRangeException>(settings.Validate);
+		Assert.Throws<ArgumentOutOfRangeException>(settings.ValidateRadarPipelineSettings);
 	}
 
 	[Test]
@@ -200,21 +200,21 @@ public class RadarExecutionInfrastructureTests
 		{
 			ApiRetryCount = 32,
 			ApiRetryDelaySeconds = 1
-		}.Validate());
+		}.ValidateRadarPipelineSettings());
 
 		Assert.Throws<ArgumentOutOfRangeException>(() => new RetrySettings
 		{
 			ApiRetryAfterMaxDelaySeconds = int.MaxValue
-		}.Validate());
+		}.ValidateRadarPipelineSettings());
 	}
 
 	[Test]
-	public void Ice_retry_validation_should_not_require_a_radar_retry_after_cap()
+	public void Generic_api_retry_validation_should_not_require_a_radar_retry_after_cap()
 	{
 		Assert.DoesNotThrow(() => new RetrySettings
 		{
 			ApiRetryAfterMaxDelaySeconds = -1
-		}.ValidateIceApiRetrySettings());
+		}.ValidateApiRetrySettings());
 	}
 
 	[Test]

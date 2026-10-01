@@ -3,6 +3,9 @@ using PricingValidationFramework.Core.Models.Reporting;
 
 namespace PricingValidationFramework.Tests.Helpers.Reporting;
 
+/// Radar scenarios run concurrently (rate-limited, not sequential like Ice's), so unlike Ice's
+/// plain list of report rows, this needs to be thread-safe - and since two scenario runs could
+/// race to report the same ScenarioId, Add() guards against a duplicate winning silently.
 public sealed class RadarReportCollection
 {
 	private readonly ConcurrentDictionary<string, RadarValidationReportRow> rows = new(StringComparer.OrdinalIgnoreCase);

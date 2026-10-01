@@ -1,11 +1,11 @@
 namespace PricingValidationFramework.Core.ExternalAPIAccess.ApiClients;
 
-using System.Net;
 using System.Globalization;
 using System.Diagnostics;
 using System.Text;
 using Microsoft.Extensions.Logging;
 using PricingValidationFramework.Core.Configuration;
+using PricingValidationFramework.Core.ExternalAPIAccess;
 using PricingValidationFramework.Core.ExternalAPIAccess.Throttling;
 
 public class RadarApiClient : IDisposable
@@ -61,9 +61,9 @@ public class RadarApiClient : IDisposable
 					attempt,
 					cancellationToken);
 
-				if (!IsSuccess(response.StatusCode))
+				if (!HttpRetryPolicy.IsSuccess(response.StatusCode))
 				{
-					if (IsTransient(response.StatusCode) && attempt < retrySettings.ApiRetryCount)
+					if (HttpRetryPolicy.IsTransient(response.StatusCode) && attempt < retrySettings.ApiRetryCount)
 					{
 						await DelayBeforeRetryAsync(
 							response,
@@ -73,7 +73,7 @@ public class RadarApiClient : IDisposable
 						continue;
 					}
 
-					EnsureSuccessStatusCode(response);
+					HttpRetryPolicy.EnsureSuccessStatusCode(response, "Radar");
 				}
 
 				var content = response.Content is null ? null : await response.Content.ReadAsStringAsync(cancellationToken);
@@ -213,10 +213,7 @@ public class RadarApiClient : IDisposable
 		await retryDelayAsync(delay, cancellationToken);
 	}
 
-	private TimeSpan GetLocalRetryDelay(int attempt)
-	{
-		return TimeSpan.FromSeconds(retrySettings.ApiRetryDelaySeconds * Math.Pow(2, attempt));
-	}
+	private TimeSpan GetLocalRetryDelay(int attempt) => HttpRetryPolicy.GetExponentialDelay(attempt, retrySettings.ApiRetryDelaySeconds);
 
 	private TimeSpan GetRetryDelay(
 		HttpResponseMessage response,
@@ -298,31 +295,6 @@ public class RadarApiClient : IDisposable
 		}
 
 		return null;
-	}
-
-	private static bool IsTransient(HttpStatusCode statusCode)  // same as ice apiclient 
-	{
-		return statusCode is HttpStatusCode.RequestTimeout or HttpStatusCode.TooManyRequests or
-			HttpStatusCode.InternalServerError or HttpStatusCode.BadGateway or
-			HttpStatusCode.ServiceUnavailable or HttpStatusCode.GatewayTimeout;
-	}
-
-	private static bool IsSuccess(HttpStatusCode statusCode) // same as ice api client
-	{
-		return (int)statusCode is >= 200 and <= 299;
-	}
-
-	private static void EnsureSuccessStatusCode(HttpResponseMessage response) //same as ice api client
-	{
-		if (IsSuccess(response.StatusCode))
-		{
-			return;
-		}
-
-		throw new HttpRequestException(
-			$"Radar request failed with status {(int)response.StatusCode} ({response.ReasonPhrase}).",
-			null,
-			response.StatusCode);
 	}
 
 	private readonly record struct RequestDiagnostics(

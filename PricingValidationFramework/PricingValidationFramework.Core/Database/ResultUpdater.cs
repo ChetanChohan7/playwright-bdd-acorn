@@ -83,5 +83,4 @@ public class ResultUpdater
 				$"Expected exactly one xml_response row to be updated for ScenarioId '{scenarioId}', but {affectedRows} rows were updated.");
 		}
 	}
-}
-//rename 
+} 
