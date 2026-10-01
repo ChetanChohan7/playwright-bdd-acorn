@@ -4,7 +4,7 @@ using Dapper;
 
 namespace ClientAutomationFramework.Core.Database;
 
-public sealed class RequestDataReader(SqlConnectionFactory connectionFactory, DatabaseSettings settings)
+public sealed class RequestDataReader(IDbConnectionFactory connectionFactory, DatabaseSettings settings)
 {
     private readonly string requestTable = SafeIdentifier.Validate(settings.RequestTableName);
 

@@ -17,11 +17,11 @@ ClientAutomationFramework/
 │   │   ├── Extraction/       XmlValueExtractor, JsonValueExtractor
 │   │   ├── Matching/         XmlToleranceMatcher, JsonExactMatcher, MatchResult, MatchSettings
 │   │   ├── Logging/          TestRunLogger
-│   │   ├── Reporting/        ReportManager
 │   │   └── Models/           ScenarioRequest, ScenarioResponse, NewScenarioResponse
 │   └── ClientAutomationFramework.Tests/
 │       ├── Integration/Xml/XmlToleranceTests.cs
 │       ├── Integration/Json/JsonComparisonTests.cs
+│       ├── Database/           fast tests for Request/ResponseDataReader + ResultUpdater, see below
 │       ├── TestBase/TestSetup.cs
 │       ├── TestBase/JsonFileResponseSource.cs   TEMPORARY database stand-in, see below
 │       ├── TestAssets/Xsd/TechPriceResponse.xsd
@@ -66,6 +66,14 @@ A response XML carries one `techPrice` per add-on node plus one for the main cov
 
 Both fixtures build their API client from `TestSetup.Client` - **one shared `RestClient`** for the whole test run (`TestBase/TestSetup.cs`, a `[SetUpFixture]` with no namespace so its `OneTimeTearDown` covers the whole assembly). Everything on `TestSetup` is lazily created on first use rather than in `OneTimeSetUp`, because NUnit evaluates `TestCaseSource` before any `OneTimeSetUp` runs - `Lazy<T>` sidesteps that ordering rather than fighting it.
 
+### `Database/*Tests` - fast coverage for the data-access layer, no real DB needed
+
+`Integration/Xml/XmlToleranceTests` and `Integration/Json/JsonComparisonTests` are full end-to-end checks - they need either a live database or (for now) the JSON file stand-in, plus a live API. `RequestDataReader`, `ResponseDataReader` and `ResultUpdater` had never actually been run against a real database before this, so `Database/*Tests` exercises them directly instead: `IDbConnectionFactory` is a thin interface `SqlConnectionFactory` now implements, so `Database/InMemoryDatabase` can stand in for it with an in-memory SQLite database (built fresh per test, dropped on disposal) rather than needing a real SQL Server.
+
+This is a trade-off, not a free substitute for the real thing: SQLite isn't SQL Server, so anything genuinely SQL-Server-specific in a query would pass here and still fail for real. Two things had to change in the actual `Database/` classes to make them portable rather than just adding a parallel test-only code path: `ResponseDataReader` now takes the latest row by sorting and taking `FirstOrDefault()` in C# instead of a SQL-side `TOP (1)` (SQLite has no `TOP`, only `LIMIT`, and `LIMIT` isn't valid T-SQL), and `ResultUpdater` now sets `Created_date` to `DateTime.UtcNow` from the app rather than letting the database default it via `SYSUTCDATETIME()` (SQLite has no such function). `Database/InMemoryDatabase`'s schema is a hand-kept SQLite-dialect copy of `sql/001_create_tables.sql` for the same reason (no `IDENTITY`, `NVARCHAR`, etc. in SQLite) - keep the two in sync if the real schema changes. It also registers a Dapper type handler to parse `Created_date` back into a `DateTime`: SQLite has no native datetime storage, so the column round-trips as text and Dapper otherwise can't match it to `ScenarioResponse`'s constructor.
+
+These run with a plain `dotnet test` (no `Category=Integration` filter, no connection string) - see Running below.
+
 ### TEMPORARY: reading `data/xml-response.json` instead of the database
 
 The real database isn't set up yet. `JsonComparisonTests` reads its "stored response" baseline from `data/xml-response.json` (an array of `{scenario_id, quote_ref, xml_response, version, pass_fail, updated_on}`, copied into the test output via a `<None Include>` in the `.csproj`) through `TestBase/JsonFileResponseSource.cs`, instead of `TestSetup.ResponseReader.GetLastResponseAsync` (the real DB path `Core` will use). This is scoped to the `Tests` project only, deliberately: `Core.Configuration.AppConfiguration` was **not** given a `StoredResponses` setting, since that's a test-only stopgap, not something the reusable library should know about - the path is instead read directly off `appsettings.json`'s `StoredResponses:FilePath` inside `TestSetup`.
@@ -77,10 +85,18 @@ To go back to the real database once it's ready: delete `TestBase/JsonFileRespon
 ## Running
 
 ```bash
+dotnet test src/ClientAutomationFramework.Tests --filter Category!=Integration
+```
+
+Runs just `Database/*Tests` - in-memory SQLite, no setup needed, nothing external required.
+
+The two `Integration` fixtures need a real connection string/API endpoint and a `ScenarioId`:
+
+```bash
 dotnet test src/ClientAutomationFramework.Tests --filter Category=Integration -- TestRunParameters.Parameter\(name=\"ScenarioId\",\ value=\"SCN-001\"\)
 ```
 
-Omit `ScenarioId` for `XmlToleranceTests` to run every row in `XML_Requests`; `JsonComparisonTests` requires it.
+Omit `ScenarioId` for `XmlToleranceTests` to run every row in `XML_Requests`; `JsonComparisonTests` requires it. Running `dotnet test` with no filter at all runs both groups - expect the `Integration` ones to fail unless that config is in place.
 
 ## Configuration
 
@@ -95,4 +111,3 @@ Omit `ScenarioId` for `XmlToleranceTests` to run every row in `XML_Requests`; `J
 ## Notes
 
 - This has not been run against a real database or a real endpoint; do that before trusting the Pass/Fail output.
-- `Extraction/XmlValueExtractor` and `Extraction/JsonValueExtractor` expose general-purpose methods (`ExtractDecimalAttribute`, `ExtractTechnicalPriceAmount`) plus convenience wrappers (`ExtractPremium`, `ExtractPricingComponentAmount`) for the two concrete fields used here - reuse the general methods for other fields without duplicating the XML/JSON walking logic. `ExtractDecimalAttribute` takes an optional `useLastMatch` (default `false`, i.e. first match) - `ExtractPremium` is the only caller that passes `true`.

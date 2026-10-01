@@ -1,11 +1,12 @@
+using System.Data.Common;
 using ClientAutomationFramework.Core.Configuration;
 using Microsoft.Data.SqlClient;
 
 namespace ClientAutomationFramework.Core.Database;
 
-public sealed class SqlConnectionFactory(DatabaseSettings settings)
+public sealed class SqlConnectionFactory(DatabaseSettings settings) : IDbConnectionFactory
 {
-    public async Task<SqlConnection> OpenAsync(CancellationToken cancellationToken = default)
+    public async Task<DbConnection> OpenAsync(CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(settings.ConnectionString))
             throw new InvalidOperationException("A SQL connection string is required.");

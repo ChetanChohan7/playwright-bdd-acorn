@@ -1,6 +1,3 @@
-using System.Globalization;
-using CsvHelper;
-
 namespace PricingXml.ScenarioTool;
 
 public static class ScenarioCsvBuilder
@@ -13,7 +10,7 @@ public static class ScenarioCsvBuilder
             return;
         }
 
-        var rows = ReadExisting(csvPath);
+        List<ScenarioRow> rows = File.Exists(csvPath) ? ScenarioCsvIo.Read(csvPath) : [];
         var rowsById = rows.ToDictionary(r => r.ScenarioId, StringComparer.OrdinalIgnoreCase);
 
         var files = Directory.GetFiles(inputDir, "scenario-*.xml")
@@ -53,27 +50,10 @@ public static class ScenarioCsvBuilder
             File.Copy(csvPath, csvPath + ".bak", overwrite: true);
         }
 
-        WriteAll(csvPath, rows);
+        ScenarioCsvIo.WriteAll(csvPath, rows);
 
         Console.WriteLine($"build-csv: {added} new scenario(s) added, {updated} updated, {unchanged} unchanged.");
         if (updated > 0)
             Console.WriteLine($"Backup of previous CSV written to {csvPath}.bak");
-    }
-
-    private static List<ScenarioRow> ReadExisting(string csvPath)
-    {
-        if (!File.Exists(csvPath))
-            return [];
-
-        using var reader = new StreamReader(csvPath);
-        using var csv = new CsvReader(reader, CultureInfo.InvariantCulture);
-        return csv.GetRecords<ScenarioRow>().ToList();
-    }
-
-    private static void WriteAll(string csvPath, List<ScenarioRow> rows)
-    {
-        using var writer = new StreamWriter(csvPath, append: false);
-        using var csv = new CsvWriter(writer, CultureInfo.InvariantCulture);
-        csv.WriteRecords(rows);
     }
 }
