@@ -1,5 +1,5 @@
 using PricingValidationFramework.Core.ExternalAPIAccess.UrlBuilders;
-using PricingValidationFramework.Core.Configuration;
+using PricingValidationFramework.Core.Models.Common;
 using PricingValidationFramework.Core.Validation;
 using PricingValidationFramework.Tests.Helpers.Setup;
 
@@ -11,7 +11,7 @@ public class RadarPipelineInputContractTests
     [Test]
     public void Pipeline_input_validator_should_require_build_id()
     {
-        var settings = new RadarPipelineSettings
+        var settings = new PipelineSettings
         {
             BuildId = string.Empty,
             MinThreshold = 0m,
@@ -26,7 +26,7 @@ public class RadarPipelineInputContractTests
     [Test]
     public void Pipeline_input_validator_should_reject_invalid_threshold_range()
     {
-        var settings = new RadarPipelineSettings
+        var settings = new PipelineSettings
         {
             BuildId = "build-1",
             MinThreshold = 100m,
@@ -41,7 +41,7 @@ public class RadarPipelineInputContractTests
     [Test]
     public void Pipeline_input_validator_should_reject_invalid_request_time_format()
     {
-        var settings = new RadarPipelineSettings
+        var settings = new PipelineSettings
         {
             BuildId = "build-1",
             MinThreshold = 0m,

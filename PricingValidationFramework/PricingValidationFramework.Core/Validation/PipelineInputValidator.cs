@@ -1,11 +1,11 @@
 namespace PricingValidationFramework.Core.Validation;
 
 using System.Globalization;
-using PricingValidationFramework.Core.Configuration;
+using PricingValidationFramework.Core.Models.Common;
 
 public class PipelineInputValidator
 {
-	public void Validate(RadarPipelineSettings settings)
+	public void Validate(PipelineSettings settings)
 	{
 		if (string.IsNullOrWhiteSpace(settings.BuildId))
 		{

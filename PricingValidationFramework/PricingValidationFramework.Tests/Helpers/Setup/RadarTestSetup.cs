@@ -11,6 +11,7 @@ using PricingValidationFramework.Core.ExternalAPIAccess.UrlBuilders;
 using PricingValidationFramework.Core.Extraction;
 using PricingValidationFramework.Core.Logging;
 using PricingValidationFramework.Core.Matching;
+using PricingValidationFramework.Core.Models.Common;
 using PricingValidationFramework.Core.Models.Database;
 using PricingValidationFramework.Core.Validation;
 using PricingValidationFramework.Tests.Helpers.Validation;
@@ -19,14 +20,14 @@ namespace PricingValidationFramework.Tests.Helpers.Setup;
 
 public sealed class RadarTestSetup : IDisposable
 {
-    private readonly RadarPipelineSettings settings;
+    private readonly PipelineSettings settings;
     private readonly RadarRequestRateLimiter rateLimiter;
     private readonly RadarApiClient apiClient;
     private readonly ILoggerFactory loggerFactory;
     private bool disposed;
 
     private RadarTestSetup(
-        RadarPipelineSettings settings,
+        PipelineSettings settings,
         RadarRequestRateLimiter rateLimiter,
         BaselineDataReader baselineReader,
         ResultUpdater resultUpdater,
@@ -121,14 +122,14 @@ public sealed class RadarTestSetup : IDisposable
             : await reader.GetScenariosByTestTagAsync(pipelineSettings.TestTag, cancellationToken);
     }
 
-    private static (RadarPipelineSettings PipelineSettings, RetrySettings RetrySettings) LoadValidatedPipelineInputs(
+    private static (PipelineSettings PipelineSettings, RetrySettings RetrySettings) LoadValidatedPipelineInputs(
         IConfiguration configuration)
     {
         var retrySettings = configuration.GetSection("RetrySettings").Get<RetrySettings>()
             ?? throw new InvalidOperationException("RetrySettings is missing.");
         retrySettings.ValidateRadarPipelineSettings();
 
-        var pipelineSettings = new RadarPipelineSettings
+        var pipelineSettings = new PipelineSettings
         {
             BuildId = ReadRequiredBuildId(),
             MinThreshold = ReadRequiredDecimal(configuration, "RADAR_MIN_THRESHOLD", "MinThreshold"),

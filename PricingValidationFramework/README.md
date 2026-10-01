@@ -1,5 +1,13 @@
 # Pricing Validation Framework
 
+## Run the test suite
+
+```bash
+dotnet test PricingValidationFramework.Tests
+```
+
+No database, endpoints, or credentials needed - this runs every unit and system test (extraction, matching, URL building, rate limiting, retry/config validation, CSV reporting, etc.). The two live validation flows below (`IceValidationTests`, `RadarValidationTests`) are `[Explicit]` and sit out of a normal run since they need real infrastructure; see their sections for how to opt into each.
+
 ## Run the Radar validation flow
 
 The explicit Radar workload creates one NUnit test case per selected `TB_REQUEST` scenario. NUnit owns scenario concurrency with an assembly worker limit of four; there is no application worker pool. Each case loads its baseline, runs one scenario through `RadarScenarioProcessor`, persists the existing PASS or FAIL outcome, adds one terminal row to a thread-safe collection, and asserts its own result. A single consolidated CSV is written after all cases finish.

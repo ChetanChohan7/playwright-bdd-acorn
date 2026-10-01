@@ -1,6 +1,6 @@
-namespace PricingValidationFramework.Core.Configuration;
+namespace PricingValidationFramework.Core.Models.Common;
 
-public class RadarPipelineSettings
+public class PipelineSettings
 {
     public string BuildId { get; set; } = string.Empty;
     public string TestTag { get; set; } = string.Empty;
