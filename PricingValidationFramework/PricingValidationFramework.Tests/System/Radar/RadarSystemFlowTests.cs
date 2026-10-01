@@ -16,7 +16,6 @@ using PricingValidationFramework.Tests.Helpers.Reporting;
 using PricingValidationFramework.Tests.Helpers.Validation;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
-using RestSharp;
 
 namespace PricingValidationFramework.Tests.System.Radar;
 
@@ -627,7 +626,7 @@ public class RadarSystemFlowTests
     {
         var apiClient = new RadarApiClient(
             new CountingRateLimiter(),
-            new RestClient(new HttpClient(handler)),
+            new HttpClient(handler),
             NullLogger<RadarApiClient>.Instance,
             new RetrySettings
             {

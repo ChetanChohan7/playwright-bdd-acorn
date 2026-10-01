@@ -10,3 +10,16 @@ C:\Users\SumeethRamessar\PricingValidationFramework\PricingValidationFramework.C
 C:\Users\SumeethRamessar\PricingValidationFramework\PricingValidationFramework.Core\obj\Debug\net10.0\refint\PricingValidationFramework.Core.dll
 C:\Users\SumeethRamessar\PricingValidationFramework\PricingValidationFramework.Core\obj\Debug\net10.0\PricingValidationFramework.Core.pdb
 C:\Users\SumeethRamessar\PricingValidationFramework\PricingValidationFramework.Core\obj\Debug\net10.0\ref\PricingValidationFramework.Core.dll
+C:\Users\SumeethRamessar\Repo\playwright-bdd-acorn\PricingValidationFramework\PricingValidationFramework.Core\bin\Debug\net10.0\PricingValidationFramework.Core.deps.json
+C:\Users\SumeethRamessar\Repo\playwright-bdd-acorn\PricingValidationFramework\PricingValidationFramework.Core\bin\Debug\net10.0\PricingValidationFramework.Core.dll
+C:\Users\SumeethRamessar\Repo\playwright-bdd-acorn\PricingValidationFramework\PricingValidationFramework.Core\bin\Debug\net10.0\PricingValidationFramework.Core.pdb
+C:\Users\SumeethRamessar\Repo\playwright-bdd-acorn\PricingValidationFramework\PricingValidationFramework.Core\obj\Debug\net10.0\PricingValidationFramework.Core.csproj.AssemblyReference.cache
+C:\Users\SumeethRamessar\Repo\playwright-bdd-acorn\PricingValidationFramework\PricingValidationFramework.Core\obj\Debug\net10.0\PricingValidationFramework.Core.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\SumeethRamessar\Repo\playwright-bdd-acorn\PricingValidationFramework\PricingValidationFramework.Core\obj\Debug\net10.0\PricingValidationFramework.Core.AssemblyInfoInputs.cache
+C:\Users\SumeethRamessar\Repo\playwright-bdd-acorn\PricingValidationFramework\PricingValidationFramework.Core\obj\Debug\net10.0\PricingValidationFramework.Core.AssemblyInfo.cs
+C:\Users\SumeethRamessar\Repo\playwright-bdd-acorn\PricingValidationFramework\PricingValidationFramework.Core\obj\Debug\net10.0\PricingValidationFramework.Core.csproj.CoreCompileInputs.cache
+C:\Users\SumeethRamessar\Repo\playwright-bdd-acorn\PricingValidationFramework\PricingValidationFramework.Core\obj\Debug\net10.0\PricingValidationFramework.Core.sourcelink.json
+C:\Users\SumeethRamessar\Repo\playwright-bdd-acorn\PricingValidationFramework\PricingValidationFramework.Core\obj\Debug\net10.0\PricingValidationFramework.Core.dll
+C:\Users\SumeethRamessar\Repo\playwright-bdd-acorn\PricingValidationFramework\PricingValidationFramework.Core\obj\Debug\net10.0\refint\PricingValidationFramework.Core.dll
+C:\Users\SumeethRamessar\Repo\playwright-bdd-acorn\PricingValidationFramework\PricingValidationFramework.Core\obj\Debug\net10.0\PricingValidationFramework.Core.pdb
+C:\Users\SumeethRamessar\Repo\playwright-bdd-acorn\PricingValidationFramework\PricingValidationFramework.Core\obj\Debug\net10.0\ref\PricingValidationFramework.Core.dll

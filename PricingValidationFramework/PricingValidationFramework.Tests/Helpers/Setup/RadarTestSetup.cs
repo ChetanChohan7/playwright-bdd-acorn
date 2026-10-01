@@ -15,7 +15,6 @@ using PricingValidationFramework.Core.Models.Common;
 using PricingValidationFramework.Core.Models.Database;
 using PricingValidationFramework.Core.Validation;
 using PricingValidationFramework.Tests.Helpers.Validation;
-using RestSharp;
 
 namespace PricingValidationFramework.Tests.Helpers.Setup;
 
@@ -79,13 +78,13 @@ public sealed class RadarTestSetup : IDisposable
         var xmlExtractor = new XmlValueExtractor();
         var logger = new RadarTestRunLogger(loggerFactory.CreateLogger<RadarTestRunLogger>());
         GlobalDiagnosticsContext.Set("RadarBuildId", pipelineSettings.BuildId);
-        var radarRestClient = new RestClient(new RestClientOptions
+        var radarHttpClient = new HttpClient(new HttpClientHandler
         {
             AutomaticDecompression = DecompressionMethods.All
         });
         var apiClient = new RadarApiClient(
             rateLimiter,
-            radarRestClient,
+            radarHttpClient,
             loggerFactory.CreateLogger<RadarApiClient>(),
             retrySettings);
         var scenarioProcessor = new RadarScenarioProcessor(
@@ -133,10 +132,11 @@ public sealed class RadarTestSetup : IDisposable
         var pipelineSettings = new PipelineSettings
         {
             BuildId = ReadRequiredBuildId(),
-            MinThreshold = ReadRequiredDecimal("RADAR_MIN_THRESHOLD"),
-            MaxThreshold = ReadRequiredDecimal("RADAR_MAX_THRESHOLD"),
-            RequestTime = RequestTimeFormatter.Resolve(Environment.GetEnvironmentVariable("RADAR_REQUEST_DATETIME")),
-            TestTag = Environment.GetEnvironmentVariable("TEST_TAG") ?? string.Empty
+            MinThreshold = ReadRequiredDecimal(configuration, "RADAR_MIN_THRESHOLD", "MinThreshold"),
+            MaxThreshold = ReadRequiredDecimal(configuration, "RADAR_MAX_THRESHOLD", "MaxThreshold"),
+            RequestTime = RequestTimeFormatter.Resolve(
+                Environment.GetEnvironmentVariable("RADAR_REQUEST_DATETIME") ?? configuration["PipelineSettings:RequestTime"]),
+            TestTag = Environment.GetEnvironmentVariable("TEST_TAG") ?? configuration["PipelineSettings:TestTag"] ?? string.Empty
         };
         new PipelineInputValidator().Validate(pipelineSettings);
 
@@ -177,9 +177,9 @@ public sealed class RadarTestSetup : IDisposable
         throw new InvalidOperationException("BUILD_BUILDID is required outside local development.");
     }
 
-    private static decimal ReadRequiredDecimal(string variableName)
+    private static decimal ReadRequiredDecimal(IConfiguration configuration, string variableName, string settingName)
     {
-        var value = Environment.GetEnvironmentVariable(variableName);
+        var value = Environment.GetEnvironmentVariable(variableName) ?? configuration[$"PipelineSettings:{settingName}"];
         if (string.IsNullOrWhiteSpace(value))
         {
             throw new InvalidOperationException($"{variableName} is required and must be a valid decimal.");

@@ -12,7 +12,6 @@
           "Microsoft.Data.SqlClient": "6.1.2",
           "Microsoft.Extensions.Logging.Abstractions": "10.0.0",
           "Microsoft.Extensions.Options": "10.0.0",
-          "RestSharp": "114.0.0",
           "System.Threading.RateLimiting": "10.0.0"
         },
         "runtime": {
@@ -323,14 +322,6 @@
           }
         }
       },
-      "RestSharp/114.0.0": {
-        "runtime": {
-          "lib/net10.0/RestSharp.dll": {
-            "assemblyVersion": "114.0.0.0",
-            "fileVersion": "114.0.0.0"
-          }
-        }
-      },
       "System.ClientModel/1.5.1": {
         "dependencies": {
           "Microsoft.Extensions.Logging.Abstractions": "10.0.0",
@@ -590,13 +581,6 @@
       "sha512": "sha512-N4KeF3cpcm1PUHym1RmakkzfkEv3GRMyofVv40uXsQhCQeglr2OHNcUk2WOG51AKpGO8ynGpo9M/kFXSzghwug==",
       "path": "microsoft.sqlserver.server/1.0.0",
       "hashPath": "microsoft.sqlserver.server.1.0.0.nupkg.sha512"
-    },
-    "RestSharp/114.0.0": {
-      "type": "package",
-      "serviceable": true,
-      "sha512": "sha512-8pDO4q+K8nIqXbvGCb9ciKcngj36pCXGRDzOYPEPoS2IvBIL+mejmUMAtSNALt/NkDc9LQmHvM95kdniLSbGtg==",
-      "path": "restsharp/114.0.0",
-      "hashPath": "restsharp.114.0.0.nupkg.sha512"
     },
     "System.ClientModel/1.5.1": {
       "type": "package",

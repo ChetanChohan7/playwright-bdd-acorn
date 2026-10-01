@@ -4,18 +4,17 @@ using System.Net;
 using System.Security.Cryptography.X509Certificates;
 using Microsoft.Extensions.Logging;
 using PricingValidationFramework.Core.Configuration;
-using RestSharp;
 
 public class IceApiClient : IDisposable
 {
-	private readonly RestClient restClient;
+	private readonly HttpClient httpClient;
 	private readonly IceSettings settings;
 	private readonly RetrySettings retrySettings;
 	private readonly ILogger<IceApiClient> logger;
 	private readonly Func<TimeSpan, CancellationToken, Task> retryDelayAsync;
 
 	public IceApiClient(IceSettings settings, ILogger<IceApiClient> logger, RetrySettings? retrySettings = null)
-		: this(settings, logger, retrySettings, CreateRestClient(settings))
+		: this(settings, logger, retrySettings, CreateHttpClient(settings))
 	{
 	}
 
@@ -23,14 +22,14 @@ public class IceApiClient : IDisposable
 		IceSettings settings,
 		ILogger<IceApiClient> logger,
 		RetrySettings? retrySettings,
-		RestClient restClient,
+		HttpClient httpClient,
 		Func<TimeSpan, CancellationToken, Task>? retryDelayAsync = null)
 	{
 		this.settings = settings;
 		this.logger = logger;
 		this.retrySettings = retrySettings ?? new RetrySettings();
 		this.retrySettings.ValidateIceApiRetrySettings();
-		this.restClient = restClient ?? throw new ArgumentNullException(nameof(restClient));
+		this.httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
 		this.retryDelayAsync = retryDelayAsync ?? Task.Delay;
 	}
 
@@ -40,12 +39,12 @@ public class IceApiClient : IDisposable
 		{
 			try
 			{
-				var request = new RestRequest(url, Method.Get)
-					.AddOrUpdateHeader(settings.ApiKeyHeaderName, settings.ApiKeyHeaderValue);
-				var response = await restClient.ExecuteAsync(request, cancellationToken);
+				using var request = new HttpRequestMessage(HttpMethod.Get, url);
+				request.Headers.TryAddWithoutValidation(settings.ApiKeyHeaderName, settings.ApiKeyHeaderValue);
+				using var response = await httpClient.SendAsync(request, cancellationToken);
 				cancellationToken.ThrowIfCancellationRequested();
 
-				if (response.StatusCode != 0 && !IsSuccess(response.StatusCode))
+				if (!IsSuccess(response.StatusCode))
 				{
 					if (IsTransient(response.StatusCode) && attempt < retrySettings.ApiRetryCount)
 					{
@@ -58,12 +57,7 @@ public class IceApiClient : IDisposable
 					EnsureSuccessStatusCode(response);
 				}
 
-				if (response.ResponseStatus != ResponseStatus.Completed)
-				{
-					throw new HttpRequestException(response.ErrorMessage, response.ErrorException);
-				}
-
-				return response.Content ?? string.Empty;
+				return response.Content is null ? string.Empty : await response.Content.ReadAsStringAsync(cancellationToken);
 			}
 			catch (OperationCanceledException) when (
 				!cancellationToken.IsCancellationRequested &&
@@ -84,7 +78,7 @@ public class IceApiClient : IDisposable
 
 	public void Dispose()
 	{
-		restClient.Dispose();
+		httpClient.Dispose();
 	}
 
 	private TimeSpan GetLocalRetryDelay(int attempt)
@@ -92,14 +86,15 @@ public class IceApiClient : IDisposable
 		return TimeSpan.FromSeconds(retrySettings.ApiRetryDelaySeconds * Math.Pow(2, attempt));
 	}
 
-	private static RestClient CreateRestClient(IceSettings iceSettings) 
+	private static HttpClient CreateHttpClient(IceSettings iceSettings)
 	{
-		var options = new RestClientOptions
+		var handler = new HttpClientHandler
 		{
-			ClientCertificates = [LoadCertificate(iceSettings)]
+			ClientCertificateOptions = ClientCertificateOption.Manual
 		};
+		handler.ClientCertificates.Add(LoadCertificate(iceSettings));
 
-		return new RestClient(options);
+		return new HttpClient(handler);
 	}
 
 	private static X509Certificate2 LoadCertificate(IceSettings iceSettings)
@@ -118,16 +113,7 @@ public class IceApiClient : IDisposable
 			X509KeyStorageFlags.EphemeralKeySet);
 	}
 
-	private static TimeSpan? GetRetryAfter(RestResponse response) // same for this IS THIS COMMON IN BOTH RADARA AND  icd 
-	{
-		var value = response.Headers?
-			.FirstOrDefault(header => string.Equals(header.Name, "Retry-After", StringComparison.OrdinalIgnoreCase))
-			?.Value?.ToString();
-
-		return int.TryParse(value, out var seconds) ? TimeSpan.FromSeconds(seconds) : null;
-	}
-
-	private static void EnsureSuccessStatusCode(RestResponse response) // this to ensure the response indicates a successful HTTP status code
+	private static void EnsureSuccessStatusCode(HttpResponseMessage response) // this to ensure the response indicates a successful HTTP status code
 	{
 		if ((int)response.StatusCode is >= 200 and <= 299)
 		{
@@ -135,8 +121,8 @@ public class IceApiClient : IDisposable
 		}
 
 		throw new HttpRequestException(
-			$"Response status code does not indicate success: {(int)response.StatusCode} ({response.StatusDescription}).",
-			response.ErrorException,
+			$"Response status code does not indicate success: {(int)response.StatusCode} ({response.ReasonPhrase}).",
+			null,
 			response.StatusCode);
 	}
 

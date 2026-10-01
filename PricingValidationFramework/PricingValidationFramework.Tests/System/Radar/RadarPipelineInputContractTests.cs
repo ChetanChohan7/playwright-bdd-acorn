@@ -104,4 +104,85 @@ public class RadarPipelineInputContractTests
             Environment.SetEnvironmentVariable("TEST_TAG", originalTestTag);
         }
     }
+
+    [Test]
+    public void Radar_test_setup_should_use_appsettings_when_pipeline_variables_are_missing()
+    {
+        var variableNames = new[]
+        {
+            "BUILD_BUILDID", "ASPNETCORE_ENVIRONMENT", "RADAR_MIN_THRESHOLD", "RADAR_MAX_THRESHOLD",
+            "RADAR_REQUEST_DATETIME", "TEST_TAG"
+        };
+        var originalValues = variableNames.ToDictionary(name => name, Environment.GetEnvironmentVariable);
+
+        try
+        {
+            Environment.SetEnvironmentVariable("BUILD_BUILDID", "build-42");
+            Environment.SetEnvironmentVariable("ASPNETCORE_ENVIRONMENT", "Development");
+            foreach (var name in variableNames.Skip(2))
+            {
+                Environment.SetEnvironmentVariable(name, null);
+            }
+
+            using var settings = RadarTestSetup.Create();
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(settings.MinThreshold, Is.EqualTo(-5m));
+                Assert.That(settings.MaxThreshold, Is.EqualTo(5m));
+                Assert.That(settings.TestTag, Is.Empty);
+                Assert.That(settings.RequestTime, Does.Match("\\d{4}-\\d{2}-\\d{2}Z\\d{2}:\\d{2}:\\d{2}"));
+            });
+        }
+        finally
+        {
+            foreach (var (name, value) in originalValues)
+            {
+                Environment.SetEnvironmentVariable(name, value);
+            }
+        }
+    }
+
+    [Test]
+    public void Radar_test_setup_should_accept_pipeline_settings_environment_overrides()
+    {
+        var variableNames = new[]
+        {
+            "BUILD_BUILDID", "RADAR_MIN_THRESHOLD", "RADAR_MAX_THRESHOLD", "RADAR_REQUEST_DATETIME", "TEST_TAG",
+            "PipelineSettings__MinThreshold", "PipelineSettings__MaxThreshold",
+            "PipelineSettings__RequestTime", "PipelineSettings__TestTag"
+        };
+        var originalValues = variableNames.ToDictionary(name => name, Environment.GetEnvironmentVariable);
+
+        try
+        {
+            Environment.SetEnvironmentVariable("BUILD_BUILDID", "build-42");
+            foreach (var name in variableNames.Skip(1).Take(4))
+            {
+                Environment.SetEnvironmentVariable(name, null);
+            }
+
+            Environment.SetEnvironmentVariable("PipelineSettings__MinThreshold", "-10.5");
+            Environment.SetEnvironmentVariable("PipelineSettings__MaxThreshold", "20.25");
+            Environment.SetEnvironmentVariable("PipelineSettings__RequestTime", "2024-03-01Z09:30:45");
+            Environment.SetEnvironmentVariable("PipelineSettings__TestTag", "smoke");
+
+            using var settings = RadarTestSetup.Create();
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(settings.MinThreshold, Is.EqualTo(-10.5m));
+                Assert.That(settings.MaxThreshold, Is.EqualTo(20.25m));
+                Assert.That(settings.RequestTime, Is.EqualTo("2024-03-01Z09:30:45"));
+                Assert.That(settings.TestTag, Is.EqualTo("smoke"));
+            });
+        }
+        finally
+        {
+            foreach (var (name, value) in originalValues)
+            {
+                Environment.SetEnvironmentVariable(name, value);
+            }
+        }
+    }
 }

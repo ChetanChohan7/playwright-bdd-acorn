@@ -19,8 +19,30 @@ Database operations open their own SQL connection per operation. Each HTTP attem
 The live workload is explicit and requires configured database access, Radar endpoints and credentials, approved XSD files, and pipeline inputs:
 
 ```powershell
-dotnet test .\PricingValidationFramework.Tests\PricingValidationFramework.Tests.csproj --filter "FullyQualifiedName~RadarValidationTests"
+dotnet test .\PricingValidationFramework.Tests\PricingValidationFramework.Tests.csproj --filter "FullyQualifiedName~RadarValidationTests" -- NUnit.ExplicitMode=Relaxed
 ```
+
+Radar run inputs live under `PipelineSettings` in `PricingValidationFramework.Tests/appsettings.json` (with local threshold examples in `appsettings.Development.json`). Set `MinThreshold` and `MaxThreshold` explicitly for live runs; empty values are rejected. An empty `TestTag` selects all scenarios, and an empty `RequestTime` generates the current UTC time. A supplied request time must use `yyyy-MM-ddZHH:mm:ss`.
+
+Pipeline environment variables `RADAR_MIN_THRESHOLD`, `RADAR_MAX_THRESHOLD`, `TEST_TAG`, and `RADAR_REQUEST_DATETIME` override the corresponding appsettings values. `BUILD_BUILDID` remains required outside local development. Azure DevOps can pass these variables to the Radar test step:
+
+```yaml
+env:
+  RADAR_MIN_THRESHOLD: $(RadarMinThreshold)
+  RADAR_MAX_THRESHOLD: $(RadarMaxThreshold)
+  TEST_TAG: $(TestTag)
+  RADAR_REQUEST_DATETIME: $(RadarRequestDateTime)
+```
+
+`PipelineSettings__MinThreshold`, `PipelineSettings__MaxThreshold`, `PipelineSettings__TestTag`, and `PipelineSettings__RequestTime` are also supported as standard configuration environment overrides. The `RADAR_*` and `TEST_TAG` variables take precedence when both forms are set.
+
+### Azure DevOps integration pipelines
+
+Register two separate YAML pipelines using `PricingValidationFramework/azure-pipelines-radar.yml` and `PricingValidationFramework/azure-pipelines-ice.yml` from the repository root. Both are manual-run only. Each selects its own explicit integration fixture, publishes NUnit TRX results to the Tests tab, and publishes its CSV report as a separate `RadarReports` or `IceReports` pipeline artifact, including when tests fail after report creation. No system or unit tests run in these pipelines.
+
+Create the referenced pipeline variables in Azure DevOps before running them. Both pipelines require a database connection string (`RadarDatabaseConnectionString` or `IceDatabaseConnectionString`, stored as a secret). Radar requires `RadarEndpoint1Url`, `RadarEndpoint1KeyHeader`, `RadarEndpoint1ApiKey` through `RadarEndpoint3Url`, `RadarEndpoint3KeyHeader`, `RadarEndpoint3ApiKey`, plus `RadarMinThreshold`, `RadarMaxThreshold`, `TestTag`, and `RadarRequestDateTime`. Define `TestTag` and `RadarRequestDateTime` as empty to select all scenarios and use the current UTC time. Keep endpoint API keys secret. ICE requires `IceEndpoint`, `IceApiKeyHeaderName`, `IceApiKeyHeaderValue`, `IcePfxCertificateBase64`, and `IceCertificatePassword`; keep the API key, PFX and password secret. Azure DevOps supplies `BUILD_BUILDID` automatically.
+
+The chosen agent must reach the database and external endpoints. Radar also needs approved XSD files under `PricingValidationFramework.Tests/TestAssets/Xsd` matching the configured `ResponseXsdMappings`; the checked-in placeholders are not production schemas. Use an agent pool with the required network access if the hosted pool cannot reach those services.
 
 ## Run the ICE validation flow
 
@@ -151,7 +173,7 @@ dotnet build .\PricingValidationFramework.slnx --no-restore
 The test is marked `Explicit`, so select it directly:
 
 ```powershell
-dotnet test .\PricingValidationFramework.Tests\PricingValidationFramework.Tests.csproj --no-restore --filter "FullyQualifiedName~IceValidationTests"
+dotnet test .\PricingValidationFramework.Tests\PricingValidationFramework.Tests.csproj --no-restore --filter "FullyQualifiedName~IceValidationTests" -- NUnit.ExplicitMode=Relaxed
 ```
 
 The workload executes one NUnit test and iterates through all selected scenarios internally. It continues after value mismatches so the final report contains every scenario; an unexpected request, extraction, database, or certificate error stops the run immediately.
@@ -160,7 +182,7 @@ To set the report build identifier, set `BUILD_BUILDID` before running. If it is
 
 ```powershell
 $env:BUILD_BUILDID = "20260923.1"
-dotnet test .\PricingValidationFramework.Tests\PricingValidationFramework.Tests.csproj --no-restore --filter "FullyQualifiedName~IceValidationTests"
+dotnet test .\PricingValidationFramework.Tests\PricingValidationFramework.Tests.csproj --no-restore --filter "FullyQualifiedName~IceValidationTests" -- NUnit.ExplicitMode=Relaxed
 ```
 
 ### Find the report

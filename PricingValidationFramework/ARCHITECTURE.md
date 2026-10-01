@@ -179,7 +179,7 @@ Created_date
 
 `IceApiClient` is the concrete ICE HTTP boundary. `CsvReportWriter` is the concrete CSV output service shared by Radar and ICE. No additional interface is required for either single implementation.
 
-API clients own HTTP communication only. `RadarApiClient` acquires a permit for the route's logical endpoint immediately before each outbound HTTP attempt and creates an independent `RestRequest` for that attempt. The endpoint-limiter registry is shared by every parallel Radar scenario; each endpoint has an independent budget. These components are grouped under `ExternalAPIAccess` because they support external service communication.
+API clients own HTTP communication only. `RadarApiClient` acquires a permit for the route's logical endpoint immediately before each outbound HTTP attempt and creates an independent `HttpRequestMessage` for that attempt. The endpoint-limiter registry is shared by every parallel Radar scenario; each endpoint has an independent budget. These components are grouped under `ExternalAPIAccess` because they support external service communication.
 
 ### Radar support
 
@@ -305,12 +305,12 @@ MaxThreshold
 Sources:
 
 - `BuildId`: Azure DevOps.
-- `TestTag`: Azure DevOps.
-- `RequestTime`: runtime input.
-- `MinThreshold`: Azure DevOps pipeline variable.
-- `MaxThreshold`: Azure DevOps pipeline variable.
+- `TestTag`: `PipelineSettings:TestTag` or the `TEST_TAG` pipeline override.
+- `RequestTime`: `PipelineSettings:RequestTime` or the `RADAR_REQUEST_DATETIME` pipeline override.
+- `MinThreshold`: `PipelineSettings:MinThreshold` or the `RADAR_MIN_THRESHOLD` pipeline override.
+- `MaxThreshold`: `PipelineSettings:MaxThreshold` or the `RADAR_MAX_THRESHOLD` pipeline override.
 
-Pipeline values must not be stored in appsettings files.
+Environment overrides take precedence over appsettings. Thresholds must be supplied for live runs; empty tag and request time select all scenarios and generate UTC request time respectively.
 
 Required values:
 
@@ -626,7 +626,7 @@ RadarSettings.Endpoints[routeSettings.EndpointName].ApiKeyHeaderName
 RadarSettings.Endpoints[routeSettings.EndpointName].ApiKeyValue
 ```
 
-Radar requests use `POST`, `Content-Type: application/xml`, and `Accept: application/xml`. The workload-level `RestClient` is configured once with automatic gzip, deflate, and brotli decompression. Radar retries HTTP 408, 429, 500, 502, 503, and 504 plus statusless transient network failures using `RetrySettings`. A valid `Retry-After` delta-seconds or HTTP-date is capped by `ApiRetryAfterMaxDelaySeconds`, then combined with local exponential backoff using the longer delay. When capped, the warning records the supplied value, configured maximum, and effective delay. Each attempt consumes a permit from its logical endpoint's limiter.
+Radar requests use `POST`, `Content-Type: application/xml`, and `Accept: application/xml`. The workload-level `HttpClient` is configured once with automatic gzip, deflate, and brotli decompression. Radar retries HTTP 408, 429, 500, 502, 503, and 504 plus statusless transient network failures using `RetrySettings`. A valid `Retry-After` delta-seconds or HTTP-date is capped by `ApiRetryAfterMaxDelaySeconds`, then combined with local exponential backoff using the longer delay. When capped, the warning records the supplied value, configured maximum, and effective delay. Each attempt consumes a permit from its logical endpoint's limiter.
 
 `RouteKey` is used during URL construction and remains distinct from the API key secret.
 
@@ -900,7 +900,7 @@ NUnit owns Radar scenario discovery and concurrency. Each selected scenario is o
 
 One run-level `RadarRequestRateLimiter` registry is shared by every parallel Radar scenario and injected into `RadarApiClient`. It contains one .NET `SlidingWindowRateLimiter` per configured logical endpoint, keyed case-insensitively. Each has a one-second window divided into 10 segments, permits 2 starts per window, and queues up to 4 waiting attempts in oldest-first order. These budgets are independent: saturation on `PricingA` does not consume `PricingB` or `PricingC` capacity. Limiting is mandatory, cannot be disabled, and there is no separate in-flight request limit.
 
-`RadarTestSetup` binds and validates the required settings, rejects case-insensitive duplicate endpoint keys, and verifies every route points to a configured endpoint before database discovery. It creates and disposes the registry once for the Radar run. `RadarApiClient` acquires the selected endpoint's permit immediately before each outbound attempt and creates an independent `RestRequest`. Each retry first waits for local backoff or valid `Retry-After` (whichever is longer), then acquires another permit from that same endpoint limiter. Queue rejection sends no HTTP request and becomes a technical ERROR. Exhausted HTTP 429 likewise remains a technical ERROR without PASS/FAIL persistence.
+`RadarTestSetup` binds and validates the required settings, rejects case-insensitive duplicate endpoint keys, and verifies every route points to a configured endpoint before database discovery. It creates and disposes the registry once for the Radar run. `RadarApiClient` acquires the selected endpoint's permit immediately before each outbound attempt and creates an independent `HttpRequestMessage`. Each retry first waits for local backoff or valid `Retry-After` (whichever is longer), then acquires another permit from that same endpoint limiter. Queue rejection sends no HTTP request and becomes a technical ERROR. Exhausted HTTP 429 likewise remains a technical ERROR without PASS/FAIL persistence.
 
 ## 16. Cancellation Strategy
 

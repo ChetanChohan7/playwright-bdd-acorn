@@ -2,7 +2,6 @@ using System.Net;
 using Microsoft.Extensions.Logging.Abstractions;
 using PricingValidationFramework.Core.Configuration;
 using PricingValidationFramework.Core.ExternalAPIAccess.ApiClients;
-using RestSharp;
 
 namespace PricingValidationFramework.Tests.System.Ice;
 
@@ -217,12 +216,12 @@ public class IceApiClientTests
 			ApiKeyHeaderName = "X-ICE-API-KEY",
 			ApiKeyHeaderValue = "test-key"
 		};
-		var restClient = new RestClient(new HttpClient(new StubHttpMessageHandler(responseHandler)));
+		var httpClient = new HttpClient(new StubHttpMessageHandler(responseHandler));
 		return new IceApiClient(
 			iceSettings,
 			NullLogger<IceApiClient>.Instance,
 			retrySettings ?? defaultRetrySettings,
-			restClient,
+			httpClient,
 			retryDelayAsync);
 	}
 

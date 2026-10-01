@@ -3,14 +3,14 @@ namespace PricingValidationFramework.Core.ExternalAPIAccess.ApiClients;
 using System.Net;
 using System.Globalization;
 using System.Diagnostics;
+using System.Text;
 using Microsoft.Extensions.Logging;
 using PricingValidationFramework.Core.Configuration;
 using PricingValidationFramework.Core.ExternalAPIAccess.Throttling;
-using RestSharp;
 
 public class RadarApiClient : IDisposable
 {
-	private readonly RestClient restClient;
+	private readonly HttpClient httpClient;
 	private readonly RetrySettings retrySettings;
 	private readonly ILogger<RadarApiClient> logger;
 	private readonly IRadarRequestRateLimiter rateLimiter;
@@ -18,13 +18,13 @@ public class RadarApiClient : IDisposable
 
 	public RadarApiClient(
 		IRadarRequestRateLimiter rateLimiter,
-		RestClient? restClient = null,
+		HttpClient? httpClient = null,
 		ILogger<RadarApiClient>? logger = null,
 		RetrySettings? retrySettings = null,
 		Func<TimeSpan, CancellationToken, Task>? retryDelayAsync = null)
 	{
 		this.rateLimiter = rateLimiter ?? throw new ArgumentNullException(nameof(rateLimiter));
-		this.restClient = restClient ?? new RestClient();
+		this.httpClient = httpClient ?? new HttpClient();
 		this.logger = logger ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<RadarApiClient>.Instance;
 		this.retrySettings = retrySettings ?? new RetrySettings();
 		this.retrySettings.ValidateRadarApiRetrySettings();
@@ -52,7 +52,7 @@ public class RadarApiClient : IDisposable
 		{
 			try
 			{
-				var response = await ExecuteAttemptAsync(
+				using var response = await ExecuteAttemptAsync(
 					url,
 					apiKeyHeaderName,
 					apiKeyValue,
@@ -61,7 +61,7 @@ public class RadarApiClient : IDisposable
 					attempt,
 					cancellationToken);
 
-				if (response.StatusCode != 0 && !IsSuccess(response.StatusCode))
+				if (!IsSuccess(response.StatusCode))
 				{
 					if (IsTransient(response.StatusCode) && attempt < retrySettings.ApiRetryCount)
 					{
@@ -76,17 +76,13 @@ public class RadarApiClient : IDisposable
 					EnsureSuccessStatusCode(response);
 				}
 
-				if (response.ResponseStatus != ResponseStatus.Completed)
-				{
-					throw new HttpRequestException(response.ErrorMessage ?? "Radar request did not complete.", response.ErrorException);
-				}
-
-				if (string.IsNullOrWhiteSpace(response.Content))
+				var content = response.Content is null ? null : await response.Content.ReadAsStringAsync(cancellationToken);
+				if (string.IsNullOrWhiteSpace(content))
 				{
 					throw new InvalidOperationException("Radar response content is empty.");
 				}
 
-				return response.Content;
+				return content;
 			}
 			catch (OperationCanceledException)
 				when (!cancellationToken.IsCancellationRequested && attempt < retrySettings.ApiRetryCount)
@@ -152,7 +148,7 @@ public class RadarApiClient : IDisposable
 		}
 	}
 
-	private async Task<RestResponse> ExecuteAttemptAsync(
+	private async Task<HttpResponseMessage> ExecuteAttemptAsync(
 		string url,
 		string apiKeyHeaderName,
 		string apiKeyValue,
@@ -175,23 +171,23 @@ public class RadarApiClient : IDisposable
 			"RateLimitPermit",
 			Stopwatch.GetElapsedTime(permitWaitStart));
 
-		var request = new RestRequest(url, Method.Post)
-			.AddHeader(apiKeyHeaderName, apiKeyValue)
-			.AddHeader("Accept", "application/xml")
-			.AddStringBody(requestXml, ContentType.Xml);
+		using var request = new HttpRequestMessage(HttpMethod.Post, url);
+		request.Headers.TryAddWithoutValidation(apiKeyHeaderName, apiKeyValue);
+		request.Headers.Accept.ParseAdd("application/xml");
+		request.Content = new StringContent(requestXml, Encoding.UTF8, "application/xml");
 
-		var response = await restClient.ExecuteAsync(request, cancellationToken);
+		var response = await httpClient.SendAsync(request, cancellationToken);
 		cancellationToken.ThrowIfCancellationRequested();
 		return response;
 	}
 
 	public void Dispose()
 	{
-		restClient.Dispose();
+		httpClient.Dispose();
 	}
 
 	private async Task DelayBeforeRetryAsync(
-		RestResponse response,
+		HttpResponseMessage response,
 		int attempt,
 		CancellationToken cancellationToken,
 		RequestDiagnostics diagnostics)
@@ -223,15 +219,15 @@ public class RadarApiClient : IDisposable
 	}
 
 	private TimeSpan GetRetryDelay(
-		RestResponse response,
+		HttpResponseMessage response,
 		int attempt,
 		out bool retryAfterUsed,
 		RequestDiagnostics diagnostics)
 	{
 		var localDelay = GetLocalRetryDelay(attempt);
-		var retryAfterValue = response.Headers?
-			.FirstOrDefault(header => string.Equals(header.Name, "Retry-After", StringComparison.OrdinalIgnoreCase))
-			?.Value?.ToString();
+		var retryAfterValue = response.Headers.TryGetValues("Retry-After", out var values)
+			? values.FirstOrDefault()
+			: null;
 		var retryAfterDelay = ParseRetryAfterDelay(retryAfterValue);
 		var maximumRetryAfterDelay = TimeSpan.FromSeconds(retrySettings.ApiRetryAfterMaxDelaySeconds);
 		var wasCapped = retryAfterDelay > maximumRetryAfterDelay;
@@ -316,7 +312,7 @@ public class RadarApiClient : IDisposable
 		return (int)statusCode is >= 200 and <= 299;
 	}
 
-	private static void EnsureSuccessStatusCode(RestResponse response) //same as ice api client 
+	private static void EnsureSuccessStatusCode(HttpResponseMessage response) //same as ice api client
 	{
 		if (IsSuccess(response.StatusCode))
 		{
@@ -324,8 +320,8 @@ public class RadarApiClient : IDisposable
 		}
 
 		throw new HttpRequestException(
-			$"Radar request failed with status {(int)response.StatusCode} ({response.StatusDescription}).",
-			response.ErrorException,
+			$"Radar request failed with status {(int)response.StatusCode} ({response.ReasonPhrase}).",
+			null,
 			response.StatusCode);
 	}
 

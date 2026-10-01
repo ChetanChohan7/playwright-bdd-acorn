@@ -62,10 +62,6 @@
               "target": "Package",
               "version": "[10.0.0, )"
             },
-            "RestSharp": {
-              "target": "Package",
-              "version": "[114.0.0, )"
-            },
             "System.Threading.RateLimiting": {
               "target": "Package",
               "version": "[10.0.0, )"

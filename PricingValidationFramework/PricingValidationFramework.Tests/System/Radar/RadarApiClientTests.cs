@@ -6,7 +6,6 @@ using Microsoft.Extensions.Logging.Abstractions;
 using PricingValidationFramework.Core.Configuration;
 using PricingValidationFramework.Core.ExternalAPIAccess.ApiClients;
 using PricingValidationFramework.Core.ExternalAPIAccess.Throttling;
-using RestSharp;
 
 namespace PricingValidationFramework.Tests.System.Radar;
 
@@ -22,7 +21,7 @@ public class RadarApiClientTests
                 Content = new StringContent("<Response><TotalAmount>100.00</TotalAmount></Response>", Encoding.UTF8, "application/xml")
             });
 
-        using var client = new RadarApiClient(new CountingRateLimiter(), new RestClient(new HttpClient(handler)));
+        using var client = new RadarApiClient(new CountingRateLimiter(), new HttpClient(handler));
 
         var result = await client.PostAsync(
             "Endpoint1",
@@ -49,7 +48,7 @@ public class RadarApiClientTests
             };
         });
 
-        using var client = new RadarApiClient(new CountingRateLimiter(), new RestClient(new HttpClient(handler)));
+        using var client = new RadarApiClient(new CountingRateLimiter(), new HttpClient(handler));
 
         await client.PostAsync(
             "Endpoint1",
@@ -76,7 +75,7 @@ public class RadarApiClientTests
             };
         });
 
-        using var client = new RadarApiClient(new CountingRateLimiter(), new RestClient(new HttpClient(handler)));
+        using var client = new RadarApiClient(new CountingRateLimiter(), new HttpClient(handler));
 
         await client.PostAsync(
             "Endpoint1",
@@ -622,7 +621,7 @@ public class RadarApiClientTests
     {
         return new RadarApiClient(
             rateLimiter ?? new CountingRateLimiter(),
-            new RestClient(new HttpClient(new StubHttpMessageHandler(responseFactory))),
+            new HttpClient(new StubHttpMessageHandler(responseFactory)),
             logger ?? NullLogger<RadarApiClient>.Instance,
             retrySettings ?? new RetrySettings
             {
@@ -641,7 +640,7 @@ public class RadarApiClientTests
     {
         return new RadarApiClient(
             rateLimiter ?? new CountingRateLimiter(),
-            new RestClient(new HttpClient(new StubHttpMessageHandler(responseFactory))),
+            new HttpClient(new StubHttpMessageHandler(responseFactory)),
             logger ?? NullLogger<RadarApiClient>.Instance,
             retrySettings ?? new RetrySettings
             {

@@ -978,14 +978,6 @@
           "Microsoft.Testing.Platform.MSBuild": "1.5.3"
         }
       },
-      "RestSharp/114.0.0": {
-        "runtime": {
-          "lib/net10.0/RestSharp.dll": {
-            "assemblyVersion": "114.0.0.0",
-            "fileVersion": "114.0.0.0"
-          }
-        }
-      },
       "System.ClientModel/1.5.1": {
         "dependencies": {
           "Microsoft.Extensions.Logging.Abstractions": "10.0.0",
@@ -1090,7 +1082,6 @@
           "Microsoft.Data.SqlClient": "6.1.2",
           "Microsoft.Extensions.Logging.Abstractions": "10.0.0",
           "Microsoft.Extensions.Options": "10.0.0",
-          "RestSharp": "114.0.0",
           "System.Threading.RateLimiting": "10.0.0"
         },
         "runtime": {
@@ -1436,13 +1427,6 @@
       "sha512": "sha512-sy4cLoUAdE6TDM4wNX5gmNCyhMev5wUz4cA6ZRf/aON9vf9t4xTVGLj/4huhDKcS4dFfmVVcgcP70yC7WC9kKg==",
       "path": "nunit3testadapter/5.0.0",
       "hashPath": "nunit3testadapter.5.0.0.nupkg.sha512"
-    },
-    "RestSharp/114.0.0": {
-      "type": "package",
-      "serviceable": true,
-      "sha512": "sha512-8pDO4q+K8nIqXbvGCb9ciKcngj36pCXGRDzOYPEPoS2IvBIL+mejmUMAtSNALt/NkDc9LQmHvM95kdniLSbGtg==",
-      "path": "restsharp/114.0.0",
-      "hashPath": "restsharp.114.0.0.nupkg.sha512"
     },
     "System.ClientModel/1.5.1": {
       "type": "package",
