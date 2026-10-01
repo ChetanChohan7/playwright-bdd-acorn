@@ -207,7 +207,9 @@ public sealed class RadarScenarioProcessor
         var responseXsdFile = radarSettings.ResponseXsdMappings.TryGetValue(routeIdentifier, out var mappedXsdFile)
             ? mappedXsdFile
             : string.Empty;
-        var responseValidation = ValidateResponseXml(radarResponseXml, responseXsdFile, ref executionStage);
+        var responseValidation = radarSettings.ValidateResponseXsd
+            ? ValidateResponseXml(radarResponseXml, responseXsdFile, ref executionStage)
+            : null;
         if (responseValidation is { IsValid: false })
         {
             RecordError(

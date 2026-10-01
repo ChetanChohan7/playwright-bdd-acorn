@@ -249,7 +249,9 @@ ConnectionString
 
 `RadarSettings.Routes` contains entries keyed by explicit user-supplied route codes such as `Route001` and `Route002`. Route dictionary keys have no business meaning and are not derived from scenario data.
 
-`RadarSettings.ResponseXsdMappings` maps those existing route identifiers to response XSD filenames relative to `TestAssets/Xsd`. It is the only response schema registration point; schema names are not derived from ProductCode/SchemeCode and no schema count is fixed. Missing or empty mappings skip response schema validation.
+`RadarSettings.ResponseXsdMappings` maps those existing route identifiers to response XSD filenames relative to `TestAssets/Xsd`. It is the only response schema registration point; schema names are not derived from ProductCode/SchemeCode and no schema count is fixed. Missing or empty mappings skip response schema validation for that route.
+
+`RadarSettings.ValidateResponseXsd` is a configuration feature flag, `false` by default until the approved schemas are received. It controls response schema validation for all routes without removing the mappings. It is read once when the Radar run starts; when it is `false`, `RadarTestSetup` logs a warning and `RadarScenarioProcessor` neither resolves nor validates response schemas. Deserialization, comparison, reporting, and PASS/FAIL persistence are unchanged.
 
 Each `RadarEndpointSettings` entry contains:
 

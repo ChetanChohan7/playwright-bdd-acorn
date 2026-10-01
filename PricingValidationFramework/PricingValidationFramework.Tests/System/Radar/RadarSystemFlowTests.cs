@@ -600,6 +600,50 @@ public class RadarSystemFlowTests
         }
     }
 
+    [Test]
+    public void Response_xsd_validation_should_be_disabled_by_default()
+    {
+        Assert.That(new RadarSettings().ValidateResponseXsd, Is.False);
+    }
+
+    [TestCase(true, ScenarioResult.Fail)]
+    [TestCase(false, ScenarioResult.Pass)]
+    public async Task Radar_system_flow_should_apply_response_xsd_validation_only_when_the_flag_is_enabled(
+        bool validateResponseXsd,
+        ScenarioResult expectedResult)
+    {
+        // Deserializes to a valid TotalAmount but breaks RadarSystemTest.xsd with an undeclared element.
+        const string schemaViolatingResponse = "<Response><TotalAmount>101.00</TotalAmount><Unexpected>x</Unexpected></Response>";
+        var settings = CreateSettings();
+        settings.ValidateResponseXsd = validateResponseXsd;
+        var (processor, apiClient) = CreateProcessor(new StubHttpMessageHandler(_ => RawResponse(schemaViolatingResponse)), settings);
+        using var _ = apiClient;
+
+        var row = await processor.ProcessAsync(
+            CreateScenario("SCENARIO-XSD-FLAG", "QUOTE-XSD-FLAG"), "build-1", 100.00m, -5.00m, 5.00m, RequestTime);
+
+        Assert.That(row.Result, Is.EqualTo(expectedResult));
+    }
+
+    [Test]
+    public async Task Radar_system_flow_should_not_resolve_mapped_schemas_when_the_flag_is_disabled()
+    {
+        var settings = CreateSettings();
+        settings.ResponseXsdMappings["Route001"] = "missing-schema.xsd";
+        settings.ValidateResponseXsd = false;
+        var (processor, apiClient) = CreateProcessor(new StubHttpMessageHandler(_ => SuccessResponse("101.00")), settings);
+        using var _ = apiClient;
+
+        var row = await processor.ProcessAsync(
+            CreateScenario("SCENARIO-XSD-OFF", "QUOTE-XSD-OFF"), "build-1", 100.00m, -5.00m, 5.00m, RequestTime);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(row.Result, Is.EqualTo(ScenarioResult.Pass));
+            Assert.That(row.RadarValue, Is.EqualTo(101.00m));
+        });
+    }
+
     private const string RequestTime = "2024-03-01Z09:30:45";
     private const string RequestXml = "<Request><TotalAmount>100.00</TotalAmount></Request>";
 
@@ -647,8 +691,10 @@ public class RadarSystemFlowTests
 
     private static RadarSettings CreateSettings()
     {
+        // Validation is enabled so these tests exercise the XSD rules; the flag tests set it explicitly.
         return new RadarSettings
         {
+            ValidateResponseXsd = true,
             Endpoints = new Dictionary<string, RadarEndpointSettings>(StringComparer.Ordinal)
             {
                 ["Endpoint1"] = new()
