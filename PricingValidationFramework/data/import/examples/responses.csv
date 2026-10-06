@@ -1,0 +1,2 @@
+Scenario_id,XML_Response,Build_id,Status
+EXAMPLE-001,<Response><Premium>100.00</Premium></Response>,example-baseline,PASS

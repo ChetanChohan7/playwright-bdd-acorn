@@ -13,12 +13,35 @@ namespace PricingValidationFramework.Tests.System.Ice;
 [TestFixture]
 public class IceSystemFlowTests
 {
+    [TestCase(0, false)]
+    [TestCase(1, false)]
+    [TestCase(2, false)]
+    [TestCase(1, true)]
+    [TestCase(2, true)]
+    public void Ice_baseline_extractor_should_decode_json_escaped_xml(int escapeCount, bool retainOuterQuotes)
+    {
+        var xml = "<?xml version=\"1.0\" encoding=\"UTF-16\"?>\r\n<Response><Premium>100.00</Premium></Response>";
+        var options = new global::System.Text.Json.JsonSerializerOptions
+        {
+            Encoder = global::System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+        };
+        for (var escapeIndex = 0; escapeIndex < escapeCount; escapeIndex++)
+        {
+            var json = global::System.Text.Json.JsonSerializer.Serialize(xml, options);
+            xml = retainOuterQuotes ? json : json[1..^1];
+        }
+
+        var value = new XmlValueExtractor().ExtractBaselineValue(xml);
+
+        Assert.That(value, Is.EqualTo(100.00m));
+    }
+
     [Test]
     public async Task Ice_system_flow_should_pass_when_values_match()
     {
         var scenario = CreateScenario("<Response><Premium>100.00</Premium></Response>");
         var baselineReader = new FakeBaselineDataReader(scenario);
-        var apiClient = new FakeIceApiClient("{\"premium\": 100.00}");
+        var apiClient = new FakeIceApiClient("{\"technicalPrice\":{\"grossPremiumAmountIncTax\":{\"amount\":100.00}}}");
         var urlBuilder = new IceUrlBuilder();
         var jsonExtractor = new JsonValueExtractor();
         var xmlExtractor = new XmlValueExtractor();
@@ -67,7 +90,7 @@ public class IceSystemFlowTests
     {
         var scenario = CreateScenario("<Response><Premium>100.00</Premium></Response>");
         var baselineReader = new FakeBaselineDataReader(scenario);
-        var apiClient = new FakeIceApiClient("{\"premium\": 120.00}");
+        var apiClient = new FakeIceApiClient("{\"technicalPrice\":{\"grossPremiumAmountIncTax\":{\"amount\":120.00}}}");
         var urlBuilder = new IceUrlBuilder();
         var jsonExtractor = new JsonValueExtractor();
         var xmlExtractor = new XmlValueExtractor();

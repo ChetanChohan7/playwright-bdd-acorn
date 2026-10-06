@@ -1,6 +1,9 @@
 namespace PricingValidationFramework.Core.Models.External;
 
-// TODO: Populate properties from the confirmed Radar JSON contract when received.
+using System.Text.Json.Serialization;
+
 public sealed class RadarJsonResponse
 {
+	[JsonPropertyName("response")]
+	public string? Response { get; set; }
 }

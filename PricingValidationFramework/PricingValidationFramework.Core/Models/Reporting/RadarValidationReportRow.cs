@@ -9,11 +9,13 @@ public class RadarValidationReportRow
 	public string QuoteRef { get; set; } = string.Empty;
 	public string SchemeCode { get; set; } = string.Empty;
 	public string ProductCode { get; set; } = string.Empty;
+	public string SchemaProfile { get; set; } = string.Empty;
 	public string RequestXml { get; set; } = string.Empty;
+	public string BaselineXml { get; set; } = string.Empty;
 	public string RadarResponseXml { get; set; } = string.Empty;
-	public decimal? RadarValue { get; set; }
-	public decimal? BaselineValue { get; set; }
-	public decimal? Difference { get; set; }
+	public IReadOnlyList<DecimalFieldComparison> FieldComparisons { get; set; } = Array.Empty<DecimalFieldComparison>();
+	public string? FailureStage { get; set; }
+	public string? Error { get; set; }
 	public decimal MinThreshold { get; set; }
 	public decimal MaxThreshold { get; set; }
 	public ScenarioResult Result { get; set; }

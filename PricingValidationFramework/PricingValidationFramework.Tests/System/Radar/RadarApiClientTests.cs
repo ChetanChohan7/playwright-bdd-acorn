@@ -1,5 +1,7 @@
 using System.Net;
 using System.Text;
+using System.Text.Json;
+using System.Xml.Linq;
 using System.Collections.Concurrent;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -33,6 +35,49 @@ public class RadarApiClientTests
         Assert.That(result, Is.EqualTo("<Response><TotalAmount>100.00</TotalAmount></Response>"));
     }
 
+        [Test]
+        public async Task PostAsync_should_unwrap_json_and_normalize_utf16_xml_response()
+        {
+                const string xml = """
+                        <?xml version="1.0" encoding="utf-16"?>
+                        <underwrittenResponseResult xmlns="http://ice.com/rating/underwriting/insuranceDataModel">
+                            <underwrittenResponse>
+                                <underwrittenNodes>
+                                    <underwrittenCoverNode description="Comprehensive">
+                                        <techPrice><priceComponents><premiumPriceComponent code="premium"><calculatedAmount termAmount="19012.35" deltaAmount="19012.35" /></premiumPriceComponent></priceComponents></techPrice>
+                                    </underwrittenCoverNode>
+                                </underwrittenNodes>
+                            </underwrittenResponse>
+                        </underwrittenResponseResult>
+                        """;
+                var json = JsonSerializer.Serialize(new
+                {
+                    response = xml,
+                    metadata = "ignore after XML response"
+                });
+                var handler = new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                        Content = new StringContent(json, Encoding.UTF8, "application/json")
+                });
+                using var client = new RadarApiClient(new CountingRateLimiter(), new HttpClient(handler));
+
+                var result = await client.PostAsync(
+                        "Endpoint1",
+                        "https://placeholder-radar-1.example.com/quote",
+                        "X-API-KEY",
+                        "secret-value",
+                        "<Request />");
+
+                Assert.Multiple(() =>
+                {
+                        Assert.That(result, Does.StartWith("<underwrittenResponseResult"));
+                        Assert.That(result, Does.Not.Contain("<?xml"));
+                        Assert.That(result, Does.Not.Contain("\\\""));
+                        Assert.That(result, Does.Not.Contain("ignore after XML response"));
+                        Assert.That(XDocument.Parse(result).Root!.Name.LocalName, Is.EqualTo("underwrittenResponseResult"));
+                });
+        }
+
     [Test]
     public async Task PostAsync_should_send_configured_api_key_header()
     {
@@ -40,7 +85,7 @@ public class RadarApiClientTests
         {
             Assert.That(request.Headers.Contains("X-API-KEY"), Is.True);
             Assert.That(request.Headers.GetValues("X-API-KEY").Single(), Is.EqualTo("secret-value"));
-            Assert.That(request.Headers.GetValues("Accept").Single(), Is.EqualTo("application/xml"));
+            Assert.That(request.Headers.GetValues("Accept").Single(), Is.EqualTo("application/json"));
 
             return new HttpResponseMessage(HttpStatusCode.OK)
             {

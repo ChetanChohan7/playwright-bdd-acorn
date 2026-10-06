@@ -80,10 +80,8 @@ public class CsvReportWriterTests
 			SchemeCode = "ABC",
 			ProductCode = "HOME",
 			RequestXml = "<request />",
+			BaselineXml = "<baseline />",
 			RadarResponseXml = "<response />",
-			RadarValue = 1m,
-			BaselineValue = 2m,
-			Difference = -1m,
 			MinThreshold = -2m,
 			MaxThreshold = 2m,
 			Result = ScenarioResult.Pass
@@ -94,17 +92,66 @@ public class CsvReportWriterTests
 			await new CsvReportWriter().WriteRadarReportAsync(outputPath, "build", rows);
 			var csv = await File.ReadAllTextAsync(outputPath);
 
-			Assert.That(csv, Does.StartWith("BuildId,ScenarioId,QuoteRef,SchemeCode,ProductCode,RequestXml,RadarResponseXml,RadarValue,BaselineValue,Difference,MinThreshold,MaxThreshold,Result" + Environment.NewLine));
+			Assert.That(csv, Does.StartWith("RecordType,BuildId,ScenarioId,QuoteRef,ProductCode,SchemeCode,SchemaProfile,FieldKey,ExpectedPath,ActualPath,Expected,Actual,Delta,MinDelta,MaxDelta,FieldResult,OverallResult,ComparedFields,PassedFields,FailedFields,FailureStage,Error,RequestXml,BaselineXml,ApiXml" + Environment.NewLine));
 			Assert.Multiple(() =>
 			{
-				Assert.That(csv, Does.Contain("build,S00,plain,ABC,HOME,<request />,<response />,1,2,-1,-2,2,PASS"));
-				Assert.That(csv, Does.Contain("build,S01,,ABC,HOME,<request />,<response />,1,2,-1,-2,2,PASS"));
-				Assert.That(csv, Does.Contain("build,S02,\"comma,value\",ABC,HOME,<request />,<response />,1,2,-1,-2,2,PASS"));
-				Assert.That(csv, Does.Contain("build,S03,\"say \"\"hi\"\"\",ABC,HOME,<request />,<response />,1,2,-1,-2,2,PASS"));
-				Assert.That(csv, Does.Contain("build,S04,\"carriage\rreturn\",ABC,HOME,<request />,<response />,1,2,-1,-2,2,PASS"));
-				Assert.That(csv, Does.Contain("build,S05,\"line\nfeed\",ABC,HOME,<request />,<response />,1,2,-1,-2,2,PASS"));
-				Assert.That(csv, Does.Contain("build,S06,\"line\r\nbreak\",ABC,HOME,<request />,<response />,1,2,-1,-2,2,PASS"));
-				Assert.That(csv, Does.Contain("build,S07,\"a,\"\"b\"\"\r\nc\",ABC,HOME,<request />,<response />,1,2,-1,-2,2,PASS"));
+				Assert.That(csv, Does.Contain("SUMMARY,build,S00,plain,HOME,ABC"));
+				Assert.That(csv, Does.Contain("SUMMARY,build,S01,,HOME,ABC"));
+				Assert.That(csv, Does.Contain("SUMMARY,build,S02,\"comma,value\",HOME,ABC"));
+				Assert.That(csv, Does.Contain("SUMMARY,build,S03,\"say \"\"hi\"\"\",HOME,ABC"));
+				Assert.That(csv, Does.Contain("SUMMARY,build,S04,\"carriage\rreturn\",HOME,ABC"));
+				Assert.That(csv, Does.Contain("SUMMARY,build,S05,\"line\nfeed\",HOME,ABC"));
+				Assert.That(csv, Does.Contain("SUMMARY,build,S06,\"line\r\nbreak\",HOME,ABC"));
+				Assert.That(csv, Does.Contain("SUMMARY,build,S07,\"a,\"\"b\"\"\r\nc\",HOME,ABC"));
+				Assert.That(csv, Does.Contain(",<request />,<baseline />,<response />"));
+			});
+		}
+		finally
+		{
+			if (File.Exists(outputPath))
+			{
+				File.Delete(outputPath);
+			}
+		}
+	}
+
+	[Test]
+	public async Task WriteRadarReportAsync_should_write_summary_then_dynamic_field_rows_in_one_file()
+	{
+		var outputPath = Path.Combine(Path.GetTempPath(), $"radar-details-{Guid.NewGuid():N}.csv");
+		var row = new RadarValidationReportRow
+		{
+			ScenarioId = "S1",
+			QuoteRef = "Q1",
+			ProductCode = "HOME",
+			SchemeCode = "ABC",
+			SchemaProfile = "HOME-ABC",
+			RequestXml = "<request />",
+			BaselineXml = "<baseline />",
+			RadarResponseXml = "<response />",
+			MinThreshold = -0.01m,
+			MaxThreshold = 0.01m,
+			Result = ScenarioResult.Fail,
+			FieldComparisons =
+			[
+				new("AnnualNet", "/Baseline/Tom", "/Response/Potter", 412.30m, 412.31m, 0.01m, ScenarioResult.Pass),
+				new("AdminFee", "/Baseline/Bob", "/Response/Motter", 25m, 30m, 5m, ScenarioResult.Fail)
+			]
+		};
+
+		try
+		{
+			await new CsvReportWriter().WriteRadarReportAsync(outputPath, "build", [row]);
+			var lines = await File.ReadAllLinesAsync(outputPath);
+
+			Assert.Multiple(() =>
+			{
+				Assert.That(lines, Has.Length.EqualTo(4));
+				Assert.That(lines[1], Does.StartWith("SUMMARY,build,S1,Q1,HOME,ABC,HOME-ABC"));
+				Assert.That(lines[2], Does.StartWith("FIELD,build,S1,Q1,HOME,ABC,HOME-ABC,AdminFee,/Baseline/Bob,/Response/Motter,25,30,5,-0.01,0.01,FAIL,FAIL"));
+				Assert.That(lines[3], Does.StartWith("FIELD,build,S1,Q1,HOME,ABC,HOME-ABC,AnnualNet,/Baseline/Tom,/Response/Potter,412.30,412.31,0.01,-0.01,0.01,PASS,FAIL"));
+				Assert.That(lines[1], Does.EndWith(",<request />,<baseline />,<response />"));
+				Assert.That(lines[2], Does.EndWith(",,"));
 			});
 		}
 		finally

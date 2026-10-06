@@ -6,7 +6,38 @@ using PricingValidationFramework.Core.Reporting;
 
 public static class RadarReportingHelper
 {
-    public static RadarValidationReportRow BuildRow(
+    public static RadarValidationReportRow BuildComparisonRow(
+        string buildId,
+        string scenarioId,
+        string quoteRef,
+        string schemeCode,
+        string productCode,
+        string requestXml,
+        string baselineXml,
+        string radarResponseXml,
+        decimal minDelta,
+        decimal maxDelta,
+        PricingComparisonResult comparison)
+    {
+        return BuildRow(
+            buildId,
+            scenarioId,
+            quoteRef,
+            schemeCode,
+            productCode,
+            requestXml,
+            radarResponseXml,
+            minDelta,
+            maxDelta,
+            comparison.Result,
+            comparison.SchemaProfile,
+            baselineXml,
+            comparison.Fields,
+            comparison.FailureStage,
+            comparison.Error);
+    }
+
+    private static RadarValidationReportRow BuildRow(
         string buildId,
         string scenarioId,
         string quoteRef,
@@ -14,22 +45,19 @@ public static class RadarReportingHelper
         string productCode,
         string requestXml,
         string radarResponseXml,
-        decimal? radarValue,
-        decimal? baselineValue,
-        decimal? difference,
         decimal minThreshold,
         decimal maxThreshold,
-        ScenarioResult result)
+        ScenarioResult result,
+        string schemaProfile,
+        string baselineXml,
+        IReadOnlyList<DecimalFieldComparison> fieldComparisons,
+        string? failureStage,
+        string? error)
     {
         var normalizedRequestXml = CsvReportWriter.NormalizeXml(requestXml);
         var normalizedRadarResponseXml = string.IsNullOrWhiteSpace(radarResponseXml)
             ? string.Empty
             : CsvReportWriter.NormalizeXml(radarResponseXml);
-
-        if (result == ScenarioResult.Error)
-        {
-            radarValue = string.IsNullOrWhiteSpace(radarResponseXml) ? null : radarValue;
-        }
 
         return new RadarValidationReportRow
         {
@@ -38,11 +66,13 @@ public static class RadarReportingHelper
             QuoteRef = quoteRef,
             SchemeCode = schemeCode,
             ProductCode = productCode,
+            SchemaProfile = schemaProfile,
             RequestXml = normalizedRequestXml,
+            BaselineXml = string.IsNullOrWhiteSpace(baselineXml) ? string.Empty : CsvReportWriter.NormalizeXml(baselineXml),
             RadarResponseXml = normalizedRadarResponseXml,
-            RadarValue = radarValue,
-            BaselineValue = baselineValue,
-            Difference = difference,
+            FieldComparisons = fieldComparisons,
+            FailureStage = failureStage,
+            Error = error,
             MinThreshold = minThreshold,
             MaxThreshold = maxThreshold,
             Result = result
@@ -54,6 +84,15 @@ public static class RadarReportingHelper
         IReadOnlyCollection<RadarValidationReportRow> reportRows,
         CancellationToken cancellationToken)
     {
+        return WriteReportAsync(buildId,
+            reportRows.OrderBy(row => row.ScenarioId, StringComparer.Ordinal), cancellationToken);
+    }
+
+    public static Task WriteReportAsync(
+        string buildId,
+        IEnumerable<RadarValidationReportRow> sortedRows,
+        CancellationToken cancellationToken)
+    {
         var reportDirectory = Path.Combine(
             TestContext.CurrentContext.TestDirectory,
             "TestResults",
@@ -63,7 +102,7 @@ public static class RadarReportingHelper
 
         return AtomicReportWriter.WriteAsync(
             reportPath,
-            temporaryPath => new CsvReportWriter().WriteRadarReportAsync(temporaryPath, buildId, reportRows, cancellationToken));
+            temporaryPath => new CsvReportWriter().WriteRadarReportRowsAsync(temporaryPath, buildId, sortedRows, cancellationToken));
     }
 
     private static string SanitizeBuildId(string buildId)

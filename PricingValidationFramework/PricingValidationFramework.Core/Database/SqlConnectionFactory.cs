@@ -16,4 +16,19 @@ public class SqlConnectionFactory
 	{
 		return new SqlConnection(settings.ConnectionString);
 	}
+
+	public async Task<SqlConnection> OpenAsync(CancellationToken cancellationToken = default)
+	{
+		var connection = Create();
+		try
+		{
+			await connection.OpenAsync(cancellationToken);
+			return connection;
+		}
+		catch
+		{
+			await connection.DisposeAsync();
+			throw;
+		}
+	}
 }

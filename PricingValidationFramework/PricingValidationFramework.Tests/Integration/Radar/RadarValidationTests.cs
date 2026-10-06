@@ -9,7 +9,7 @@ using PricingValidationFramework.Tests.Helpers.Validation;
 namespace PricingValidationFramework.Tests.Integration.Radar;
 
 [TestFixture]
-[Explicit("Requires xml_request and xml_response database access, Radar endpoint access, endpoint credentials, approved XSD files, and Azure DevOps pipeline inputs.")]
+[Explicit("Requires XML database access, Radar endpoint credentials, pipeline inputs, and route-mapped pricing XSDs.")]
 [Parallelizable(ParallelScope.Children)]
 public class RadarValidationTests
 {
@@ -74,7 +74,6 @@ public class RadarValidationTests
 
         var cancellationToken = TestContext.CurrentContext.CancellationToken;
         ScenarioResponse? baseline = null;
-        decimal? baselineValue = null;
         RadarValidationReportRow row;
         Exception? scenarioError = null;
 
@@ -83,37 +82,61 @@ public class RadarValidationTests
             cancellationToken.ThrowIfCancellationRequested();
             baseline = await setup.BaselineReader
                 .GetPassingBaselineByScenarioIdAsync(scenario.ScenarioId, cancellationToken);
-            baselineValue = setup.XmlExtractor.ExtractTotalAmount(baseline.XmlResponse);
-
-            row = await setup.ScenarioProcessor.ProcessAsync(
+			var run = await setup.PricingService.RunAsync(
                 scenario,
-                setup.BuildId,
-                baselineValue.Value,
+                baseline.XmlResponse,
+                setup.RequestTime,
                 setup.MinThreshold,
                 setup.MaxThreshold,
-                setup.RequestTime,
                 cancellationToken);
-
-            try
+			row = RadarReportingHelper.BuildComparisonRow(
+				setup.BuildId,
+				scenario.ScenarioId,
+				scenario.QuoteRef,
+				scenario.SchemeCode,
+				scenario.ProductCode,
+				scenario.XmlRequest,
+				baseline.XmlResponse,
+				run.RadarResponseXml,
+				setup.MinThreshold,
+				setup.MaxThreshold,
+				run.Comparison);
+            if (row.Result != ScenarioResult.Pass)
             {
-                await PersistResultAsync(setup, baseline, row, cancellationToken);
-            }
-            catch (OperationCanceledException)
-            {
-                throw;
-            }
-            catch (Exception exception)
-            {
-                scenarioError = exception;
                 setup.Logger.ExecutionFailed(
                     scenario.ScenarioId,
                     scenario.QuoteRef,
                     scenario.ProductCode,
                     scenario.SchemeCode,
-                    null,
-                    "ResultPersistence",
-                    exception);
-                row = BuildErrorRow(scenario, setup, row.RadarResponseXml, baselineValue);
+                run.RouteId,
+                row.FailureStage ?? "PricingComparison",
+                new InvalidOperationException(row.Error ?? $"Pricing comparison returned {row.Result}."),
+                safeDetail: row.Error);
+            }
+
+			if (row.Result != ScenarioResult.Error && !string.IsNullOrWhiteSpace(row.RadarResponseXml))
+            {
+                try
+                {
+                    await PersistResultAsync(setup, baseline, row, cancellationToken);
+                }
+                catch (OperationCanceledException)
+                {
+                    throw;
+                }
+                catch (Exception exception)
+                {
+                    scenarioError = exception;
+                    setup.Logger.ExecutionFailed(
+                        scenario.ScenarioId,
+                        scenario.QuoteRef,
+                        scenario.ProductCode,
+                        scenario.SchemeCode,
+                        null,
+                        "ResultPersistence",
+                        exception);
+                    row = BuildErrorRow(scenario, setup, baseline.XmlResponse, row.RadarResponseXml, "ResultPersistence", exception.Message);
+                }
             }
         }
         catch (OperationCanceledException)
@@ -146,7 +169,7 @@ public class RadarValidationTests
                 exception,
                 (exception as HttpRequestException)?.StatusCode is { } statusCode ? (int)statusCode : null,
                 (exception as RadarRequestRateLimitException)?.QueueRejected);
-            row = BuildErrorRow(scenario, setup, string.Empty, baselineValue);
+            row = BuildErrorRow(scenario, setup, baseline?.XmlResponse ?? string.Empty, string.Empty, "ScenarioExecution", exception.Message);
         }
 
         reportRows.Add(row);
@@ -167,7 +190,7 @@ public class RadarValidationTests
                     {
                         await RadarReportingHelper.WriteReportAsync(
                             setup.BuildId,
-                            reportRows.GetSortedRows(),
+                            reportRows.ReadSortedRows(),
                             CancellationToken.None);
                     }
                     catch (Exception exception)
@@ -180,6 +203,7 @@ public class RadarValidationTests
         }
         finally
         {
+            reportRows.Dispose();
             setup?.Dispose();
         }
     }
@@ -194,13 +218,12 @@ public class RadarValidationTests
         if (row.Result == ScenarioResult.Fail)
         {
             Assert.Fail(
-                $"Radar comparison failed. ScenarioId={row.ScenarioId}, RadarValue={row.RadarValue}, " +
-                $"BaselineValue={row.BaselineValue}, Difference={row.Difference}, " +
-                $"MinThreshold={row.MinThreshold}, MaxThreshold={row.MaxThreshold}.");
+                $"Radar comparison failed. ScenarioId={row.ScenarioId}, FailedFields={row.FieldComparisons.Count(field => field.Result == ScenarioResult.Fail)}, " +
+                $"Details={string.Join(" | ", row.FieldComparisons.Where(field => field.Result == ScenarioResult.Fail).Select(field => $"{field.FieldKey}: expected={field.Expected}, actual={field.Actual}, delta={field.Delta}"))}.");
         }
 
-        var errorType = scenarioError?.GetType().Name ?? "RadarProcessingError";
-        Assert.Fail($"Radar scenario completed with ERROR. ScenarioId={row.ScenarioId}, ErrorType={errorType}.");
+        var errorType = scenarioError?.GetType().Name ?? row.FailureStage ?? "RadarProcessingError";
+        Assert.Fail($"Radar scenario completed with ERROR. ScenarioId={row.ScenarioId}, ErrorType={errorType}, Error={row.Error}.");
     }
 
     private static async Task PersistResultAsync(
@@ -220,35 +243,28 @@ public class RadarValidationTests
             Status = row.Result == ScenarioResult.Pass ? "PASS" : "FAIL"
         };
 
-        if (row.Result == ScenarioResult.Pass)
-        {
-            await setup.ResultUpdater.UpdatePassResultAsync(response, cancellationToken);
-        }
-        else
-        {
-            await setup.ResultUpdater.UpdateFailResultAsync(response, cancellationToken);
-        }
+        await setup.ResultUpdater.UpdateResultAsync(response, cancellationToken);
     }
 
     private static RadarValidationReportRow BuildErrorRow(
         ScenarioRequest scenario,
         RadarTestSetup setup,
+        string baselineXml,
         string radarResponseXml,
-        decimal? baselineValue)
+        string failureStage,
+        string error)
     {
-        return RadarReportingHelper.BuildRow(
+        return RadarReportingHelper.BuildComparisonRow(
             setup.BuildId,
             scenario.ScenarioId,
             scenario.QuoteRef,
             scenario.SchemeCode,
             scenario.ProductCode,
             scenario.XmlRequest,
+            baselineXml,
             radarResponseXml,
-            null,
-            baselineValue,
-            null,
             setup.MinThreshold,
             setup.MaxThreshold,
-            ScenarioResult.Error);
+            new PricingComparisonResult(Array.Empty<DecimalFieldComparison>(), error, failureStage));
     }
 }

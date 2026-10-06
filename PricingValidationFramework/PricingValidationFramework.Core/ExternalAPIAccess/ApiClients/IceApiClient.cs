@@ -1,5 +1,6 @@
 namespace PricingValidationFramework.Core.ExternalAPIAccess.ApiClients;
 
+using System.Security.Authentication;
 using System.Security.Cryptography.X509Certificates;
 using Microsoft.Extensions.Logging;
 using PricingValidationFramework.Core.Configuration;
@@ -66,11 +67,15 @@ public class IceApiClient : IDisposable
 				logger.LogWarning("Retrying ICE request after a timeout; attempt {Attempt}.", attempt + 1);
 				await retryDelayAsync(GetLocalRetryDelay(attempt), cancellationToken);
 			}
-			catch (HttpRequestException exception) when (
-				attempt < retrySettings.ApiRetryCount &&
-				exception.StatusCode is null)
+			catch (HttpRequestException exception) when (exception.StatusCode is null)
 			{
-				logger.LogWarning("Retrying ICE request after a transient network failure; attempt {Attempt}.", attempt + 1);
+				if (attempt >= retrySettings.ApiRetryCount)
+				{
+					logger.LogError(exception, "ICE request failed after attempt {Attempt}.", attempt + 1);
+					throw;
+				}
+
+				logger.LogWarning(exception, "Retrying ICE request after a transient network failure; attempt {Attempt}.", attempt + 1);
 				await retryDelayAsync(GetLocalRetryDelay(attempt), cancellationToken);
 			}
 		}
@@ -85,28 +90,46 @@ public class IceApiClient : IDisposable
 
 	private static HttpClient CreateHttpClient(IceSettings iceSettings)
 	{
-		var handler = new HttpClientHandler
-		{
-			ClientCertificateOptions = ClientCertificateOption.Manual
-		};
-		handler.ClientCertificates.Add(LoadCertificate(iceSettings));
+	
+		var handler = new HttpClientHandler();
+		var cert = LoadCertificate(iceSettings);
+		Thread.Sleep(2000); // Adding a small delay to ensure the certificate is loaded properly
+		handler.SslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13;
+		Thread.Sleep(2000); 
+		handler.ClientCertificates.Add(cert);
+        Thread.Sleep(2000); 
 
-		return new HttpClient(handler);
+		return new HttpClient(handler, disposeHandler: true);
 	}
 
 	private static X509Certificate2 LoadCertificate(IceSettings iceSettings)
 	{
+		X509Certificate2 certificate;
+
 		if (!string.IsNullOrWhiteSpace(iceSettings.PfxCertificateBase64))
 		{
-			return X509CertificateLoader.LoadPkcs12(
+			certificate = X509CertificateLoader.LoadPkcs12(
 				Convert.FromBase64String(iceSettings.PfxCertificateBase64),
-				iceSettings.CertificatePassword,
-				X509KeyStorageFlags.EphemeralKeySet);
+				iceSettings.CertificatePassword);
+		}
+		else
+		{
+			certificate = X509CertificateLoader.LoadPkcs12FromFile(
+				iceSettings.PfxCertificateFile,
+				iceSettings.CertificatePassword);
 		}
 
-		return X509CertificateLoader.LoadPkcs12FromFile(
-			iceSettings.PfxCertificateFile,
-			iceSettings.CertificatePassword,
-			X509KeyStorageFlags.EphemeralKeySet);
+		try
+		{
+			using var store = new X509Store(StoreName.My, StoreLocation.CurrentUser);
+			store.Open(OpenFlags.ReadWrite);
+			store.Add(certificate);
+		}
+		catch (Exception)
+		{
+			// The user certificate store may be unavailable in containers.
+		}
+
+		return certificate;
 	}
 } 

@@ -65,14 +65,14 @@ public class RadarExecutionInfrastructureTests
 	[Test]
 	public void Report_collection_should_accept_concurrent_rows_once_and_sort_them()
 	{
-		var collection = new RadarReportCollection();
+		using var collection = new RadarReportCollection();
 		Parallel.ForEach(new[] { "SCENARIO-3", "SCENARIO-1", "SCENARIO-2" }, scenarioId =>
 			collection.Add(CreateRow(scenarioId)));
 
 		Assert.Multiple(() =>
 		{
 			Assert.That(collection.Count, Is.EqualTo(3));
-			Assert.That(collection.GetSortedRows().Select(row => row.ScenarioId),
+			Assert.That(collection.ReadSortedRows().Select(row => row.ScenarioId),
 				Is.EqualTo(new[] { "SCENARIO-1", "SCENARIO-2", "SCENARIO-3" }));
 			Assert.That(() => collection.Add(CreateRow("SCENARIO-1")),
 				Throws.InvalidOperationException.With.Message.Contains("terminal Radar report row"));
@@ -102,19 +102,104 @@ public class RadarExecutionInfrastructureTests
 	}
 
 	[Test]
+	public void Report_collection_should_snapshot_results_and_reject_access_after_disposal()
+	{
+		using var collection = new RadarReportCollection();
+		var row = CreateRow("SCENARIO-1");
+		row.FieldComparisons = [new("/Pricing/Amount", "/Pricing/Amount", "/Pricing/Amount", 10m, 10.01m, 0.01m, ScenarioResult.Pass)];
+		collection.Add(row);
+		row.FieldComparisons = [];
+
+		Assert.That(collection.ReadSortedRows().Single().FieldComparisons.Single().Delta, Is.EqualTo(0.01m));
+		collection.Dispose();
+		Assert.Throws<ObjectDisposedException>(() => collection.Add(row));
+		Assert.Throws<ObjectDisposedException>(() => collection.ReadSortedRows().ToArray());
+	}
+
+	[Test]
+	public async Task Report_collection_should_stream_20000_scenario_summaries_and_field_results()
+	{
+		var buildId = $"volume-{Guid.NewGuid():N}";
+		var reportPath = Path.Combine(TestContext.CurrentContext.TestDirectory, "TestResults", "Reports", $"Radar_{buildId}.csv");
+		using var collection = new RadarReportCollection();
+		var xml = $"<PricingResponse><Label>{new string('x', 256)}</Label></PricingResponse>";
+		var elapsed = global::System.Diagnostics.Stopwatch.StartNew();
+		try
+		{
+			await Parallel.ForEachAsync(Enumerable.Range(0, 20000), new ParallelOptions { MaxDegreeOfParallelism = 8 },
+				(scenarioIndex, _) =>
+				{
+					collection.Add(new RadarValidationReportRow
+					{
+						ScenarioId = $"SCENARIO-{scenarioIndex:D5}",
+						ProductCode = "HOME",
+						SchemeCode = "ABC",
+						SchemaProfile = "Route001",
+						RequestXml = xml,
+						BaselineXml = xml,
+						RadarResponseXml = xml,
+						MinThreshold = -0.01m,
+						MaxThreshold = 0.01m,
+						Result = ScenarioResult.Pass,
+						FieldComparisons =
+						[
+							new("/Pricing/Amount", "/Pricing/Amount", "/Pricing/Amount", scenarioIndex, scenarioIndex, 0m, ScenarioResult.Pass)
+						]
+						});
+					return ValueTask.CompletedTask;
+				});
+
+			await RadarReportingHelper.WriteReportAsync(buildId, collection.ReadSortedRows(), CancellationToken.None);
+			var summaryCount = 0;
+			var fieldCount = 0;
+			foreach (var line in File.ReadLines(reportPath))
+			{
+				if (line.StartsWith("SUMMARY,", StringComparison.Ordinal))
+				{
+					if (!line.StartsWith($"SUMMARY,{buildId},SCENARIO-{summaryCount:D5},", StringComparison.Ordinal))
+					{
+						throw new InvalidOperationException("The streamed report is not sorted by ScenarioId.");
+					}
+					summaryCount++;
+				}
+				else if (line.StartsWith("FIELD,", StringComparison.Ordinal))
+				{
+					if (!line.Contains($",{fieldCount},{fieldCount},0,-0.01,0.01,PASS,PASS,", StringComparison.Ordinal))
+					{
+						throw new InvalidOperationException("The streamed report contains an incorrect decimal field result.");
+					}
+					fieldCount++;
+				}
+			}
+
+			Assert.Multiple(() =>
+			{
+				Assert.That(collection.Count, Is.EqualTo(20000));
+				Assert.That(summaryCount, Is.EqualTo(20000));
+				Assert.That(fieldCount, Is.EqualTo(20000));
+			});
+			TestContext.Out.WriteLine($"Spooled and streamed {summaryCount} scenarios in {elapsed.Elapsed.TotalSeconds:F2} seconds.");
+		}
+		finally
+		{
+			File.Delete(reportPath);
+		}
+	}
+
+	[Test]
 	public async Task Radar_report_failure_should_remove_temporary_file_and_preserve_collected_rows()
 	{
 		const string buildId = "atomic-failure";
 		var reportDirectory = Path.Combine(TestContext.CurrentContext.TestDirectory, "TestResults", "Reports");
 		var finalPath = Path.Combine(reportDirectory, $"Radar_{buildId}.csv");
 		Directory.CreateDirectory(finalPath);
-		var collection = new RadarReportCollection();
+		using var collection = new RadarReportCollection();
 		collection.Add(CreateRow("SCENARIO-1"));
 
 		try
 		{
 			Assert.That(async () =>
-				await RadarReportingHelper.WriteReportAsync(buildId, collection.GetSortedRows(), CancellationToken.None),
+				await RadarReportingHelper.WriteReportAsync(buildId, collection.ReadSortedRows(), CancellationToken.None),
 				Throws.InstanceOf<Exception>());
 			Assert.That(collection.Count, Is.EqualTo(1));
 			Assert.That(Directory.GetFiles(reportDirectory, $".Radar_{buildId}.csv.*.tmp"), Is.Empty);
@@ -356,7 +441,7 @@ public class RadarExecutionInfrastructureTests
 				settings.Routes["Route001"].ProductCode = string.Empty;
 				break;
 			case "scheme":
-				settings.Routes["Route001"].SchemeCode = string.Empty;
+				settings.Routes["Route001"].SchemeCodes.Clear();
 				break;
 			case "endpoint":
 				settings.Routes["Route001"].EndpointName = string.Empty;
@@ -369,16 +454,6 @@ public class RadarExecutionInfrastructureTests
 		var exception = Assert.Throws<InvalidOperationException>(() =>
 			RadarTestSetup.ValidateRadarConfiguration(settings, new RadarRateLimitSettings()));
 		Assert.That(exception!.Message, Does.Not.Contain(secret));
-	}
-
-	[Test]
-	public void Radar_configuration_should_reject_xsd_mapping_for_unknown_route()
-	{
-		var settings = CreateValidRadarSettings();
-		settings.ResponseXsdMappings["UnknownRoute"] = "unavailable-schema.xsd";
-
-		Assert.Throws<InvalidOperationException>(() =>
-			RadarTestSetup.ValidateRadarConfiguration(settings, new RadarRateLimitSettings()));
 	}
 
 	private static ScenarioRequest CreateScenario(string scenarioId, string testTags)
@@ -412,15 +487,11 @@ public class RadarExecutionInfrastructureTests
 				["Route001"] = new()
 				{
 					ProductCode = "HOME",
-					SchemeCode = "ABC",
+					SchemeCodes = new() { "ABC" },
 					EndpointName = "PricingA",
 					RouteKey = "home-abc"
 				}
 			},
-			ResponseXsdMappings = new Dictionary<string, string>(StringComparer.Ordinal)
-			{
-				["Route001"] = string.Empty
-			}
 		};
 	}
 

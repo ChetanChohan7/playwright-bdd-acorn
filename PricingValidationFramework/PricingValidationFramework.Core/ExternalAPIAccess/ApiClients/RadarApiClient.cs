@@ -3,10 +3,13 @@ namespace PricingValidationFramework.Core.ExternalAPIAccess.ApiClients;
 using System.Globalization;
 using System.Diagnostics;
 using System.Text;
+using System.Text.Json;
+using System.Xml.Linq;
 using Microsoft.Extensions.Logging;
 using PricingValidationFramework.Core.Configuration;
 using PricingValidationFramework.Core.ExternalAPIAccess;
 using PricingValidationFramework.Core.ExternalAPIAccess.Throttling;
+using PricingValidationFramework.Core.Models.External;
 
 public class RadarApiClient : IDisposable
 {
@@ -82,7 +85,7 @@ public class RadarApiClient : IDisposable
 					throw new InvalidOperationException("Radar response content is empty.");
 				}
 
-				return content;
+				return NormalizeResponseXml(content);
 			}
 			catch (OperationCanceledException)
 				when (!cancellationToken.IsCancellationRequested && attempt < retrySettings.ApiRetryCount)
@@ -173,12 +176,35 @@ public class RadarApiClient : IDisposable
 
 		using var request = new HttpRequestMessage(HttpMethod.Post, url);
 		request.Headers.TryAddWithoutValidation(apiKeyHeaderName, apiKeyValue);
-		request.Headers.Accept.ParseAdd("application/xml");
+		request.Headers.Accept.ParseAdd("application/json");
 		request.Content = new StringContent(requestXml, Encoding.UTF8, "application/xml");
 
 		var response = await httpClient.SendAsync(request, cancellationToken);
 		cancellationToken.ThrowIfCancellationRequested();
 		return response;
+	}
+
+	private static string NormalizeResponseXml(string content)
+	{
+		var responseContent = content.TrimStart('\uFEFF').Trim();
+		string xml;
+
+		if (responseContent.StartsWith('<'))
+		{
+			xml = responseContent;
+		}
+		else
+		{
+			var envelope = JsonSerializer.Deserialize<RadarJsonResponse>(
+				responseContent,
+				new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+			xml = envelope?.Response?.TrimStart('\uFEFF').Trim()
+				?? throw new InvalidDataException("Radar JSON response does not contain an XML response value.");
+		}
+
+		var document = XDocument.Parse(xml);
+		return document.Root?.ToString(SaveOptions.DisableFormatting)
+			?? throw new InvalidDataException("Radar response XML does not contain a root element.");
 	}
 
 	public void Dispose()

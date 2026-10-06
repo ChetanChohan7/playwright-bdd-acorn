@@ -20,3 +20,7 @@ npm-debug.log*
 
 # Editor
 .vs/
+
+# Local scenario import datasets
+/PricingValidationFramework/data/import/*
+!/PricingValidationFramework/data/import/examples/

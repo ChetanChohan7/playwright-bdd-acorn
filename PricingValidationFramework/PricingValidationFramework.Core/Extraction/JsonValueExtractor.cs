@@ -4,44 +4,52 @@ using System.Text.Json;
 
 public class JsonValueExtractor
 {
-	public decimal ExtractPremium(string jsonResponse)
-	{
-		using var document = JsonDocument.Parse(jsonResponse);
-		return FindDecimal(document.RootElement, "premium")
-			?? throw new InvalidDataException("The ICE response does not contain a Premium value.");
-	}
+    public decimal ExtractPremium(string jsonResponse)
+    {
+        using var document = JsonDocument.Parse(jsonResponse);
 
-	private static decimal? FindDecimal(JsonElement element, string propertyName)
-	{
-		if (element.ValueKind == JsonValueKind.Object)
-		{
-			foreach (var property in element.EnumerateObject())
-			{
-				if (string.Equals(property.Name, propertyName, StringComparison.OrdinalIgnoreCase) &&
-					property.Value.TryGetDecimal(out var value))
-				{
-					return value;
-				}
+        return FindGrossPremiumAmount(document.RootElement)
+            ?? throw new InvalidDataException(
+                "The ICE response does not contain a numeric grossPremiumAmountIncTax.amount value.");
+    }
 
-				var nestedValue = FindDecimal(property.Value, propertyName);
-				if (nestedValue.HasValue)
-				{
-					return nestedValue;
-				}
-			}
-		}
-		else if (element.ValueKind == JsonValueKind.Array)
-		{
-			foreach (var item in element.EnumerateArray())
-			{
-				var nestedValue = FindDecimal(item, propertyName);
-				if (nestedValue.HasValue)
-				{
-					return nestedValue;
-				}
-			}
-		}
+    private static decimal? FindGrossPremiumAmount(JsonElement element)
+    {
+        if (element.ValueKind == JsonValueKind.Object)
+        {
+            foreach (var property in element.EnumerateObject())
+            {
+                if (string.Equals(
+                        property.Name,
+                        "grossPremiumAmountIncTax",
+                        StringComparison.OrdinalIgnoreCase) &&
+                    property.Value.ValueKind == JsonValueKind.Object &&
+                    property.Value.TryGetProperty("amount", out var amount) &&
+                    amount.ValueKind == JsonValueKind.Number &&
+                    amount.TryGetDecimal(out var value))
+                {
+                    return value;
+                }
 
-		return null;
-	}
+                var nestedValue = FindGrossPremiumAmount(property.Value);
+                if (nestedValue.HasValue)
+                {
+                    return nestedValue;
+                }
+            }
+        }
+        else if (element.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var item in element.EnumerateArray())
+            {
+                var nestedValue = FindGrossPremiumAmount(item);
+                if (nestedValue.HasValue)
+                {
+                    return nestedValue;
+                }
+            }
+        }
+
+        return null;
+    }
 }

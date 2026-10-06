@@ -8,13 +8,11 @@ using PricingValidationFramework.Core.Database;
 using PricingValidationFramework.Core.ExternalAPIAccess.ApiClients;
 using PricingValidationFramework.Core.ExternalAPIAccess.Throttling;
 using PricingValidationFramework.Core.ExternalAPIAccess.UrlBuilders;
-using PricingValidationFramework.Core.Extraction;
 using PricingValidationFramework.Core.Logging;
 using PricingValidationFramework.Core.Matching;
 using PricingValidationFramework.Core.Models.Common;
 using PricingValidationFramework.Core.Models.Database;
 using PricingValidationFramework.Core.Validation;
-using PricingValidationFramework.Tests.Helpers.Validation;
 
 namespace PricingValidationFramework.Tests.Helpers.Setup;
 
@@ -32,8 +30,7 @@ public sealed class RadarTestSetup : IDisposable
         BaselineDataReader baselineReader,
         ResultUpdater resultUpdater,
         RadarApiClient apiClient,
-        XmlValueExtractor xmlExtractor,
-        RadarScenarioProcessor scenarioProcessor,
+        RadarPricingService pricingService,
         RadarTestRunLogger logger,
         ILoggerFactory loggerFactory)
     {
@@ -42,16 +39,14 @@ public sealed class RadarTestSetup : IDisposable
         this.apiClient = apiClient;
         BaselineReader = baselineReader;
         ResultUpdater = resultUpdater;
-        XmlExtractor = xmlExtractor;
-        ScenarioProcessor = scenarioProcessor;
+        PricingService = pricingService;
         Logger = logger;
         this.loggerFactory = loggerFactory;
     }
 
     public BaselineDataReader BaselineReader { get; }
     public ResultUpdater ResultUpdater { get; }
-    public XmlValueExtractor XmlExtractor { get; }
-    public RadarScenarioProcessor ScenarioProcessor { get; }
+    public RadarPricingService PricingService { get; }
     public RadarTestRunLogger Logger { get; }
 
     public string BuildId => settings.BuildId;
@@ -67,6 +62,10 @@ public sealed class RadarTestSetup : IDisposable
         var databaseSettings = configuration.GetSection("DatabaseSettings").Get<DatabaseSettings>()
             ?? throw new InvalidOperationException("DatabaseSettings is missing.");
         var (pipelineSettings, retrySettings) = LoadValidatedPipelineInputs(configuration);
+        var comparisonService = new RadarPricingProfileFactory(
+            new XsdFileResolver(),
+            new XsdValidator(),
+            new FuzzyPricingMatcher()).Create(radarConfiguration.RadarSettings);
         var rateLimiter = new RadarRequestRateLimiter(
             radarConfiguration.RateLimitSettings,
             radarConfiguration.RadarSettings.Endpoints.Keys);
@@ -75,7 +74,6 @@ public sealed class RadarTestSetup : IDisposable
         var connectionFactory = new SqlConnectionFactory(databaseSettings);
         var baselineReader = new BaselineDataReader(connectionFactory, retrySettings);
         var resultUpdater = new ResultUpdater(connectionFactory, retrySettings);
-        var xmlExtractor = new XmlValueExtractor();
         var logger = new RadarTestRunLogger(loggerFactory.CreateLogger<RadarTestRunLogger>());
         GlobalDiagnosticsContext.Set("RadarBuildId", pipelineSettings.BuildId);
         var radarHttpClient = new HttpClient(new HttpClientHandler
@@ -87,23 +85,19 @@ public sealed class RadarTestSetup : IDisposable
             radarHttpClient,
             loggerFactory.CreateLogger<RadarApiClient>(),
             retrySettings);
-        var scenarioProcessor = new RadarScenarioProcessor(
+        var urlBuilder = new RadarUrlBuilder();
+        var pricingService = new RadarPricingService(
             radarConfiguration.RadarSettings,
             apiClient,
-            new RadarUrlBuilder(),
-            new XsdFileResolver(),
-            new XsdValidator(),
-            new ThresholdMatcher(),
-            logger);
-
+            urlBuilder,
+            comparisonService);
         return new RadarTestSetup(
             pipelineSettings,
             rateLimiter,
             baselineReader,
             resultUpdater,
             apiClient,
-            xmlExtractor,
-            scenarioProcessor,
+            pricingService,
             logger,
             loggerFactory);
     }
@@ -131,7 +125,7 @@ public sealed class RadarTestSetup : IDisposable
 
         var pipelineSettings = new PipelineSettings
         {
-            BuildId = ReadRequiredBuildId(),
+            BuildId = ReadRequiredBuildId(configuration),
             MinThreshold = ReadRequiredDecimal(configuration, "RADAR_MIN_THRESHOLD", "MinThreshold"),
             MaxThreshold = ReadRequiredDecimal(configuration, "RADAR_MAX_THRESHOLD", "MaxThreshold"),
             RequestTime = RequestTimeFormatter.Resolve(
@@ -157,9 +151,10 @@ public sealed class RadarTestSetup : IDisposable
         GlobalDiagnosticsContext.Remove("RadarBuildId");
     }
 
-    private static string ReadRequiredBuildId()
+    private static string ReadRequiredBuildId(IConfiguration configuration)
     {
-        var buildId = Environment.GetEnvironmentVariable("BUILD_BUILDID");
+        var buildId = Environment.GetEnvironmentVariable("BUILD_BUILDID")
+            ?? configuration["PipelineSettings:BuildId"];
 
         if (!string.IsNullOrWhiteSpace(buildId))
         {
@@ -280,9 +275,11 @@ public sealed class RadarTestSetup : IDisposable
         foreach (var route in radarSettings.Routes)
         {
             if (string.IsNullOrWhiteSpace(route.Value?.ProductCode) ||
-                string.IsNullOrWhiteSpace(route.Value.SchemeCode))
+                route.Value.SchemeCodes is null ||
+                route.Value.SchemeCodes.Count == 0 ||
+                route.Value.SchemeCodes.Any(string.IsNullOrWhiteSpace))
             {
-                throw new InvalidOperationException("Every Radar route must have ProductCode and SchemeCode values.");
+                throw new InvalidOperationException("Every Radar route must have a ProductCode and at least one non-empty SchemeCode.");
             }
 
             if (string.IsNullOrWhiteSpace(route.Value.EndpointName) || !endpointNames.Contains(route.Value.EndpointName))
@@ -296,18 +293,6 @@ public sealed class RadarTestSetup : IDisposable
             }
         }
 
-        if (radarSettings.ResponseXsdMappings is null)
-        {
-            throw new InvalidOperationException("Radar response XSD mappings are missing.");
-        }
-
-        foreach (var mapping in radarSettings.ResponseXsdMappings)
-        {
-            if (string.IsNullOrWhiteSpace(mapping.Key) || !radarSettings.Routes.ContainsKey(mapping.Key))
-            {
-                throw new InvalidOperationException("Every Radar response XSD mapping must reference a configured route identifier.");
-            }
-        }
     }
 
     private sealed record RadarRunConfiguration(

@@ -10,7 +10,7 @@ using PricingValidationFramework.Tests.Helpers.Validation;
 namespace PricingValidationFramework.Tests.Integration.Ice;
 
 [TestFixture]
-[Explicit("Requires a configured TB_RESPONSE database, ICE endpoint, credentials, and client certificate.")]
+[Explicit("Requires configured xml_request/xml_response database tables, ICE endpoint, credentials, and client certificate.")]
 public class IceValidationTests
 {
     private IceTestRunLogger logger = null!;
@@ -113,6 +113,11 @@ public class IceValidationTests
     [OneTimeTearDown]
     public void TearDown()
     {
+        if (setup is null)
+        {
+            return;
+        }
+
         logger.ExecutionCompleted(setup.BuildId);
         setup.Dispose();
     }

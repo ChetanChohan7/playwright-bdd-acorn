@@ -13,12 +13,15 @@ public class RequestDataReader
 	private const string ScenarioColumns = """
 		Scenario_id AS ScenarioId,
 		Quote_ref AS QuoteRef,
-		Scheme_code AS SchemeCode,
+		Schem_code AS SchemeCode,
 		Product_code AS ProductCode,
 		XML_request AS XmlRequest,
 		Test_tags AS TestTags,
-		Created_date AS CreatedDate
+		Create_date AS CreatedDate
 		""";
+	private const string AllScenariosSql = $"SELECT {ScenarioColumns} FROM xml_request ORDER BY Create_date, Scenario_id;";
+	private const string TaggedScenariosSql = $"SELECT {ScenarioColumns} FROM xml_request WHERE Test_tags = @TestTag ORDER BY Create_date, Scenario_id;";
+	private const string ScenarioByIdSql = $"SELECT {ScenarioColumns} FROM xml_request WHERE Scenario_id = @ScenarioId;";
 
 	public RequestDataReader(SqlConnectionFactory connectionFactory, RetrySettings? retrySettings = null)
 	{
@@ -29,26 +32,23 @@ public class RequestDataReader
 
 	public Task<IReadOnlyList<ScenarioRequest>> GetAllScenariosAsync(CancellationToken cancellationToken = default)
 	{
-		return QueryScenariosAsync($"SELECT {ScenarioColumns} FROM xml_request ORDER BY Created_date, Scenario_id;", null, cancellationToken);
+		return QueryScenariosAsync(AllScenariosSql, null, cancellationToken);
 	}
 
 	public Task<IReadOnlyList<ScenarioRequest>> GetScenariosByTestTagAsync(string testTag, CancellationToken cancellationToken = default)
 	{
-		const string sql = $"SELECT {ScenarioColumns} FROM xml_request WHERE Test_tags = @TestTag ORDER BY Created_date, Scenario_id;";
-		return QueryScenariosAsync(sql, new { TestTag = testTag }, cancellationToken);
+		return QueryScenariosAsync(TaggedScenariosSql, new { TestTag = testTag }, cancellationToken);
 	}
 
 	public async Task<ScenarioRequest?> GetScenarioByIdAsync(string scenarioId, CancellationToken cancellationToken = default)
 	{
-		const string sql = $"SELECT {ScenarioColumns} FROM xml_request WHERE Scenario_id = @ScenarioId;";
-
 		for (var attempt = 0; ; attempt++)
 		{
 			try
 			{
 				await using var connection = connectionFactory.Create();
 				await connection.OpenAsync(cancellationToken);
-				var command = new CommandDefinition(sql, new { ScenarioId = scenarioId }, cancellationToken: cancellationToken);
+				var command = new CommandDefinition(ScenarioByIdSql, new { ScenarioId = scenarioId }, cancellationToken: cancellationToken);
 				return await connection.QuerySingleOrDefaultAsync<ScenarioRequest>(command);
 			}
 			catch (SqlException) when (attempt < retrySettings.DatabaseRetryCount)

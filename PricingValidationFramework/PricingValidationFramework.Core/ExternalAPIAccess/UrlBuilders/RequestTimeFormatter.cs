@@ -4,9 +4,14 @@ using System.Globalization;
 
 public static class RequestTimeFormatter
 {
+	private static string FormatUtcHour(DateTime value)
+	{
+		var startOfHour = new DateTime(value.Year, value.Month, value.Day, value.Hour, 0, 0, DateTimeKind.Utc);
+		return startOfHour.ToString("yyyy-MM-dd'Z'HH:mm:ss", CultureInfo.InvariantCulture);
+	}
 	public static string FormatUtcNow()
 	{
-		return DateTime.UtcNow.ToString("yyyy-MM-dd'Z'HH:mm:ss", CultureInfo.InvariantCulture);
+		return FormatUtcHour(DateTime.UtcNow);
 	}
 
 	public static string Resolve(string? suppliedValue)
@@ -27,6 +32,6 @@ public static class RequestTimeFormatter
 			throw new ArgumentException("RequestTime must use yyyy-MM-ddZHH:mm:ss format.", nameof(suppliedValue));
 		}
 
-		return parsed.ToUniversalTime().ToString("yyyy-MM-dd'Z'HH:mm:ss", CultureInfo.InvariantCulture);
+		return FormatUtcHour(parsed.ToUniversalTime());
 	}
 }

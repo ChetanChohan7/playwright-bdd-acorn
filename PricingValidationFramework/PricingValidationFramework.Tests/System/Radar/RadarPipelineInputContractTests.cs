@@ -59,7 +59,7 @@ public class RadarPipelineInputContractTests
     {
         var requestTime = RequestTimeFormatter.Resolve(null);
 
-        Assert.That(requestTime, Does.Match("\\d{4}-\\d{2}-\\d{2}Z\\d{2}:\\d{2}:\\d{2}"));
+            Assert.That(requestTime, Does.Match("\\d{4}-\\d{2}-\\d{2}Z\\d{2}:00:00"));
     }
 
     [Test]
@@ -67,7 +67,7 @@ public class RadarPipelineInputContractTests
     {
         var requestTime = RequestTimeFormatter.Resolve("2024-03-01Z09:30:45");
 
-        Assert.That(requestTime, Is.EqualTo("2024-03-01Z09:30:45"));
+            Assert.That(requestTime, Is.EqualTo("2024-03-01Z09:00:00"));
     }
 
     [Test]
@@ -78,6 +78,13 @@ public class RadarPipelineInputContractTests
         var originalMax = Environment.GetEnvironmentVariable("RADAR_MAX_THRESHOLD");
         var originalRequestDate = Environment.GetEnvironmentVariable("RADAR_REQUEST_DATETIME");
         var originalTestTag = Environment.GetEnvironmentVariable("TEST_TAG");
+        var schemaVariables = new[]
+        {
+            "RadarSettings__ResponseXsdMappings__Route001",
+            "RadarSettings__ResponseXsdMappings__Route002",
+            "RadarSettings__ResponseXsdMappings__Route003"
+        };
+        var originalSchemas = schemaVariables.ToDictionary(name => name, Environment.GetEnvironmentVariable);
 
         try
         {
@@ -86,13 +93,17 @@ public class RadarPipelineInputContractTests
             Environment.SetEnvironmentVariable("RADAR_MAX_THRESHOLD", "20.25");
             Environment.SetEnvironmentVariable("RADAR_REQUEST_DATETIME", "2024-03-01Z09:30:45");
             Environment.SetEnvironmentVariable("TEST_TAG", "smoke");
+            foreach (var name in schemaVariables)
+            {
+                Environment.SetEnvironmentVariable(name, "PricingComparisonFixture.xsd");
+            }
 
             using var settings = RadarTestSetup.Create();
 
             Assert.That(settings.BuildId, Is.EqualTo("build-42"));
             Assert.That(settings.MinThreshold, Is.EqualTo(10.50m));
             Assert.That(settings.MaxThreshold, Is.EqualTo(20.25m));
-            Assert.That(settings.RequestTime, Is.EqualTo("2024-03-01Z09:30:45"));
+                Assert.That(settings.RequestTime, Is.EqualTo("2024-03-01Z09:00:00"));
             Assert.That(settings.TestTag, Is.EqualTo("smoke"));
         }
         finally
@@ -102,16 +113,20 @@ public class RadarPipelineInputContractTests
             Environment.SetEnvironmentVariable("RADAR_MAX_THRESHOLD", originalMax);
             Environment.SetEnvironmentVariable("RADAR_REQUEST_DATETIME", originalRequestDate);
             Environment.SetEnvironmentVariable("TEST_TAG", originalTestTag);
+            foreach (var originalSchema in originalSchemas)
+            {
+                Environment.SetEnvironmentVariable(originalSchema.Key, originalSchema.Value);
+            }
         }
     }
 
     [Test]
-    public void Radar_test_setup_should_use_appsettings_when_pipeline_variables_are_missing()
+    public void Radar_test_setup_should_require_runtime_thresholds_when_settings_are_blank()
     {
         var variableNames = new[]
         {
             "BUILD_BUILDID", "ASPNETCORE_ENVIRONMENT", "RADAR_MIN_THRESHOLD", "RADAR_MAX_THRESHOLD",
-            "RADAR_REQUEST_DATETIME", "TEST_TAG"
+            "RADAR_REQUEST_DATETIME", "TEST_TAG", "PipelineSettings__MinThreshold", "PipelineSettings__MaxThreshold"
         };
         var originalValues = variableNames.ToDictionary(name => name, Environment.GetEnvironmentVariable);
 
@@ -124,15 +139,8 @@ public class RadarPipelineInputContractTests
                 Environment.SetEnvironmentVariable(name, null);
             }
 
-            using var settings = RadarTestSetup.Create();
-
-            Assert.Multiple(() =>
-            {
-                Assert.That(settings.MinThreshold, Is.EqualTo(-5m));
-                Assert.That(settings.MaxThreshold, Is.EqualTo(5m));
-                Assert.That(settings.TestTag, Is.Empty);
-                Assert.That(settings.RequestTime, Does.Match("\\d{4}-\\d{2}-\\d{2}Z\\d{2}:\\d{2}:\\d{2}"));
-            });
+            var exception = Assert.Throws<InvalidOperationException>(() => RadarTestSetup.Create());
+            Assert.That(exception!.Message, Does.Contain("RADAR_MIN_THRESHOLD is required"));
         }
         finally
         {
@@ -150,7 +158,10 @@ public class RadarPipelineInputContractTests
         {
             "BUILD_BUILDID", "RADAR_MIN_THRESHOLD", "RADAR_MAX_THRESHOLD", "RADAR_REQUEST_DATETIME", "TEST_TAG",
             "PipelineSettings__MinThreshold", "PipelineSettings__MaxThreshold",
-            "PipelineSettings__RequestTime", "PipelineSettings__TestTag"
+            "PipelineSettings__RequestTime", "PipelineSettings__TestTag",
+            "RadarSettings__ResponseXsdMappings__Route001",
+            "RadarSettings__ResponseXsdMappings__Route002",
+            "RadarSettings__ResponseXsdMappings__Route003"
         };
         var originalValues = variableNames.ToDictionary(name => name, Environment.GetEnvironmentVariable);
 
@@ -166,6 +177,10 @@ public class RadarPipelineInputContractTests
             Environment.SetEnvironmentVariable("PipelineSettings__MaxThreshold", "20.25");
             Environment.SetEnvironmentVariable("PipelineSettings__RequestTime", "2024-03-01Z09:30:45");
             Environment.SetEnvironmentVariable("PipelineSettings__TestTag", "smoke");
+            foreach (var name in variableNames.Skip(9))
+            {
+                Environment.SetEnvironmentVariable(name, "PricingComparisonFixture.xsd");
+            }
 
             using var settings = RadarTestSetup.Create();
 
@@ -173,7 +188,7 @@ public class RadarPipelineInputContractTests
             {
                 Assert.That(settings.MinThreshold, Is.EqualTo(-10.5m));
                 Assert.That(settings.MaxThreshold, Is.EqualTo(20.25m));
-                Assert.That(settings.RequestTime, Is.EqualTo("2024-03-01Z09:30:45"));
+                    Assert.That(settings.RequestTime, Is.EqualTo("2024-03-01Z09:00:00"));
                 Assert.That(settings.TestTag, Is.EqualTo("smoke"));
             });
         }

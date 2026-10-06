@@ -1,0 +1,148 @@
+trigger: none
+pr: none
+
+parameters:
+  - name: agentPool
+    type: string
+    default: Default
+  - name: importEnvironment
+    type: string
+    default: pricing-data-import
+  - name: datasetSource
+    type: string
+    default: repository
+    values:
+      - repository
+      - artifact
+  - name: datasetPath
+    type: string
+    default: PricingValidationFramework/data/import/examples
+  - name: datasetPipelineId
+    type: string
+    default: ''
+  - name: datasetRunId
+    type: string
+    default: ''
+  - name: batchSize
+    type: number
+    default: 500
+
+pool:
+  name: ${{ parameters.agentPool }}
+
+stages:
+  - stage: Validate
+    displayName: Validate importer and CSV dataset
+    jobs:
+      - job: ValidateDataset
+        timeoutInMinutes: 30
+        workspace:
+          clean: all
+        steps:
+          - checkout: self
+          - task: UseDotNet@2
+            displayName: Use .NET 10
+            inputs:
+              packageType: sdk
+              version: 10.0.x
+          - pwsh: |
+              dotnet restore PricingValidationFramework/PricingValidationFramework.Tests/PricingValidationFramework.Tests.csproj --disable-parallel
+              if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+              dotnet test PricingValidationFramework/PricingValidationFramework.Tests/PricingValidationFramework.Tests.csproj --configuration Release --no-restore --filter "FullyQualifiedName~DataLoaderTests|FullyQualifiedName~DatabaseQueryContractTests" --logger "trx;LogFileName=DataLoader.trx" --results-directory "$(Agent.TempDirectory)/DataLoaderTests"
+              if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            displayName: Test loader and repository contracts
+          - ${{ if eq(parameters.datasetSource, 'repository') }}:
+              - task: CopyFiles@2
+                displayName: Stage repository dataset
+                inputs:
+                  SourceFolder: '$(Build.SourcesDirectory)/${{ parameters.datasetPath }}'
+                  Contents: |
+                    requests.csv
+                    responses.csv
+                  TargetFolder: '$(Pipeline.Workspace)/scenario-data'
+                  CleanTargetFolder: true
+          - ${{ if eq(parameters.datasetSource, 'artifact') }}:
+              - task: DownloadPipelineArtifact@2
+                displayName: Download selected dataset version
+                inputs:
+                  buildType: specific
+                  project: '$(System.TeamProject)'
+                  definition: '${{ parameters.datasetPipelineId }}'
+                  buildVersionToDownload: specific
+                  pipelineId: '${{ parameters.datasetRunId }}'
+                  artifactName: scenario-data
+                  targetPath: '$(Pipeline.Workspace)/scenario-data'
+          - pwsh: |
+              $reportDirectory = '$(Build.ArtifactStagingDirectory)/DataLoaderValidation'
+              New-Item -ItemType Directory -Force -Path $reportDirectory | Out-Null
+              $importArguments = @('--batch-size', '${{ parameters.batchSize }}', '--build-id', '$(Build.BuildId)', '--report', "$reportDirectory/validation-summary.json")
+              foreach ($file in @('requests', 'responses')) {
+                $path = "$(Pipeline.Workspace)/scenario-data/$file.csv"
+                if (Test-Path $path) { $importArguments += @("--$file", $path) }
+              }
+              dotnet run --project PricingValidationFramework/PricingValidationFramework.DataLoader --configuration Release --no-build -- validate @importArguments
+              if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            displayName: Validate CSV and XML without database writes
+          - task: PublishTestResults@2
+            condition: succeededOrFailed()
+            inputs:
+              testResultsFormat: VSTest
+              testResultsFiles: '$(Agent.TempDirectory)/DataLoaderTests/DataLoader.trx'
+              testRunTitle: Data loader
+              failTaskOnMissingResultsFile: true
+          - task: PublishPipelineArtifact@1
+            condition: succeeded()
+            displayName: Pin validated dataset for the import stage
+            inputs:
+              targetPath: '$(Pipeline.Workspace)/scenario-data'
+              artifact: scenario-import-data
+          - task: PublishPipelineArtifact@1
+            condition: succeededOrFailed()
+            displayName: Publish validation summary
+            inputs:
+              targetPath: '$(Build.ArtifactStagingDirectory)/DataLoaderValidation'
+              artifact: DataLoaderValidation
+
+  - stage: Import
+    displayName: Import approved dataset
+    dependsOn: Validate
+    lockBehavior: sequential
+    jobs:
+      - deployment: ImportDataset
+        timeoutInMinutes: 120
+        environment: ${{ parameters.importEnvironment }}
+        workspace:
+          clean: all
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - download: none
+                - checkout: self
+                - task: UseDotNet@2
+                  inputs:
+                    packageType: sdk
+                    version: 10.0.x
+                - download: current
+                  artifact: scenario-import-data
+                - pwsh: |
+                    $reportDirectory = '$(Build.ArtifactStagingDirectory)/DataLoaderImport'
+                    New-Item -ItemType Directory -Force -Path $reportDirectory | Out-Null
+                    $importArguments = @('--batch-size', '${{ parameters.batchSize }}', '--build-id', '$(Build.BuildId)', '--report', "$reportDirectory/import-summary.json")
+                    foreach ($file in @('requests', 'responses')) {
+                      $path = "$(Pipeline.Workspace)/scenario-import-data/$file.csv"
+                      if (Test-Path $path) { $importArguments += @("--$file", $path) }
+                    }
+                    dotnet restore PricingValidationFramework/PricingValidationFramework.DataLoader --disable-parallel
+                    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+                    dotnet run --project PricingValidationFramework/PricingValidationFramework.DataLoader --configuration Release --no-restore -- import @importArguments
+                    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+                  displayName: Import through Core repository
+                  env:
+                    DatabaseSettings__ConnectionString: $(DataLoaderDatabaseConnectionString)
+                - task: PublishPipelineArtifact@1
+                  condition: succeededOrFailed()
+                  displayName: Publish import summary
+                  inputs:
+                    targetPath: '$(Build.ArtifactStagingDirectory)/DataLoaderImport'
+                    artifact: DataLoaderImport

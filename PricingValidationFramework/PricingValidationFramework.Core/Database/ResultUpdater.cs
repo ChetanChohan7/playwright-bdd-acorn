@@ -10,6 +10,15 @@ public class ResultUpdater
 	private readonly SqlConnectionFactory connectionFactory;
 	private readonly RetrySettings retrySettings;
 
+	private const string UpdateResultSql = """
+		UPDATE xml_response
+		SET Status = @Status,
+		    Build_id = @BuildId,
+		    Last_updated = SYSUTCDATETIME(),
+		    XML_Response = @XmlResponse
+		WHERE Scenario_id = @ScenarioId;
+		""";
+
 	public ResultUpdater(SqlConnectionFactory connectionFactory, RetrySettings? retrySettings = null)
 	{
 		this.connectionFactory = connectionFactory;
@@ -17,41 +26,13 @@ public class ResultUpdater
 		this.retrySettings.ValidateDatabaseRetrySettings();
 	}
 
-	public async Task UpdatePassResultAsync(ScenarioResponse response, CancellationToken cancellationToken = default)
+	public async Task UpdateResultAsync(ScenarioResponse response, CancellationToken cancellationToken = default)
 	{
-		const string sql = """
-			UPDATE xml_response
-			SET Status = @Status,
-			    Build_id = @BuildId,
-			    Last_updated = SYSUTCDATETIME(),
-			    XML_response = @XmlResponse
-			WHERE Scenario_id = @ScenarioId;
-			""";
-
-		var affectedRows = await ExecuteAsync(sql, new
+		var affectedRows = await ExecuteAsync(UpdateResultSql, new
 		{
 			response.Status,
 			response.BuildId,
 			response.XmlResponse,
-			response.ScenarioId
-		}, cancellationToken);
-		EnsureSingleRowUpdated(response.ScenarioId, affectedRows);
-	}
-
-	public async Task UpdateFailResultAsync(ScenarioResponse response, CancellationToken cancellationToken = default)
-	{
-		const string sql = """
-			UPDATE xml_response
-			SET Status = @Status,
-			    Build_id = @BuildId,
-			    Last_updated = SYSUTCDATETIME()
-			WHERE Scenario_id = @ScenarioId;
-			""";
-
-		var affectedRows = await ExecuteAsync(sql, new
-		{
-			response.Status,
-			response.BuildId,
 			response.ScenarioId
 		}, cancellationToken);
 		EnsureSingleRowUpdated(response.ScenarioId, affectedRows);
