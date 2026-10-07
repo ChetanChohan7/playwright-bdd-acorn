@@ -39,24 +39,15 @@ public sealed class RadarPricingService
 		ArgumentNullException.ThrowIfNull(scenario);
 		cancellationToken.ThrowIfCancellationRequested();
 
-		var route = ResolveRoute(scenario);
-		if (route is null)
+		var (target, targetFailure) = ResolveTarget(scenario);
+		if (target is null)
 		{
-			return Failed(string.Empty, string.Empty, "RouteResolution",
-				$"Exactly one Radar route must match ProductCode '{scenario.ProductCode}' and SchemeCode '{scenario.SchemeCode}'.");
-		}
-
-		var (routeId, routeSettings) = route.Value;
-		var endpoint = settings.Endpoints.FirstOrDefault(candidate =>
-			string.Equals(candidate.Key, routeSettings.EndpointName, StringComparison.OrdinalIgnoreCase));
-		if (endpoint.Value is null)
-		{
-			return Failed(routeId, string.Empty, "EndpointResolution", $"Endpoint '{routeSettings.EndpointName}' is not configured.");
+			return targetFailure!;
 		}
 
 		if (!comparisonService.HasProfile(scenario.ProductCode, scenario.SchemeCode))
 		{
-			return Failed(routeId, string.Empty, "SchemaProfileResolution",
+			return Failed(target.RouteId, string.Empty, "SchemaProfileResolution",
 				$"No pricing schema profile is configured for ProductCode '{scenario.ProductCode}' and SchemeCode '{scenario.SchemeCode}'.");
 		}
 
@@ -71,25 +62,100 @@ public sealed class RadarPricingService
 				baselineValidation.Error,
 				baselineValidation.FailureStage,
 				schemaProfile: baselineValidation.SchemaProfile);
-			return new RadarPricingRunResult(routeId, string.Empty, result);
+			return new RadarPricingRunResult(target.RouteId, string.Empty, result);
 		}
 
-		string responseXml;
+		var (responseXml, callFailure) = await CallRadarAsync(scenario, target, requestTime, cancellationToken);
+		if (responseXml is null)
+		{
+			return callFailure!;
+		}
+
+		var comparison = comparisonService.CompareExtractedBaseline(
+			scenario.ProductCode,
+			scenario.SchemeCode,
+			baselineValidation.Document!,
+			responseXml,
+			minDelta,
+			maxDelta);
+		return new RadarPricingRunResult(target.RouteId, responseXml, comparison);
+	}
+
+	/// For a new scenario with no baseline yet: calls Radar and returns its response as a PASS,
+	/// without XSD validation or the fuzzy comparison. The caller stores it as the baseline.
+	public async Task<RadarPricingRunResult> CreateBaselineAsync(
+		ScenarioRequest scenario,
+		string requestTime,
+		CancellationToken cancellationToken = default)
+	{
+		ArgumentNullException.ThrowIfNull(scenario);
+		cancellationToken.ThrowIfCancellationRequested();
+
+		var (target, targetFailure) = ResolveTarget(scenario);
+		if (target is null)
+		{
+			return targetFailure!;
+		}
+
+		var (responseXml, callFailure) = await CallRadarAsync(scenario, target, requestTime, cancellationToken);
+		if (responseXml is null)
+		{
+			return callFailure!;
+		}
+
+		return new RadarPricingRunResult(
+			target.RouteId,
+			responseXml,
+			new PricingComparisonResult(
+				Array.Empty<DecimalFieldComparison>(),
+				failureStage: BaselineCreatedStage,
+				result: ScenarioResult.Pass));
+	}
+
+	public const string BaselineCreatedStage = "BaselineCreated";
+
+	private (RadarTarget? Target, RadarPricingRunResult? Failure) ResolveTarget(ScenarioRequest scenario)
+	{
+		var route = ResolveRoute(scenario);
+		if (route is null)
+		{
+			return (null, Failed(string.Empty, string.Empty, "RouteResolution",
+				$"Exactly one Radar route must match ProductCode '{scenario.ProductCode}' and SchemeCode '{scenario.SchemeCode}'."));
+		}
+
+		var (routeId, routeSettings) = route.Value;
+		var endpoint = settings.Endpoints.FirstOrDefault(candidate =>
+			string.Equals(candidate.Key, routeSettings.EndpointName, StringComparison.OrdinalIgnoreCase));
+		if (endpoint.Value is null)
+		{
+			return (null, Failed(routeId, string.Empty, "EndpointResolution", $"Endpoint '{routeSettings.EndpointName}' is not configured."));
+		}
+
+		return (new RadarTarget(routeId, routeSettings, endpoint.Value), null);
+	}
+
+	private async Task<(string? ResponseXml, RadarPricingRunResult? Failure)> CallRadarAsync(
+		ScenarioRequest scenario,
+		RadarTarget target,
+		string requestTime,
+		CancellationToken cancellationToken)
+	{
 		try
 		{
 			var formattedRequestTime = RequestTimeFormatter.Resolve(requestTime);
-			var url = urlBuilder.Build(endpoint.Value.BaseUrl, routeSettings.RouteKey, formattedRequestTime);
-			responseXml = await apiClient.PostAsync(
-				routeSettings.EndpointName,
+			var url = urlBuilder.Build(target.Endpoint.BaseUrl, target.Route.RouteKey, formattedRequestTime);
+			var responseXml = await apiClient.PostAsync(
+				target.Route.EndpointName,
 				url,
-				endpoint.Value.ApiKeyHeaderName,
-				endpoint.Value.ApiKeyValue,
+				target.Endpoint.ApiKeyHeaderName,
+				target.Endpoint.ApiKeyValue,
 				scenario.XmlRequest,
 				cancellationToken,
 				scenario.ScenarioId,
 				scenario.QuoteRef,
 				scenario.ProductCode,
 				scenario.SchemeCode);
+			return (responseXml, null);
 		}
 		catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
 		{
@@ -105,21 +171,14 @@ public sealed class RadarPricingService
 		}
 		catch (Exception exception)
 		{
-			var safeError = string.IsNullOrEmpty(endpoint.Value.ApiKeyValue)
+			var safeError = string.IsNullOrEmpty(target.Endpoint.ApiKeyValue)
 				? exception.Message
-				: exception.Message.Replace(endpoint.Value.ApiKeyValue, "[REDACTED]", StringComparison.Ordinal);
-			return Failed(routeId, string.Empty, "RequestExecution", safeError);
+				: exception.Message.Replace(target.Endpoint.ApiKeyValue, "[REDACTED]", StringComparison.Ordinal);
+			return (null, Failed(target.RouteId, string.Empty, "RequestExecution", safeError));
 		}
-
-		var comparison = comparisonService.CompareExtractedBaseline(
-			scenario.ProductCode,
-			scenario.SchemeCode,
-			baselineValidation.Document!,
-			responseXml,
-			minDelta,
-			maxDelta);
-		return new RadarPricingRunResult(routeId, responseXml, comparison);
 	}
+
+	private sealed record RadarTarget(string RouteId, RadarRouteSettings Route, RadarEndpointSettings Endpoint);
 
 	private (string Key, RadarRouteSettings Value)? ResolveRoute(ScenarioRequest scenario)
 	{

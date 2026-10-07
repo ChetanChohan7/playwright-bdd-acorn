@@ -10,6 +10,5 @@ public interface IScenarioImportRepository
 
 	Task InsertBatchAsync(
 		IReadOnlyCollection<ScenarioRequestImport> requests,
-		IReadOnlyCollection<ScenarioResponseImport> responses,
 		CancellationToken cancellationToken = default);
 }

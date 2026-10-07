@@ -149,7 +149,7 @@ All queries must explicitly select:
 ```text
 Scenario_id
 Quote_ref
-Schem_code
+Scheme_code
 Product_code
 Xml_request
 Test_tags
@@ -162,7 +162,7 @@ Create_date
 
 `IBaselineDataReader` is the database boundary for baseline retrieval and supports isolated tests with a fake reader. `BaselineDataReader.GetPassingBaselineScenariosAsync()` reads `xml_response`, filters `Status = 'PASS'`, and returns the latest `IceBaselineScenario` per `ProductCode` and `SchemeCode`, ordered by `Last_updated DESC` and `Scenario_id`. Filtering, grouping, and ranking are performed in SQL.
 
-`ResultUpdater.UpdateResultAsync()` updates `xml_response.Status`, `Build_id`, `Last_updated`, and latest `XML_Response` for either PASS or FAIL by unique `Scenario_id`, preserving `Create_date` and requiring exactly one affected row.
+`ResultUpdater.InsertBaselineAsync()` inserts a new scenario's first Radar response as its `PASS` baseline, guarded so it never replaces an existing row. `ResultUpdater.UpdateResultAsync()` updates `xml_response` by unique `Scenario_id`, preserving `Create_date` and requiring exactly one affected row. On PASS it updates `Status`, `Build_id`, `Last_updated` and `XML_Response`, so the Radar response becomes the new baseline. On FAIL it updates `Status` and `Build_id` only, so the existing baseline XML is never overwritten.
 
 ### External API access
 
@@ -670,7 +670,7 @@ NUnit test
     -> Validate/extract baseline and Radar decimals from shared profile XSD
     -> Match baseline/response decimal values by full XML path
     -> Compare each Actual - Expected against inclusive delta range
-    -> UpdateResultAsync with overall status + latest Radar response XML
+    -> UpdateResultAsync: PASS writes status + Radar response XML; FAIL writes status + build ID only
     -> Radar CSV report
     -> Radar log
 ```
@@ -812,7 +812,7 @@ When a Radar response fails XSD validation:
 1. Mark the current scenario as `FAILED`.
 2. Write the validation errors to the Radar log.
 3. Create a Radar report entry.
-4. Persist scenario-level FAIL and the latest API response with `UpdateResultAsync`.
+4. Persist scenario-level FAIL with `UpdateResultAsync` (status and build ID; the baseline XML is kept).
 5. Do not compare decimal fields after validation fails.
 6. Continue processing the remaining scenarios.
 
@@ -864,7 +864,7 @@ Retry only transient failures, including SQL timeouts, connection timeouts, dead
 
 Use the configured retry count and exponential backoff based on `DatabaseRetryDelaySeconds`. Add bounded jitter to prevent many workers from retrying simultaneously. Cancellation stops the retry sequence immediately. Every retry attempt is written to the active flow-specific log.
 
-`ResultUpdater` is included in this policy. Its updates must be scoped by scenario identity and build identity so a retried transient failure cannot create duplicate logical results.
+`ResultUpdater` is included in this policy. Its updates are scoped by `Scenario_id` and set absolute values, so a retried transient failure cannot create duplicate logical results.
 
 Read operations may retry the same read operation because they do not mutate state. Update operations may retry only the same idempotent, scenario/build-scoped database command after a transient database failure. An update retry never reruns API calls, extraction, matching, or the scenario workflow.
 
@@ -931,7 +931,7 @@ Reports must be deterministic and sorted by `ScenarioId` ascending before final 
 
 Parallel completion order does not affect report ordering. ICE reporting and logging remain separate and are not changed by this Radar implementation.
 
-Database readers and `ResultUpdater` create and dispose an independent SQL connection per operation; no connection is shared across NUnit cases, and there is no transaction around an API call. `ResultUpdater` validates the affected row count and writes the latest response XML for PASS and FAIL. No scenario-specific state is stored in fixture-global or NLog global context.
+Database readers and `ResultUpdater` create and dispose an independent SQL connection per operation; no connection is shared across NUnit cases, and there is no transaction around an API call. `ResultUpdater` validates the affected row count and writes the latest response XML for PASS only; FAIL updates the status and build ID only. No scenario-specific state is stored in fixture-global or NLog global context.
 
 NLog keeps separate ICE and Radar targets. Build identifiers may remain in `GlobalDiagnosticsContext`; scenario identifiers are structured event properties. Radar logging records exception type only and does not emit exception payloads, request/response XML, API keys, authorization headers, passwords, certificates, or connection strings. `IceTestSetup` does not call process-wide `LogManager.Shutdown` during fixture disposal, so it cannot terminate Radar logging in the same test process.
 
@@ -949,7 +949,7 @@ RequestDataReader
   -> RadarApiClient acquires shared limiter permit per HTTP attempt
   -> Validate both XMLs with the profile XSD and extract decimal values to scenario-local PricingDocuments
   -> FuzzyPricingMatcher returns decimal field details and the overall result
-  -> Persist response XML and scenario-level PASS/FAIL when an API response exists
+  -> When an API response exists: PASS persists status + response XML; FAIL persists status + build ID only
   -> Add one summary row with its field details to the concurrent collection
   -> One Radar CSV writes summary then dynamic detail rows per scenario
 ```
@@ -1006,7 +1006,7 @@ ICE remains its existing single workload test, iterating its selected baselines 
 - `IceValidationTests` is the ICE pipeline orchestrator; no separate ICE application orchestrator is required.
 - ICE retains its existing single workload test over selected baseline scenarios and one combined report per run.
 - Database and API retries are transient-only, configurable, exponentially backed off, jittered, cancellation-aware, and logged by flow.
-- `ResultUpdater` is retry-safe through scenario/build-scoped updates.
+- `ResultUpdater` is retry-safe through `Scenario_id`-scoped updates that set absolute values.
 - All DTOs, contracts, result models, report row models, and future enums belong under `Models`; service folders contain services only.
 - Business failures, validation failures, mismatches, and configuration failures are never retried.
 - NUnit owns Radar concurrency with four workers; each logical endpoint has an independent 2-per-second sliding-window budget and a queue of four waiting attempts. Every retry consumes another permit. There is no in-flight request limit, and ICE behavior is unchanged.
@@ -1019,7 +1019,7 @@ ICE remains its existing single workload test, iterating its selected baselines 
 - Radar and ICE produce separate reports and log files.
 - Report and log names are fixed as `Radar_<BuildId>.csv`, `Ice_<BuildId>.csv`, `Radar_<BuildId>.log`, and `Ice_<BuildId>.log`.
 - XSD files are resolved from `PricingValidationFramework.Tests/TestAssets/Xsd`.
-- Radar baseline XSD failure is ERROR before the API call. Radar response XSD failure is scenario-level FAIL: log, report, persist the latest API response and overall status with `UpdateResultAsync`, skip field matching, then continue with the next scenario.
+- Radar baseline XSD failure is ERROR before the API call. Radar response XSD failure is scenario-level FAIL: log, report, persist the FAIL status and build ID with `UpdateResultAsync` (the baseline XML is kept), skip field matching, then continue with the next scenario.
 
 NUnit owns scenario execution, schemes select Radar endpoint groups, endpoint groups own Radar credentials, and ICE remains an independent validation path.
 

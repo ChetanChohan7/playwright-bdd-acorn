@@ -17,13 +17,13 @@ public class BaselineDataReader : IBaselineDataReader
 				response.Scenario_id AS ScenarioId,
 				request.Quote_ref AS QuoteRef,
 				request.Product_code AS ProductCode,
-				request.Schem_code AS SchemeCode,
+				request.Scheme_code AS SchemeCode,
 				response.XML_Response AS XmlResponse,
 				response.Status AS Status,
 				response.Last_updated AS LastUpdated,
 				ROW_NUMBER() OVER
 				(
-					PARTITION BY request.Product_code, request.Schem_code
+					PARTITION BY request.Product_code, request.Scheme_code
 					ORDER BY response.Last_updated DESC, response.Scenario_id DESC
 				) AS RowNumber
 			FROM xml_response AS response
@@ -35,7 +35,9 @@ public class BaselineDataReader : IBaselineDataReader
 		WHERE RowNumber = 1;
 		""";
 
-	private const string PassingBaselineByIdSql = """
+	// No Status filter: Radar needs to tell "no baseline yet" (create one) apart from
+	// "baseline exists but isn't PASS" (report an error).
+	private const string BaselineByIdSql = """
 		SELECT
 			response.Scenario_id AS ScenarioId,
 			request.Quote_ref AS QuoteRef,
@@ -46,8 +48,7 @@ public class BaselineDataReader : IBaselineDataReader
 			response.Status AS Status
 		FROM xml_response AS response
 		INNER JOIN xml_request AS request ON request.Scenario_id = response.Scenario_id
-		WHERE response.Scenario_id = @ScenarioId
-		  AND response.Status = 'PASS';
+		WHERE response.Scenario_id = @ScenarioId;
 		""";
 
 	public BaselineDataReader(SqlConnectionFactory connectionFactory, RetrySettings? retrySettings = null)
@@ -76,7 +77,7 @@ public class BaselineDataReader : IBaselineDataReader
 		}
 	}
 
-	public async Task<ScenarioResponse> GetPassingBaselineByScenarioIdAsync(
+	public async Task<ScenarioResponse?> GetBaselineByScenarioIdAsync(
 		string scenarioId,
 		CancellationToken cancellationToken = default)
 	{
@@ -86,14 +87,14 @@ public class BaselineDataReader : IBaselineDataReader
 			{
 				await using var connection = connectionFactory.Create();
 				await connection.OpenAsync(cancellationToken);
-				var command = new CommandDefinition(PassingBaselineByIdSql, new { ScenarioId = scenarioId }, cancellationToken: cancellationToken);
+				var command = new CommandDefinition(BaselineByIdSql, new { ScenarioId = scenarioId }, cancellationToken: cancellationToken);
 				var baselines = (await connection.QueryAsync<ScenarioResponse>(command)).AsList();
 
 				return baselines.Count switch
 				{
 					1 => baselines[0],
-					0 => throw new InvalidDataException($"No passing baseline was found for ScenarioId '{scenarioId}'."),
-					_ => throw new InvalidDataException($"Multiple passing baselines were found for ScenarioId '{scenarioId}'.")
+					0 => null,
+					_ => throw new InvalidDataException($"Multiple baselines were found for ScenarioId '{scenarioId}'.")
 				};
 			}
 			catch (SqlException) when (attempt < retrySettings.DatabaseRetryCount)

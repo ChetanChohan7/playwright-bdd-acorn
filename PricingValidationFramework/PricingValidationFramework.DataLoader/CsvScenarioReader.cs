@@ -5,26 +5,17 @@ using System.Runtime.CompilerServices;
 using CsvHelper;
 using CsvHelper.Configuration;
 using CsvHelper.Configuration.Attributes;
-using PricingValidationFramework.Core.Models.Database;
+
+internal sealed record RequestCsvRow(string ScenarioId, string Xml);
 
 internal static class CsvScenarioReader
 {
-    public static async IAsyncEnumerable<ScenarioRequestImport> ReadRequestsAsync(
+    public static async IAsyncEnumerable<RequestCsvRow> ReadRequestsAsync(
         string path, [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         await foreach (var row in ReadAsync<RequestRow>(path, cancellationToken))
         {
-            yield return new ScenarioRequestImport(row.ScenarioId, row.QuoteRef, row.ProductCode,
-                row.SchemeCode, row.XmlRequest, row.TestTags);
-        }
-    }
-
-    public static async IAsyncEnumerable<ScenarioResponseImport> ReadResponsesAsync(
-        string path, [EnumeratorCancellation] CancellationToken cancellationToken)
-    {
-        await foreach (var row in ReadAsync<ResponseRow>(path, cancellationToken))
-        {
-            yield return new ScenarioResponseImport(row.ScenarioId, row.XmlResponse, row.BuildId, row.Status);
+            yield return new RequestCsvRow(row.ScenarioId, row.Xml);
         }
     }
 
@@ -45,21 +36,11 @@ internal static class CsvScenarioReader
         }
     }
 
+    // Same shape as the scenarios.csv the CSV loader UI produces: scenario_id + request XML.
+    // Quote_ref, Product_code and Scheme_code are read from the XML by ScenarioDataLoader.
     private sealed class RequestRow
     {
-        [Name("Scenario_id")] public string ScenarioId { get; set; } = string.Empty;
-        [Name("Quote_ref")] public string QuoteRef { get; set; } = string.Empty;
-        [Name("Product_code")] public string ProductCode { get; set; } = string.Empty;
-        [Name("Schem_code")] public string SchemeCode { get; set; } = string.Empty;
-        [Name("XML_request")] public string XmlRequest { get; set; } = string.Empty;
-        [Name("Test_tags")] public string TestTags { get; set; } = string.Empty;
-    }
-
-    private sealed class ResponseRow
-    {
-        [Name("Scenario_id")] public string ScenarioId { get; set; } = string.Empty;
-        [Name("XML_Response")] public string XmlResponse { get; set; } = string.Empty;
-        [Name("Build_id")] public string BuildId { get; set; } = string.Empty;
-        [Name("Status")] public string Status { get; set; } = string.Empty;
+        [Name("scenario_id")] public string ScenarioId { get; set; } = string.Empty;
+        [Name("xml")] public string Xml { get; set; } = string.Empty;
     }
 }

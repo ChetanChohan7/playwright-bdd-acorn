@@ -278,7 +278,7 @@ public class IceSystemFlowTests
             return Task.FromResult(scenarios);
         }
 
-        public Task<ScenarioResponse> GetPassingBaselineByScenarioIdAsync(
+        public Task<ScenarioResponse?> GetBaselineByScenarioIdAsync(
             string scenarioId,
             CancellationToken cancellationToken = default)
         {

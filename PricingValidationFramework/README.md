@@ -10,7 +10,7 @@ No database, endpoints, or credentials needed - this runs every unit and system 
 
 ## Run the Radar validation flow
 
-The explicit Radar workload creates one NUnit test case per selected `xml_request` scenario. NUnit owns scenario concurrency with an assembly worker limit of four; there is no application worker pool. Each case loads the baseline XML and delegates the Radar request and pricing comparison to `RadarPricingService` in Core. The test persists the scenario-level PASS or FAIL, collects one summary with its dynamic field results, and asserts the returned outcome. A single consolidated CSV is written after all cases finish.
+The explicit Radar workload creates one NUnit test case per selected `xml_request` scenario. NUnit owns scenario concurrency with an assembly worker limit of four; there is no application worker pool. Each case loads the scenario's `xml_response` row. If there is none (a newly loaded scenario), it calls Radar, inserts the response as the scenario's baseline with `Status = PASS`, and reports PASS without XSD validation or the pricing comparison. If the row exists but isn't `PASS`, the scenario is an ERROR. Otherwise it delegates the Radar request and pricing comparison to `RadarPricingService` in Core. The test persists the scenario-level result: on PASS it writes the status and the Radar response XML, which becomes the new baseline; on FAIL it updates only `xml_response.Status` and `Build_id`, leaving the baseline XML unchanged. It then collects one summary with its dynamic field results, and asserts the returned outcome. A single consolidated CSV is written after all cases finish.
 
 Every configured logical endpoint has its own mandatory `SlidingWindowRateLimiter`: at most 2 request starts per rolling second and up to 4 waiting attempts. `PricingA`, `PricingB`, and `PricingC` therefore have independent budgets; saturation on one endpoint does not consume another endpoint's capacity. Initial requests and retries use the same endpoint limiter. There is no separate in-flight request limit; NUnit remains the sole scenario-concurrency owner with four workers. Checked-in `RadarRateLimitSettings` uses `RequestsPerSecond: 2` and `QueueLimit: 4` and cannot be disabled.
 
@@ -82,7 +82,7 @@ The Radar job timeout is 360 minutes. At the configured limit of two request sta
 
 ## Load scenario data
 
-`PricingValidationFramework.DataLoader` imports request and baseline CSVs through the Core database repository. Loader classes own CSV/XML validation and import policy; the repository owns SQL and atomic bulk inserts using the existing connection factory. Identical records are skipped and conflicting baselines are never overwritten.
+`PricingValidationFramework.DataLoader` imports a `scenario_id,xml` requests CSV into `xml_request` through the Core database repository, reading `Quote_ref`, `Product_code` and `Scheme_code` from `/Message/Policy`. Loader classes own CSV/XML validation and import policy; the repository owns SQL and atomic bulk inserts using the existing connection factory. Identical records are skipped and conflicting requests are never overwritten. The loader doesn't write baselines: the next Radar run creates one for each new scenario.
 
 See [the importer guide](PricingValidationFramework.DataLoader/README.md) for CSV headers, local commands, database prerequisites, and the manual [data-loader pipeline](azure-pipelines-data-loader.yml). Local real CSVs belong under `data/import/` and are ignored by Git; synthetic examples are under `data/import/examples/`. The importer checks the full dataset before writing and uses disk-backed, bounded batches for approximately 20,000 scenarios.
 
@@ -98,7 +98,7 @@ The ICE flow is an explicit NUnit integration test. It loads passing baseline sc
 - A valid ICE API key and client certificate.
 - The client certificate's password, if the PFX is password protected.
 
-The workload selects the newest `PASS` baseline for each `(Product_code, Schem_code)` pair. It calls ICE using this URL shape:
+The workload selects the newest `PASS` baseline for each `(Product_code, Scheme_code)` pair. It calls ICE using this URL shape:
 
 ```text
 {IceEndpoint}/{QuoteRef}
@@ -194,7 +194,7 @@ Each selected row must supply:
 - `Scenario_id`
 - `Quote_ref`
 - `Product_code`
-- `Schem_code`
+- `Scheme_code`
 - `XML_Response`
 - `Status`
 - `Last_updated`

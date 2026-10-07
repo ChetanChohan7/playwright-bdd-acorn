@@ -6,7 +6,8 @@ public interface IBaselineDataReader
 {
     Task<IReadOnlyList<IceBaselineScenario>> GetPassingBaselineScenariosAsync(CancellationToken cancellationToken = default);
 
-    Task<ScenarioResponse> GetPassingBaselineByScenarioIdAsync(
+    /// The scenario's xml_response row whatever its status, or null if it has no baseline yet.
+    Task<ScenarioResponse?> GetBaselineByScenarioIdAsync(
         string scenarioId,
         CancellationToken cancellationToken = default);
 }

@@ -1,40 +1,34 @@
 namespace PricingValidationFramework.DataLoader;
 
-using System.Text.Json;
 using System.Xml;
 using System.Xml.Linq;
 using PricingValidationFramework.Core.Database;
 using PricingValidationFramework.Core.Models.Database;
-using PricingValidationFramework.Core.Models.External;
 
 public sealed record ImportOptions(
-    string? RequestCsv,
-    string? ResponseCsv,
+    string RequestCsv,
     bool ValidateOnly,
-    int BatchSize = 500,
-    string BuildId = "local-import");
+    int BatchSize = 500);
 
 public sealed record ImportIssue(string Source, int RecordNumber, string ScenarioId, string Reason);
 
 public sealed class ImportSummary
 {
     public string Mode { get; init; } = string.Empty;
+    public string RequestFile { get; set; } = string.Empty;
     public int InputRequests { get; set; }
-    public int InputResponses { get; set; }
     public int InsertedRequests { get; set; }
-    public int InsertedResponses { get; set; }
     public int SkippedRequests { get; set; }
-    public int SkippedResponses { get; set; }
     public int CommittedBatches { get; set; }
     public bool Cancelled { get; set; }
     public List<ImportIssue> Issues { get; } = [];
     public bool Succeeded => !Cancelled && Issues.Count == 0;
 }
 
+/// Loads xml_request only. Baselines in xml_response are created by the Radar run: a scenario
+/// with no xml_response row gets Radar's first response stored as its PASS baseline.
 public sealed class ScenarioDataLoader(IScenarioImportRepository? repository = null)
 {
-    private static readonly JsonSerializerOptions EnvelopeOptions = new() { PropertyNameCaseInsensitive = true };
-
     public async Task<ImportSummary> RunAsync(ImportOptions options, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(options);
@@ -42,19 +36,28 @@ public sealed class ScenarioDataLoader(IScenarioImportRepository? repository = n
         {
             throw new ArgumentOutOfRangeException(nameof(options), "Batch size must be between 1 and 1000.");
         }
-        if (string.IsNullOrWhiteSpace(options.RequestCsv) && string.IsNullOrWhiteSpace(options.ResponseCsv))
+        if (string.IsNullOrWhiteSpace(options.RequestCsv))
         {
-            throw new ArgumentException("At least one request or response CSV is required.", nameof(options));
+            throw new ArgumentException("A request CSV is required.", nameof(options));
         }
 
         var summary = new ImportSummary { Mode = options.ValidateOnly ? "validate" : "import" };
+        try
+        {
+            summary.RequestFile = RequestFileResolver.Resolve(options.RequestCsv);
+        }
+        catch (InvalidDataException exception)
+        {
+            summary.Issues.Add(new ImportIssue("input", 0, string.Empty, exception.Message));
+            return summary;
+        }
+
         using var spool = new ImportSpool();
         var operation = "Reading input files";
         try
         {
-            await LoadRequestsAsync(options, spool, summary, cancellationToken);
-            await LoadResponsesAsync(options, spool, summary, cancellationToken);
-            if (summary.InputRequests + summary.InputResponses == 0)
+            await LoadRequestsAsync(summary.RequestFile, spool, summary, cancellationToken);
+            if (summary.InputRequests == 0)
             {
                 summary.Issues.Add(new ImportIssue("input", 0, string.Empty, "The input contains no scenario records."));
             }
@@ -68,12 +71,11 @@ public sealed class ScenarioDataLoader(IScenarioImportRepository? repository = n
             }
 
             var requestInserts = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            var responseInserts = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             operation = "Checking existing database records";
             foreach (var batch in spool.ReadBatches(options.BatchSize, cancellationToken))
             {
                 var existing = await repository.ReadExistingAsync(batch.Select(row => row.ScenarioId).ToArray(), cancellationToken);
-                PlanBatch(batch, existing, spool, summary, requestInserts, responseInserts);
+                PlanBatch(batch, existing, summary, requestInserts);
             }
             if (!summary.Succeeded)
             {
@@ -83,15 +85,13 @@ public sealed class ScenarioDataLoader(IScenarioImportRepository? repository = n
             operation = "Inserting a database batch";
             foreach (var batch in spool.ReadBatches(options.BatchSize, cancellationToken))
             {
-                var requests = batch.Where(row => requestInserts.Contains(row.ScenarioId)).Select(row => row.Request!).ToArray();
-                var responses = batch.Where(row => responseInserts.Contains(row.ScenarioId)).Select(row => row.Response!).ToArray();
-                if (requests.Length == 0 && responses.Length == 0)
+                var requests = batch.Where(row => requestInserts.Contains(row.ScenarioId)).ToArray();
+                if (requests.Length == 0)
                 {
                     continue;
                 }
-                await repository.InsertBatchAsync(requests, responses, cancellationToken);
+                await repository.InsertBatchAsync(requests, cancellationToken);
                 summary.InsertedRequests += requests.Length;
-                summary.InsertedResponses += responses.Length;
                 summary.CommittedBatches++;
             }
         }
@@ -107,18 +107,14 @@ public sealed class ScenarioDataLoader(IScenarioImportRepository? repository = n
         return summary;
     }
 
-    private static async Task LoadRequestsAsync(ImportOptions options, ImportSpool spool, ImportSummary summary, CancellationToken cancellationToken)
+    private static async Task LoadRequestsAsync(string requestFile, ImportSpool spool, ImportSummary summary, CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(options.RequestCsv))
-        {
-            return;
-        }
-        await foreach (var row in CsvScenarioReader.ReadRequestsAsync(options.RequestCsv, cancellationToken))
+        await foreach (var row in CsvScenarioReader.ReadRequestsAsync(requestFile, cancellationToken))
         {
             summary.InputRequests++;
             try
             {
-                var normalized = NormalizeRequest(row);
+                var normalized = RequestFromCsv(row);
                 if (!spool.AddRequest(normalized))
                 {
                     throw new InvalidDataException("Duplicate request Scenario_id.");
@@ -132,102 +128,60 @@ public sealed class ScenarioDataLoader(IScenarioImportRepository? repository = n
         }
     }
 
-    private static async Task LoadResponsesAsync(ImportOptions options, ImportSpool spool, ImportSummary summary, CancellationToken cancellationToken)
+    private static void PlanBatch(
+        IReadOnlyList<ScenarioRequestImport> batch,
+        ScenarioImportSnapshot existing,
+        ImportSummary summary,
+        HashSet<string> requestInserts)
     {
-        if (string.IsNullOrWhiteSpace(options.ResponseCsv))
+        var requests = existing.Requests.ToDictionary(row => row.ScenarioId, StringComparer.OrdinalIgnoreCase);
+        foreach (var row in batch)
         {
-            return;
-        }
-        await foreach (var row in CsvScenarioReader.ReadResponsesAsync(options.ResponseCsv, cancellationToken))
-        {
-            summary.InputResponses++;
-            try
+            if (!requests.TryGetValue(row.ScenarioId, out var storedRequest))
             {
-                var normalized = NormalizeResponse(row, options.BuildId);
-                if (!spool.AddResponse(normalized))
-                {
-                    throw new InvalidDataException("Duplicate response Scenario_id.");
-                }
+                requestInserts.Add(row.ScenarioId);
             }
-            catch (Exception exception) when (exception is InvalidDataException or XmlException or JsonException)
+            // Test_tags isn't in the CSV, so tags set on an existing row don't count as a conflict.
+            else if (NormalizeRequest(storedRequest) with { TestTags = string.Empty } == row)
             {
-                summary.Issues.Add(new ImportIssue("responses", summary.InputResponses, row.ScenarioId,
-                    exception is InvalidDataException ? exception.Message : "Response XML or JSON envelope is malformed."));
+                summary.SkippedRequests++;
+            }
+            else
+            {
+                summary.Issues.Add(new ImportIssue("database", 0, row.ScenarioId, "Request conflicts with an existing scenario; replacement is not allowed."));
             }
         }
     }
 
-    private static void PlanBatch(
-        IReadOnlyList<ScenarioImportEntry> batch,
-        ScenarioImportSnapshot existing,
-        ImportSpool spool,
-        ImportSummary summary,
-        HashSet<string> requestInserts,
-        HashSet<string> responseInserts)
+    private static ScenarioRequestImport RequestFromCsv(RequestCsvRow row)
     {
-        var requests = existing.Requests.ToDictionary(row => row.ScenarioId, StringComparer.OrdinalIgnoreCase);
-        var responses = existing.Responses.ToDictionary(row => row.ScenarioId, StringComparer.OrdinalIgnoreCase);
-        foreach (var row in batch)
-        {
-            if (row.Request is not null)
-            {
-                if (!requests.TryGetValue(row.ScenarioId, out var storedRequest))
-                {
-                    requestInserts.Add(row.ScenarioId);
-                }
-                else if (NormalizeRequest(storedRequest) == row.Request)
-                {
-                    summary.SkippedRequests++;
-                }
-                else
-                {
-                    summary.Issues.Add(new ImportIssue("database", 0, row.ScenarioId, "Request conflicts with an existing scenario; replacement is not allowed."));
-                }
-            }
-            if (row.Response is null)
-            {
-                continue;
-            }
-            if (!spool.ContainsRequest(row.ScenarioId) && !requests.ContainsKey(row.ScenarioId))
-            {
-                summary.Issues.Add(new ImportIssue("database", 0, row.ScenarioId, "Response has no matching request Scenario_id."));
-                continue;
-            }
-            if (!responses.TryGetValue(row.ScenarioId, out var storedResponse))
-            {
-                responseInserts.Add(row.ScenarioId);
-            }
-            else
-            {
-                var normalized = NormalizeResponse(storedResponse, string.Empty);
-                if (normalized.XmlResponse == row.Response.XmlResponse && normalized.Status == row.Response.Status)
-                {
-                    summary.SkippedResponses++;
-                }
-                else
-                {
-                    summary.Issues.Add(new ImportIssue("database", 0, row.ScenarioId, "Response conflicts with an existing baseline; replacement is not allowed."));
-                }
-            }
-        }
+        var scenarioId = Required(row.ScenarioId, "scenario_id");
+        var xml = NormalizeXml(row.Xml);
+        var policy = XElement.Parse(xml) is { Name.LocalName: "Message" } message
+            ? SingleChild(message, "Policy", "/Message/Policy")
+            : throw new InvalidDataException("Request XML root element must be <Message>.");
+        return new ScenarioRequestImport(scenarioId,
+            Required(SingleChild(policy, "PolicyReference", "/Message/Policy/PolicyReference").Value, "PolicyReference (Quote_ref)"),
+            Required(SingleChild(policy, "ProductCode", "/Message/Policy/ProductCode").Value, "ProductCode (Product_code)"),
+            Required(SingleChild(policy, "SchemeCode", "/Message/Policy/SchemeCode").Value, "SchemeCode (Scheme_code)"),
+            xml, string.Empty);
+    }
+
+    private static XElement SingleChild(XElement parent, string name, string path)
+    {
+        var matches = parent.Elements().Where(element => element.Name.LocalName == name).Take(2).ToArray();
+        return matches.Length == 1
+            ? matches[0]
+            : throw new InvalidDataException(matches.Length == 0
+                ? $"Request XML has no {path} element."
+                : $"Request XML has more than one {path} element.");
     }
 
     private static ScenarioRequestImport NormalizeRequest(ScenarioRequestImport row)
     {
         return new ScenarioRequestImport(Required(row.ScenarioId, "Scenario_id"), Required(row.QuoteRef, "Quote_ref"),
-            Required(row.ProductCode, "Product_code"), Required(row.SchemeCode, "Schem_code"),
-            NormalizeXml(row.XmlRequest, false), row.TestTags?.Trim() ?? string.Empty);
-    }
-
-    private static ScenarioResponseImport NormalizeResponse(ScenarioResponseImport row, string defaultBuildId)
-    {
-        var status = Required(row.Status, "Status").ToUpperInvariant();
-        if (status is not ("PASS" or "FAIL" or "ERROR"))
-        {
-            throw new InvalidDataException("Status must be explicitly set to PASS, FAIL, or ERROR.");
-        }
-        return new ScenarioResponseImport(Required(row.ScenarioId, "Scenario_id"), NormalizeXml(row.XmlResponse, true),
-            Required(string.IsNullOrWhiteSpace(row.BuildId) ? defaultBuildId : row.BuildId, "Build_id"), status);
+            Required(row.ProductCode, "Product_code"), Required(row.SchemeCode, "Scheme_code"),
+            NormalizeXml(row.XmlRequest), row.TestTags?.Trim() ?? string.Empty);
     }
 
     private static string Required(string? value, string field)
@@ -237,14 +191,9 @@ public sealed class ScenarioDataLoader(IScenarioImportRepository? repository = n
             : value.Trim();
     }
 
-    private static string NormalizeXml(string value, bool allowEnvelope)
+    private static string NormalizeXml(string value)
     {
-        var xml = Required(value, "XML").TrimStart('\uFEFF').Trim();
-        if (allowEnvelope && !xml.StartsWith('<'))
-        {
-            var envelope = JsonSerializer.Deserialize<RadarJsonResponse>(xml, EnvelopeOptions);
-            xml = Required(envelope?.Response, "JSON response XML").TrimStart('\uFEFF').Trim();
-        }
+        var xml = Required(value, "XML").TrimStart('﻿').Trim();
         using var reader = XmlReader.Create(new StringReader(xml), new XmlReaderSettings
         {
             DtdProcessing = DtdProcessing.Prohibit,

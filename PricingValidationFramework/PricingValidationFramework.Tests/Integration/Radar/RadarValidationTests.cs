@@ -81,14 +81,24 @@ public class RadarValidationTests
         {
             cancellationToken.ThrowIfCancellationRequested();
             baseline = await setup.BaselineReader
-                .GetPassingBaselineByScenarioIdAsync(scenario.ScenarioId, cancellationToken);
-			var run = await setup.PricingService.RunAsync(
-                scenario,
-                baseline.XmlResponse,
-                setup.RequestTime,
-                setup.MinThreshold,
-                setup.MaxThreshold,
-                cancellationToken);
+                .GetBaselineByScenarioIdAsync(scenario.ScenarioId, cancellationToken);
+            if (baseline is not null && !string.Equals(baseline.Status, "PASS", StringComparison.Ordinal))
+            {
+                throw new InvalidDataException(
+                    $"No passing baseline was found for ScenarioId '{scenario.ScenarioId}' (Status is '{baseline.Status}').");
+            }
+
+            // A new scenario has no xml_response row yet: Radar's response becomes its baseline
+            // and is passed without the fuzzy comparison. Otherwise compare against the baseline.
+			var run = baseline is null
+                ? await setup.PricingService.CreateBaselineAsync(scenario, setup.RequestTime, cancellationToken)
+                : await setup.PricingService.RunAsync(
+                    scenario,
+                    baseline.XmlResponse,
+                    setup.RequestTime,
+                    setup.MinThreshold,
+                    setup.MaxThreshold,
+                    cancellationToken);
 			row = RadarReportingHelper.BuildComparisonRow(
 				setup.BuildId,
 				scenario.ScenarioId,
@@ -96,7 +106,7 @@ public class RadarValidationTests
 				scenario.SchemeCode,
 				scenario.ProductCode,
 				scenario.XmlRequest,
-				baseline.XmlResponse,
+				baseline?.XmlResponse ?? string.Empty,
 				run.RadarResponseXml,
 				setup.MinThreshold,
 				setup.MaxThreshold,
@@ -118,7 +128,21 @@ public class RadarValidationTests
             {
                 try
                 {
-                    await PersistResultAsync(setup, baseline, row, cancellationToken);
+                    if (baseline is null)
+                    {
+                        await setup.ResultUpdater.InsertBaselineAsync(new ScenarioResponse
+                        {
+                            ScenarioId = scenario.ScenarioId,
+                            QuoteRef = scenario.QuoteRef,
+                            XmlResponse = run.RadarResponseXml,
+                            BuildId = setup.BuildId,
+                            Status = "PASS"
+                        }, cancellationToken);
+                    }
+                    else
+                    {
+                        await PersistResultAsync(setup, baseline, row, cancellationToken);
+                    }
                 }
                 catch (OperationCanceledException)
                 {
@@ -135,7 +159,7 @@ public class RadarValidationTests
                         null,
                         "ResultPersistence",
                         exception);
-                    row = BuildErrorRow(scenario, setup, baseline.XmlResponse, row.RadarResponseXml, "ResultPersistence", exception.Message);
+                    row = BuildErrorRow(scenario, setup, baseline?.XmlResponse ?? string.Empty, row.RadarResponseXml, "ResultPersistence", exception.Message);
                 }
             }
         }

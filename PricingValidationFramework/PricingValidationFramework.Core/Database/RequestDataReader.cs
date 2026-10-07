@@ -13,7 +13,7 @@ public class RequestDataReader
 	private const string ScenarioColumns = """
 		Scenario_id AS ScenarioId,
 		Quote_ref AS QuoteRef,
-		Schem_code AS SchemeCode,
+		Scheme_code AS SchemeCode,
 		Product_code AS ProductCode,
 		XML_request AS XmlRequest,
 		Test_tags AS TestTags,

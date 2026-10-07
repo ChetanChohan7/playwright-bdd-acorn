@@ -58,7 +58,7 @@ stages:
                   SourceFolder: '$(Build.SourcesDirectory)/${{ parameters.datasetPath }}'
                   Contents: |
                     requests.csv
-                    responses.csv
+                    scenarios-*.csv
                   TargetFolder: '$(Pipeline.Workspace)/scenario-data'
                   CleanTargetFolder: true
           - ${{ if eq(parameters.datasetSource, 'artifact') }}:
@@ -75,11 +75,7 @@ stages:
           - pwsh: |
               $reportDirectory = '$(Build.ArtifactStagingDirectory)/DataLoaderValidation'
               New-Item -ItemType Directory -Force -Path $reportDirectory | Out-Null
-              $importArguments = @('--batch-size', '${{ parameters.batchSize }}', '--build-id', '$(Build.BuildId)', '--report', "$reportDirectory/validation-summary.json")
-              foreach ($file in @('requests', 'responses')) {
-                $path = "$(Pipeline.Workspace)/scenario-data/$file.csv"
-                if (Test-Path $path) { $importArguments += @("--$file", $path) }
-              }
+              $importArguments = @('--requests', "$(Pipeline.Workspace)/scenario-data", '--batch-size', '${{ parameters.batchSize }}', '--report', "$reportDirectory/validation-summary.json")
               dotnet run --project PricingValidationFramework/PricingValidationFramework.DataLoader --configuration Release --no-build -- validate @importArguments
               if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
             displayName: Validate CSV and XML without database writes
@@ -128,11 +124,7 @@ stages:
                 - pwsh: |
                     $reportDirectory = '$(Build.ArtifactStagingDirectory)/DataLoaderImport'
                     New-Item -ItemType Directory -Force -Path $reportDirectory | Out-Null
-                    $importArguments = @('--batch-size', '${{ parameters.batchSize }}', '--build-id', '$(Build.BuildId)', '--report', "$reportDirectory/import-summary.json")
-                    foreach ($file in @('requests', 'responses')) {
-                      $path = "$(Pipeline.Workspace)/scenario-import-data/$file.csv"
-                      if (Test-Path $path) { $importArguments += @("--$file", $path) }
-                    }
+                    $importArguments = @('--requests', "$(Pipeline.Workspace)/scenario-import-data", '--batch-size', '${{ parameters.batchSize }}', '--report', "$reportDirectory/import-summary.json")
                     dotnet restore PricingValidationFramework/PricingValidationFramework.DataLoader --disable-parallel
                     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
                     dotnet run --project PricingValidationFramework/PricingValidationFramework.DataLoader --configuration Release --no-restore -- import @importArguments

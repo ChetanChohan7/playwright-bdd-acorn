@@ -146,6 +146,65 @@ public class RadarPricingServiceTests
 		});
 	}
 
+	[Test]
+	public async Task CreateBaselineAsync_should_pass_the_radar_response_without_comparing_or_validating_it()
+	{
+		HttpRequestMessage? capturedRequest = null;
+		using var httpClient = new HttpClient(new StubHandler(request =>
+		{
+			capturedRequest = request;
+			return new HttpResponseMessage(HttpStatusCode.OK)
+			{
+				Content = new StringContent("<NotInTheXsd><Premium>1</Premium></NotInTheXsd>", global::System.Text.Encoding.UTF8, "application/xml")
+			};
+		}));
+		using var apiClient = new RadarApiClient(
+			new NoWaitRateLimiter(),
+			httpClient,
+			NullLogger<RadarApiClient>.Instance,
+			new RetrySettings { ApiRetryCount = 1, ApiRetryDelaySeconds = 0 });
+		var service = new RadarPricingService(CreateSettings(), apiClient, new RadarUrlBuilder(), CreateComparisonService());
+
+		var result = await service.CreateBaselineAsync(CreateScenario("ABC"), "2024-03-01Z09:30:45");
+
+		Assert.Multiple(() =>
+		{
+			Assert.That(result.RouteId, Is.EqualTo("Route001"));
+			Assert.That(result.RadarResponseXml, Is.EqualTo("<NotInTheXsd><Premium>1</Premium></NotInTheXsd>"));
+			Assert.That(result.Comparison.Result, Is.EqualTo(ScenarioResult.Pass));
+			Assert.That(result.Comparison.FailureStage, Is.EqualTo(RadarPricingService.BaselineCreatedStage));
+			Assert.That(result.Comparison.Fields, Is.Empty);
+			Assert.That(capturedRequest!.RequestUri!.Query, Does.Contain("KeyName=shared-home"));
+		});
+	}
+
+	[Test]
+	public async Task CreateBaselineAsync_should_not_call_radar_when_no_route_matches()
+	{
+		var requestCount = 0;
+		using var httpClient = new HttpClient(new StubHandler(_ =>
+		{
+			requestCount++;
+			return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("<Response />") };
+		}));
+		using var apiClient = new RadarApiClient(
+			new NoWaitRateLimiter(),
+			httpClient,
+			NullLogger<RadarApiClient>.Instance,
+			new RetrySettings { ApiRetryCount = 1, ApiRetryDelaySeconds = 0 });
+		var service = new RadarPricingService(CreateSettings(), apiClient, new RadarUrlBuilder(), CreateComparisonService());
+
+		var result = await service.CreateBaselineAsync(CreateScenario("UNMAPPED"), "2024-03-01Z09:30:45");
+
+		Assert.Multiple(() =>
+		{
+			Assert.That(result.Comparison.Result, Is.EqualTo(ScenarioResult.Error));
+			Assert.That(result.Comparison.FailureStage, Is.EqualTo("RouteResolution"));
+			Assert.That(result.RadarResponseXml, Is.Empty);
+			Assert.That(requestCount, Is.Zero);
+		});
+	}
+
 	private RadarSettings CreateSettings()
 	{
 		return new RadarSettings
