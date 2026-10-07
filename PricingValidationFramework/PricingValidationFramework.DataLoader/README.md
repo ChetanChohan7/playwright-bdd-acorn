@@ -7,7 +7,7 @@ The importer loads `xml_request` only, keyed by unique `Scenario_id`. It never w
 - `CsvScenarioReader`: RFC4180 CSV parsing, including quoted XML and multiline values.
 - `ScenarioDataLoader`: required-field/XML validation, duplicate detection, existing-record comparison, import planning, batching, cancellation, and summaries.
 - `ImportSpool`: temporary normalized payload storage; memory retains IDs/offsets and a working batch, not all XML records.
-- Core `IScenarioImportRepository` and `ScenarioImportRepository`: database lookups and transactional bulk inserts only. They reuse `SqlConnectionFactory.OpenAsync` and do not parse CSVs or decide whether a baseline is approved.
+- Core `IScenarioImportRepository` and `ScenarioImportRepository`: database lookups and transactional, parameterised inserts only. They reuse `SqlConnectionFactory.OpenAsync` and do not parse CSVs or decide whether a baseline is approved.
 
 ## Input Files
 
@@ -55,7 +55,7 @@ The target schema must already exist. Enforce a unique/primary key on `xml_reque
 
 Every input record is validated and spooled before database access. Existing records are checked for the complete dataset before writing. Identical requests are skipped (`Test_tags` is ignored in that comparison, since the CSV doesn't carry it). Conflicting records reject the run. There is deliberately no replacement/upsert switch.
 
-Each batch uses one connection and serializable transaction. Typed temporary staging tables mirror the real columns; `SqlBulkCopy` stages rows, then they are inserted. SQL guards against duplicates, including races after preflight. SQL supplies `Create_date` in UTC. Existing audit fields are never overwritten by the loader.
+Each batch uses one connection and serializable transaction, with `SET XACT_ABORT ON` so any error rolls the whole batch back. Rows are sent as parameters in multi-row `INSERT ... SELECT ... FROM (VALUES ...)` statements of up to 333 rows: six parameters per row keeps each statement under SQL Server's 2,100-parameter limit. Nothing is created in the database: no temporary tables, table types, stored procedures or bulk copy, so the loader needs only `SELECT` and `INSERT` on `xml_request`. Each statement skips any `Scenario_id` that appeared since preflight (`NOT EXISTS` with `UPDLOCK, HOLDLOCK`); if any row is skipped that way, the batch is rolled back and the run stops. SQL supplies `Create_date` in UTC. Existing audit fields are never overwritten by the loader.
 
 Default batch size is 500; maximum is 1000 to stay below SQL Server's parameter limit. Transactions are batch-scoped, not dataset-scoped: if a later batch fails, earlier commits remain and are counted in the summary. Check database state and rerun the same immutable dataset to skip committed records. A lost connection during commit can make the last batch's outcome uncertain; never assume the entire run rolled back. No blind write retries are performed.
 
@@ -67,7 +67,7 @@ Register `PricingValidationFramework/azure-pipelines-data-loader.yml` as a separ
 
 1. Configure an agent pool with .NET installation support and access to the target SQL Server. The YAML defaults to the self-hosted `Default` pool; set `agentPool` for your environment.
 2. Create the `pricing-data-import` environment, or choose another with `importEnvironment`. Configure required approval and exclusive-lock checks in Azure DevOps before using a shared database. These checks cannot be configured by this YAML alone. Restrict environment and pipeline permissions to authorized operators.
-3. Add secret variable `DataLoaderDatabaseConnectionString` for that environment. Use a dedicated database identity with SELECT/INSERT permission on `xml_request` and permission to create local temporary tables, not schema-altering permissions.
+3. Add secret variable `DataLoaderDatabaseConnectionString` for that environment. Use a dedicated database identity with only SELECT and INSERT permission on `xml_request`. It needs no permission to create anything, including temporary tables.
 4. Choose `repository` for approved synthetic/test files, or `artifact` for a controlled dataset. Artifact mode requires a numeric pipeline definition ID and run ID and an artifact named `scenario-data` with `scenarios-{timestamp}.csv` file(s) or a `requests.csv` at its root; the newest versioned file is used. Do not select an unversioned latest artifact.
 5. The first stage restores/builds/tests the importer, validates CSV/XML without SQL, and pins those exact files as `scenario-import-data`. Review `DataLoaderValidation` before approving the environment deployment.
 6. The second stage downloads the current run's pinned dataset, checks database links/conflicts, and inserts through the Core repository. Review `DataLoaderImport` for counts and errors. Run Radar afterwards to create the new scenarios' baselines.

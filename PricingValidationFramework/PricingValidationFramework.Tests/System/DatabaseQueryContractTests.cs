@@ -156,21 +156,61 @@ public class DatabaseQueryContractTests
     }
 
     [Test]
-    public void Import_repository_should_stage_the_current_columns_and_insert_requests_only()
+    public void Import_insert_should_use_parameterised_values_rows_guarded_against_existing_ids()
     {
-        var sql = ReadQuery<ScenarioImportRepository>("InsertBatchSql");
+        var sql = ScenarioImportRepository.BuildInsertSql(2);
 
         Assert.Multiple(() =>
         {
-            Assert.That(sql, Does.Contain("INSERT INTO xml_request"));
-            Assert.That(sql, Does.Not.Contain("xml_response"));
-            Assert.That(sql, Does.Contain("ON target.Scenario_id = staged.Scenario_id"));
-            Assert.That(sql, Does.Contain("Scheme_code"));
-            Assert.That(sql, Does.Contain("Create_date)"));
+            Assert.That(sql, Does.Contain("INSERT INTO xml_request (Scenario_id, Quote_ref, Product_code, Scheme_code, XML_request, Test_tags, Create_date)"));
             Assert.That(sql, Does.Contain("SYSUTCDATETIME()"));
-            Assert.That(sql, Does.Contain("UPDLOCK, HOLDLOCK"));
-            Assert.That(sql, Does.Not.Contain("UPDATE xml_response"));
+            Assert.That(sql, Does.Contain("(@s0, @q0, @p0, @c0, @x0, @t0)"));
+            Assert.That(sql, Does.Contain("(@s1, @q1, @p1, @c1, @x1, @t1)"));
+            Assert.That(sql, Does.Contain("AS v (Scenario_id, Quote_ref, Product_code, Scheme_code, XML_request, Test_tags)"));
+            Assert.That(sql, Does.Contain("WHERE NOT EXISTS"));
+            Assert.That(sql, Does.Contain("xml_request AS target WITH (UPDLOCK, HOLDLOCK)"));
+            Assert.That(sql, Does.Contain("WHERE target.Scenario_id = v.Scenario_id"));
         });
+    }
+
+    [Test]
+    public void Import_insert_should_need_only_insert_and_select_on_existing_tables()
+    {
+        var sql = ScenarioImportRepository.BuildInsertSql(ScenarioImportRepository.MaxRowsPerStatement);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(sql, Does.Not.Contain("#"), "no temporary tables");
+            Assert.That(sql, Does.Not.Match(@"\bCREATE\s").IgnoreCase, "creates nothing (Create_date is only a column)");
+            Assert.That(sql, Does.Not.Contain("MERGE").IgnoreCase);
+            Assert.That(sql, Does.Not.Contain("OPENJSON").IgnoreCase);
+            Assert.That(sql, Does.Not.Contain("xml_response"));
+            Assert.That(sql, Does.Not.Contain("UPDATE").IgnoreCase);
+        });
+    }
+
+    [Test]
+    public void Import_insert_should_stay_within_sql_servers_parameter_limit()
+    {
+        var sql = ScenarioImportRepository.BuildInsertSql(ScenarioImportRepository.MaxRowsPerStatement);
+        var parameters = global::System.Text.RegularExpressions.Regex.Matches(sql, @"@[a-z]\d+")
+            .Select(match => match.Value)
+            .Distinct()
+            .Count();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(ScenarioImportRepository.MaxRowsPerStatement, Is.EqualTo(333));
+            Assert.That(parameters, Is.EqualTo(ScenarioImportRepository.MaxRowsPerStatement * ScenarioImportRepository.ParametersPerRow));
+            Assert.That(parameters, Is.LessThanOrEqualTo(2100));
+        });
+    }
+
+    [TestCase(0)]
+    [TestCase(334)]
+    public void Import_insert_should_reject_statement_sizes_outside_the_limit(int rowCount)
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() => ScenarioImportRepository.BuildInsertSql(rowCount));
     }
 
     private static string ReadQuery<TReader>(string fieldName)

@@ -119,7 +119,7 @@ The database standard is:
 - `Microsoft.Data.SqlClient` for SQL Server connectivity.
 - `Dapper` for strongly typed SQL mapping and command execution.
 
-The framework does not use Entity Framework, Entity Framework Core, Unit of Work, generic ORM wrappers, or generic repositories. This is a data-driven automation platform rather than a CRUD application. The CSV loader delegates SQL reads and transactional bulk inserts to the focused Core `ScenarioImportRepository` through `IScenarioImportRepository`; CSV parsing and import policy remain in the loader.
+The framework does not use Entity Framework, Entity Framework Core, Unit of Work, generic ORM wrappers, or generic repositories. This is a data-driven automation platform rather than a CRUD application. The CSV loader delegates SQL reads and transactional, parameterised multi-row inserts to the focused Core `ScenarioImportRepository` through `IScenarioImportRepository`; CSV parsing and import policy remain in the loader.
 
 SQL remains explicit and visible. Reader and updater classes own their SQL directly.
 
