@@ -1,0 +1,64 @@
+trigger: none
+pr: none
+
+pool:
+  vmImage: ubuntu-latest
+
+jobs:
+  - job: RadarValidation
+    timeoutInMinutes: 360
+    steps:
+      - task: UseDotNet@2
+        displayName: Use .NET 10
+        inputs:
+          packageType: sdk
+          version: 10.0.x
+
+      - pwsh: |
+          dotnet test PricingValidationFramework/PricingValidationFramework.Tests/PricingValidationFramework.Tests.csproj --configuration Release --filter "FullyQualifiedName~PricingValidationFramework.Tests.Integration.Radar.RadarValidationTests" --logger "trx;LogFileName=Radar.trx" --results-directory "$(Agent.TempDirectory)/RadarTestResults" -- NUnit.ExplicitMode=Relaxed
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          [xml]$results = Get-Content '$(Agent.TempDirectory)/RadarTestResults/Radar.trx'
+          if ([int]$results.TestRun.ResultSummary.Counters.executed -eq 0) { throw 'No Radar integration tests executed.' }
+        displayName: Run Radar integration tests only
+        env:
+          DOTNET_ENVIRONMENT: Uat
+          DatabaseSettings__ConnectionString: $(RadarDatabaseConnectionString)
+          RadarSettings__Endpoints__Endpoint1__BaseUrl: $(RadarEndpoint1Url)
+          RadarSettings__Endpoints__Endpoint1__ApiKeyHeaderName: $(RadarEndpoint1KeyHeader)
+          RadarSettings__Endpoints__Endpoint1__ApiKeyValue: $(RadarEndpoint1ApiKey)
+          RadarSettings__Endpoints__Endpoint2__BaseUrl: $(RadarEndpoint2Url)
+          RadarSettings__Endpoints__Endpoint2__ApiKeyHeaderName: $(RadarEndpoint2KeyHeader)
+          RadarSettings__Endpoints__Endpoint2__ApiKeyValue: $(RadarEndpoint2ApiKey)
+          RadarSettings__Endpoints__Endpoint3__BaseUrl: $(RadarEndpoint3Url)
+          RadarSettings__Endpoints__Endpoint3__ApiKeyHeaderName: $(RadarEndpoint3KeyHeader)
+          RadarSettings__Endpoints__Endpoint3__ApiKeyValue: $(RadarEndpoint3ApiKey)
+          RADAR_MIN_THRESHOLD: $(RadarMinThreshold)
+          RADAR_MAX_THRESHOLD: $(RadarMaxThreshold)
+          TEST_TAG: $(TestTag)
+          RADAR_REQUEST_DATETIME: $(RadarRequestDateTime)
+
+      - task: PublishTestResults@2
+        condition: succeededOrFailed()
+        displayName: Publish Radar test results
+        inputs:
+          testResultsFormat: VSTest
+          testResultsFiles: '$(Agent.TempDirectory)/RadarTestResults/Radar.trx'
+          testRunTitle: Radar integration
+          failTaskOnMissingResultsFile: true
+
+      - pwsh: |
+          $reportDirectory = '$(Build.SourcesDirectory)/PricingValidationFramework/PricingValidationFramework.Tests/bin/Release/net10.0/TestResults/Reports'
+          $artifactDirectory = '$(Build.ArtifactStagingDirectory)/RadarReports'
+          New-Item -ItemType Directory -Force -Path $artifactDirectory | Out-Null
+          if (Test-Path $reportDirectory) {
+            Get-ChildItem $reportDirectory -Filter 'Radar_*.csv' -File | Copy-Item -Destination $artifactDirectory
+          }
+        condition: succeededOrFailed()
+        displayName: Stage Radar CSV reports
+
+      - task: PublishPipelineArtifact@1
+        condition: succeededOrFailed()
+        displayName: Publish Radar CSV artifact
+        inputs:
+          targetPath: '$(Build.ArtifactStagingDirectory)/RadarReports'
+          artifact: RadarReports

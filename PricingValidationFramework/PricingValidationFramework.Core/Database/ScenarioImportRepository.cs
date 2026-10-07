@@ -1,0 +1,117 @@
+namespace PricingValidationFramework.Core.Database;
+
+using System.Data;
+using Dapper;
+using Microsoft.Data.SqlClient;
+using PricingValidationFramework.Core.Models.Database;
+
+public sealed class ScenarioImportRepository(SqlConnectionFactory connectionFactory) : IScenarioImportRepository
+{
+	private const string ReadExistingSql = """
+		SELECT Scenario_id AS ScenarioId, Quote_ref AS QuoteRef,
+		       Product_code AS ProductCode, Scheme_code AS SchemeCode,
+		       XML_request AS XmlRequest, Test_tags AS TestTags
+		FROM xml_request WHERE Scenario_id IN @ScenarioIds;
+		""";
+
+	private const string CreateStagingSql = """
+		SELECT TOP (0) Scenario_id, Quote_ref, Product_code, Scheme_code, XML_request, Test_tags
+		INTO #RequestImport FROM xml_request;
+		""";
+
+	private const string InsertBatchSql = """
+		IF EXISTS (
+		    SELECT 1 FROM #RequestImport AS staged
+		    INNER JOIN xml_request AS target WITH (UPDLOCK, HOLDLOCK)
+		        ON target.Scenario_id = staged.Scenario_id)
+		    THROW 50001, 'An imported request Scenario_id already exists.', 1;
+		INSERT INTO xml_request
+		    (Scenario_id, Quote_ref, Product_code, Scheme_code, XML_request, Test_tags, Create_date)
+		SELECT Scenario_id, Quote_ref, Product_code, Scheme_code, XML_request, Test_tags, SYSUTCDATETIME()
+		FROM #RequestImport;
+		""";
+
+	public async Task<ScenarioImportSnapshot> ReadExistingAsync(
+		IReadOnlyCollection<string> scenarioIds,
+		CancellationToken cancellationToken = default)
+	{
+		ArgumentNullException.ThrowIfNull(scenarioIds);
+		if (scenarioIds.Count > 1000)
+		{
+			throw new ArgumentOutOfRangeException(nameof(scenarioIds), "A lookup batch cannot exceed 1000 scenario IDs.");
+		}
+		if (scenarioIds.Count == 0)
+		{
+			return new ScenarioImportSnapshot([]);
+		}
+
+		await using var connection = await connectionFactory.OpenAsync(cancellationToken);
+		var requests = (await connection.QueryAsync<ScenarioRequestImport>(new CommandDefinition(
+			ReadExistingSql, new { ScenarioIds = scenarioIds }, cancellationToken: cancellationToken))).AsList();
+		return new ScenarioImportSnapshot(requests);
+	}
+
+	public async Task InsertBatchAsync(
+		IReadOnlyCollection<ScenarioRequestImport> requests,
+		CancellationToken cancellationToken = default)
+	{
+		ArgumentNullException.ThrowIfNull(requests);
+		if (requests.Count > 1000)
+		{
+			throw new ArgumentOutOfRangeException(nameof(requests), "An insert batch cannot exceed 1000 rows.");
+		}
+		if (requests.Count == 0)
+		{
+			return;
+		}
+
+		await using var connection = await connectionFactory.OpenAsync(cancellationToken);
+		await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
+		await connection.ExecuteAsync(new CommandDefinition(
+			CreateStagingSql, transaction: transaction, cancellationToken: cancellationToken));
+
+		using var requestTable = CreateTable("Scenario_id", "Quote_ref", "Product_code", "Scheme_code", "XML_request", "Test_tags");
+		foreach (var request in requests)
+		{
+			requestTable.Rows.Add(request.ScenarioId, request.QuoteRef, request.ProductCode,
+				request.SchemeCode, request.XmlRequest, request.TestTags);
+		}
+
+		await CopyAsync(connection, transaction, "#RequestImport", requestTable, cancellationToken);
+		await connection.ExecuteAsync(new CommandDefinition(
+			InsertBatchSql, transaction: transaction, commandTimeout: 120, cancellationToken: cancellationToken));
+		await transaction.CommitAsync(cancellationToken);
+	}
+
+	private static DataTable CreateTable(params string[] columns)
+	{
+		var table = new DataTable();
+		foreach (var column in columns)
+		{
+			table.Columns.Add(column, typeof(string));
+		}
+		return table;
+	}
+
+	private static async Task CopyAsync(
+		SqlConnection connection,
+		SqlTransaction transaction,
+		string destination,
+		DataTable table,
+		CancellationToken cancellationToken)
+	{
+		using var copy = new SqlBulkCopy(connection, SqlBulkCopyOptions.TableLock, transaction)
+		{
+			DestinationTableName = destination,
+			BulkCopyTimeout = 120,
+			BatchSize = 1000,
+			EnableStreaming = true
+		};
+		foreach (DataColumn column in table.Columns)
+		{
+			copy.ColumnMappings.Add(column.ColumnName, column.ColumnName);
+		}
+		using var reader = table.CreateDataReader();
+		await copy.WriteToServerAsync(reader, cancellationToken);
+	}
+}

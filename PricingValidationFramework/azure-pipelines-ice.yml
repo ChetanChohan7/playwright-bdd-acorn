@@ -1,0 +1,53 @@
+trigger: none
+pr: none
+
+pool:
+  vmImage: ubuntu-latest
+
+steps:
+  - task: UseDotNet@2
+    displayName: Use .NET 10
+    inputs:
+      packageType: sdk
+      version: 10.0.x
+
+  - pwsh: |
+      dotnet test PricingValidationFramework/PricingValidationFramework.Tests/PricingValidationFramework.Tests.csproj --configuration Release --filter "FullyQualifiedName~PricingValidationFramework.Tests.Integration.Ice.IceValidationTests" --logger "trx;LogFileName=Ice.trx" --results-directory "$(Agent.TempDirectory)/IceTestResults" -- NUnit.ExplicitMode=Relaxed
+      if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      [xml]$results = Get-Content '$(Agent.TempDirectory)/IceTestResults/Ice.trx'
+      if ([int]$results.TestRun.ResultSummary.Counters.executed -eq 0) { throw 'No ICE integration tests executed.' }
+    displayName: Run ICE integration tests only
+    env:
+      DOTNET_ENVIRONMENT: Uat
+      DatabaseSettings__ConnectionString: $(IceDatabaseConnectionString)
+      IceSettings__IceEndpoint: $(IceEndpoint)
+      IceSettings__ApiKeyHeaderName: $(IceApiKeyHeaderName)
+      IceSettings__ApiKeyHeaderValue: $(IceApiKeyHeaderValue)
+      IceSettings__PfxCertificateBase64: $(IcePfxCertificateBase64)
+      IceSettings__CertificatePassword: $(IceCertificatePassword)
+
+  - task: PublishTestResults@2
+    condition: succeededOrFailed()
+    displayName: Publish ICE test results
+    inputs:
+      testResultsFormat: VSTest
+      testResultsFiles: '$(Agent.TempDirectory)/IceTestResults/Ice.trx'
+      testRunTitle: ICE integration
+      failTaskOnMissingResultsFile: true
+
+  - pwsh: |
+      $reportDirectory = '$(Build.SourcesDirectory)/PricingValidationFramework/PricingValidationFramework.Tests/bin/Release/net10.0/TestResults/Reports'
+      $artifactDirectory = '$(Build.ArtifactStagingDirectory)/IceReports'
+      New-Item -ItemType Directory -Force -Path $artifactDirectory | Out-Null
+      if (Test-Path $reportDirectory) {
+        Get-ChildItem $reportDirectory -Filter 'Ice_*.csv' -File | Copy-Item -Destination $artifactDirectory
+      }
+    condition: succeededOrFailed()
+    displayName: Stage ICE CSV reports
+
+  - task: PublishPipelineArtifact@1
+    condition: succeededOrFailed()
+    displayName: Publish ICE CSV artifact
+    inputs:
+      targetPath: '$(Build.ArtifactStagingDirectory)/IceReports'
+      artifact: IceReports

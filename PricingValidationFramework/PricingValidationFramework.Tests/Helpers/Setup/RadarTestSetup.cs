@@ -1,0 +1,301 @@
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
+using NLog.Extensions.Logging;
+using NLog;
+using System.Net;
+using PricingValidationFramework.Core.Configuration;
+using PricingValidationFramework.Core.Database;
+using PricingValidationFramework.Core.ExternalAPIAccess.ApiClients;
+using PricingValidationFramework.Core.ExternalAPIAccess.Throttling;
+using PricingValidationFramework.Core.ExternalAPIAccess.UrlBuilders;
+using PricingValidationFramework.Core.Logging;
+using PricingValidationFramework.Core.Matching;
+using PricingValidationFramework.Core.Models.Common;
+using PricingValidationFramework.Core.Models.Database;
+using PricingValidationFramework.Core.Validation;
+
+namespace PricingValidationFramework.Tests.Helpers.Setup;
+
+public sealed class RadarTestSetup : IDisposable
+{
+    private readonly PipelineSettings settings;
+    private readonly RadarRequestRateLimiter rateLimiter;
+    private readonly RadarApiClient apiClient;
+    private readonly ILoggerFactory loggerFactory;
+    private bool disposed;
+
+    private RadarTestSetup(
+        PipelineSettings settings,
+        RadarRequestRateLimiter rateLimiter,
+        BaselineDataReader baselineReader,
+        ResultUpdater resultUpdater,
+        RadarApiClient apiClient,
+        RadarPricingService pricingService,
+        RadarTestRunLogger logger,
+        ILoggerFactory loggerFactory)
+    {
+        this.settings = settings;
+        this.rateLimiter = rateLimiter;
+        this.apiClient = apiClient;
+        BaselineReader = baselineReader;
+        ResultUpdater = resultUpdater;
+        PricingService = pricingService;
+        Logger = logger;
+        this.loggerFactory = loggerFactory;
+    }
+
+    public BaselineDataReader BaselineReader { get; }
+    public ResultUpdater ResultUpdater { get; }
+    public RadarPricingService PricingService { get; }
+    public RadarTestRunLogger Logger { get; }
+
+    public string BuildId => settings.BuildId;
+    public string TestTag => settings.TestTag;
+    public string RequestTime => settings.RequestTime;
+    public decimal MinThreshold => settings.MinThreshold;
+    public decimal MaxThreshold => settings.MaxThreshold;
+
+    public static RadarTestSetup Create()
+    {
+        var configuration = TestConfigurationLoader.Load();
+        var radarConfiguration = LoadAndValidateRadarConfiguration(configuration);
+        var databaseSettings = configuration.GetSection("DatabaseSettings").Get<DatabaseSettings>()
+            ?? throw new InvalidOperationException("DatabaseSettings is missing.");
+        var (pipelineSettings, retrySettings) = LoadValidatedPipelineInputs(configuration);
+        var comparisonService = new RadarPricingProfileFactory(
+            new XsdFileResolver(),
+            new XsdValidator(),
+            new FuzzyPricingMatcher()).Create(radarConfiguration.RadarSettings);
+        var rateLimiter = new RadarRequestRateLimiter(
+            radarConfiguration.RateLimitSettings,
+            radarConfiguration.RadarSettings.Endpoints.Keys);
+
+        var loggerFactory = LoggerFactory.Create(builder => builder.AddNLog());
+        var connectionFactory = new SqlConnectionFactory(databaseSettings);
+        var baselineReader = new BaselineDataReader(connectionFactory, retrySettings);
+        var resultUpdater = new ResultUpdater(connectionFactory, retrySettings);
+        var logger = new RadarTestRunLogger(loggerFactory.CreateLogger<RadarTestRunLogger>());
+        GlobalDiagnosticsContext.Set("RadarBuildId", pipelineSettings.BuildId);
+        var radarHttpClient = new HttpClient(new HttpClientHandler
+        {
+            AutomaticDecompression = DecompressionMethods.All
+        });
+        var apiClient = new RadarApiClient(
+            rateLimiter,
+            radarHttpClient,
+            loggerFactory.CreateLogger<RadarApiClient>(),
+            retrySettings);
+        var urlBuilder = new RadarUrlBuilder();
+        var pricingService = new RadarPricingService(
+            radarConfiguration.RadarSettings,
+            apiClient,
+            urlBuilder,
+            comparisonService);
+        return new RadarTestSetup(
+            pipelineSettings,
+            rateLimiter,
+            baselineReader,
+            resultUpdater,
+            apiClient,
+            pricingService,
+            logger,
+            loggerFactory);
+    }
+
+    public static async Task<IReadOnlyList<ScenarioRequest>> DiscoverScenariosAsync(CancellationToken cancellationToken = default)
+    {
+        var configuration = TestConfigurationLoader.Load();
+        var radarConfiguration = LoadAndValidateRadarConfiguration(configuration);
+        var (pipelineSettings, retrySettings) = LoadValidatedPipelineInputs(configuration);
+        var databaseSettings = configuration.GetSection("DatabaseSettings").Get<DatabaseSettings>()
+            ?? throw new InvalidOperationException("DatabaseSettings is missing.");
+        var reader = new RequestDataReader(new SqlConnectionFactory(databaseSettings), retrySettings);
+
+        return string.IsNullOrWhiteSpace(pipelineSettings.TestTag)
+            ? await reader.GetAllScenariosAsync(cancellationToken)
+            : await reader.GetScenariosByTestTagAsync(pipelineSettings.TestTag, cancellationToken);
+    }
+
+    private static (PipelineSettings PipelineSettings, RetrySettings RetrySettings) LoadValidatedPipelineInputs(
+        IConfiguration configuration)
+    {
+        var retrySettings = configuration.GetSection("RetrySettings").Get<RetrySettings>()
+            ?? throw new InvalidOperationException("RetrySettings is missing.");
+        retrySettings.ValidateRadarPipelineSettings();
+
+        var pipelineSettings = new PipelineSettings
+        {
+            BuildId = ReadRequiredBuildId(configuration),
+            MinThreshold = ReadRequiredDecimal(configuration, "RADAR_MIN_THRESHOLD", "MinThreshold"),
+            MaxThreshold = ReadRequiredDecimal(configuration, "RADAR_MAX_THRESHOLD", "MaxThreshold"),
+            RequestTime = RequestTimeFormatter.Resolve(
+                Environment.GetEnvironmentVariable("RADAR_REQUEST_DATETIME") ?? configuration["PipelineSettings:RequestTime"]),
+            TestTag = Environment.GetEnvironmentVariable("TEST_TAG") ?? configuration["PipelineSettings:TestTag"] ?? string.Empty
+        };
+        new PipelineInputValidator().Validate(pipelineSettings);
+
+        return (pipelineSettings, retrySettings);
+    }
+
+    public void Dispose()
+    {
+        if (disposed)
+        {
+            return;
+        }
+
+        disposed = true;
+        apiClient.Dispose();
+        rateLimiter.Dispose();
+        loggerFactory.Dispose();
+        GlobalDiagnosticsContext.Remove("RadarBuildId");
+    }
+
+    private static string ReadRequiredBuildId(IConfiguration configuration)
+    {
+        var buildId = Environment.GetEnvironmentVariable("BUILD_BUILDID")
+            ?? configuration["PipelineSettings:BuildId"];
+
+        if (!string.IsNullOrWhiteSpace(buildId))
+        {
+            return buildId.Trim();
+        }
+
+        var environmentName = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT")
+            ?? Environment.GetEnvironmentVariable("DOTNET_ENVIRONMENT");
+
+        if (string.Equals(environmentName, "local", StringComparison.OrdinalIgnoreCase))
+        {
+            return "local";
+        }
+
+        throw new InvalidOperationException("BUILD_BUILDID is required outside local development.");
+    }
+
+    private static decimal ReadRequiredDecimal(IConfiguration configuration, string variableName, string settingName)
+    {
+        var value = Environment.GetEnvironmentVariable(variableName) ?? configuration[$"PipelineSettings:{settingName}"];
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            throw new InvalidOperationException($"{variableName} is required and must be a valid decimal.");
+        }
+
+        if (!decimal.TryParse(value.Trim(), global::System.Globalization.NumberStyles.Float, global::System.Globalization.CultureInfo.InvariantCulture, out var parsed))
+        {
+            throw new InvalidOperationException($"{variableName} must be a valid decimal.");
+        }
+
+        return parsed;
+    }
+
+    private static RadarRunConfiguration LoadAndValidateRadarConfiguration(IConfiguration configuration)
+    {
+        var radarSection = configuration.GetSection("RadarSettings");
+        if (!radarSection.Exists())
+        {
+            throw new InvalidOperationException("RadarSettings is missing.");
+        }
+
+        var radarSettings = radarSection.Get<RadarSettings>()
+            ?? throw new InvalidOperationException("RadarSettings is missing.");
+        var rateLimitSection = configuration.GetSection("RadarRateLimitSettings");
+        if (!rateLimitSection.Exists())
+        {
+            throw new InvalidOperationException("RadarRateLimitSettings is missing.");
+        }
+
+        var rateLimitSettings = rateLimitSection.Get<RadarRateLimitSettings>()
+            ?? throw new InvalidOperationException("RadarRateLimitSettings is missing.");
+        ValidateRadarConfiguration(radarSettings, rateLimitSettings);
+
+        return new RadarRunConfiguration(radarSettings, rateLimitSettings);
+    }
+
+    internal static void ValidateRadarConfiguration(
+        RadarSettings radarSettings,
+        RadarRateLimitSettings rateLimitSettings)
+    {
+        ArgumentNullException.ThrowIfNull(radarSettings);
+        ArgumentNullException.ThrowIfNull(rateLimitSettings);
+        rateLimitSettings.Validate();
+
+        if (radarSettings.Endpoints is null || radarSettings.Endpoints.Count == 0)
+        {
+            throw new InvalidOperationException("At least one Radar logical endpoint must be configured.");
+        }
+
+        var endpointNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var endpointName in radarSettings.Endpoints.Keys)
+        {
+            if (string.IsNullOrWhiteSpace(endpointName))
+            {
+                throw new InvalidOperationException("Radar logical endpoint names must not be empty.");
+            }
+
+            if (endpointName.Any(character =>
+                !char.IsAsciiLetterOrDigit(character) && character is not ('_' or '-' or '.')))
+            {
+                throw new InvalidOperationException("Radar logical endpoint names contain unsupported characters.");
+            }
+
+            if (!endpointNames.Add(endpointName))
+            {
+                throw new InvalidOperationException("Radar logical endpoint names must be unique ignoring case.");
+            }
+
+            var endpoint = radarSettings.Endpoints[endpointName];
+            if (endpoint is null ||
+                !Uri.TryCreate(endpoint.BaseUrl, UriKind.Absolute, out var baseUri) ||
+                (baseUri.Scheme != Uri.UriSchemeHttp && baseUri.Scheme != Uri.UriSchemeHttps))
+            {
+                throw new InvalidOperationException("Every Radar endpoint must have an absolute HTTP or HTTPS BaseUrl.");
+            }
+
+            if (string.IsNullOrWhiteSpace(endpoint.ApiKeyHeaderName))
+            {
+                throw new InvalidOperationException("Every Radar endpoint must have an ApiKeyHeaderName.");
+            }
+
+            if (string.IsNullOrWhiteSpace(endpoint.ApiKeyValue))
+            {
+                throw new InvalidOperationException("Every Radar endpoint must have an ApiKeyValue.");
+            }
+        }
+
+        if (radarSettings.Routes is null)
+        {
+            throw new InvalidOperationException("Radar routes are missing.");
+        }
+
+        if (radarSettings.Routes.Count == 0)
+        {
+            throw new InvalidOperationException("At least one Radar route must be configured.");
+        }
+
+        foreach (var route in radarSettings.Routes)
+        {
+            if (string.IsNullOrWhiteSpace(route.Value?.ProductCode) ||
+                route.Value.SchemeCodes is null ||
+                route.Value.SchemeCodes.Count == 0 ||
+                route.Value.SchemeCodes.Any(string.IsNullOrWhiteSpace))
+            {
+                throw new InvalidOperationException("Every Radar route must have a ProductCode and at least one non-empty SchemeCode.");
+            }
+
+            if (string.IsNullOrWhiteSpace(route.Value.EndpointName) || !endpointNames.Contains(route.Value.EndpointName))
+            {
+                throw new InvalidOperationException("Every Radar route must reference a configured logical endpoint.");
+            }
+
+            if (string.IsNullOrWhiteSpace(route.Value.RouteKey))
+            {
+                throw new InvalidOperationException("Every Radar route must have a RouteKey.");
+            }
+        }
+
+    }
+
+    private sealed record RadarRunConfiguration(
+        RadarSettings RadarSettings,
+        RadarRateLimitSettings RateLimitSettings);
+}

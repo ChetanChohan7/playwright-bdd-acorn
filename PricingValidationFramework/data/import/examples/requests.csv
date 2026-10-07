@@ -1,0 +1,2 @@
+scenario_id,xml
+EXAMPLE-001,"<Message><Policy><PolicyReference>QUOTE-001</PolicyReference><ProductCode>HOME</ProductCode><SchemeCode>ABC</SchemeCode></Policy></Message>"

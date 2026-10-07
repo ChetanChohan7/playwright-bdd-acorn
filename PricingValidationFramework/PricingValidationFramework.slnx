@@ -1,0 +1,5 @@
+<Solution>
+  <Project Path="PricingValidationFramework.Core/PricingValidationFramework.Core.csproj" />
+  <Project Path="PricingValidationFramework.DataLoader/PricingValidationFramework.DataLoader.csproj" />
+  <Project Path="PricingValidationFramework.Tests/PricingValidationFramework.Tests.csproj" />
+</Solution>

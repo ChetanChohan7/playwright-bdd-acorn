@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/pricing-xml-csv-loader/" />
+  <Folder Name="/pricing-xml-csv-loader/src/">
+    <Project Path="pricing-xml-csv-loader/src/PricingXml.ScenarioTool/PricingXml.ScenarioTool.csproj" />
+  </Folder>
+  <Folder Name="/src/">
+    <Project Path="src/ClientAutomationFramework.Core/ClientAutomationFramework.Core.csproj" />
+    <Project Path="src/ClientAutomationFramework.Tests/ClientAutomationFramework.Tests.csproj" />
+  </Folder>
+</Solution>

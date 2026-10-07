@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Placeholder schema matching the techPrice shape used throughout this framework's examples.
+     Replace with the real response XSD once the pricing API's schema is available. -->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" elementFormDefault="qualified">
+  <xs:element name="techPrice">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="priceComponents">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element name="premiumPriceComponent" maxOccurs="unbounded">
+                <xs:complexType>
+                  <xs:sequence>
+                    <xs:element name="calculatedAmount">
+                      <xs:complexType>
+                        <xs:attribute name="termAmount" type="xs:decimal" use="required" />
+                        <xs:attribute name="deltaAmount" type="xs:decimal" use="optional" />
+                      </xs:complexType>
+                    </xs:element>
+                  </xs:sequence>
+                  <xs:attribute name="code" type="xs:string" use="required" />
+                </xs:complexType>
+              </xs:element>
+            </xs:sequence>
+          </xs:complexType>
+        </xs:element>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+</xs:schema>

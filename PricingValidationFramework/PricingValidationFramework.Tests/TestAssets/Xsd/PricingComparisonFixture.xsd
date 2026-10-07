@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           targetNamespace="urn:pricing-comparison-fixture"
+           xmlns="urn:pricing-comparison-fixture"
+           elementFormDefault="qualified">
+  <xs:element name="PricingResponse">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="Premium">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element name="AnnualNet" type="xs:decimal" />
+              <xs:element name="InsuranceTax" type="xs:decimal" />
+              <xs:element name="AnnualGross" type="xs:decimal" />
+            </xs:sequence>
+          </xs:complexType>
+        </xs:element>
+        <xs:element name="Fees">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element name="AdminFee" type="xs:decimal" />
+              <xs:element name="Surcharge" type="xs:decimal" minOccurs="0" maxOccurs="unbounded" />
+            </xs:sequence>
+          </xs:complexType>
+        </xs:element>
+        <xs:element name="Label" type="xs:string" minOccurs="0" />
+      </xs:sequence>
+      <xs:attribute name="indexAdjustment" type="xs:decimal" use="optional" />
+    </xs:complexType>
+  </xs:element>
+</xs:schema>
