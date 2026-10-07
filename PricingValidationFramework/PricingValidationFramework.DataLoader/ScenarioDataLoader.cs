@@ -8,7 +8,7 @@ using PricingValidationFramework.Core.Models.Database;
 public sealed record ImportOptions(
     string RequestCsv,
     bool ValidateOnly,
-    int BatchSize = 500);
+    int BatchSize = 100);
 
 public sealed record ImportIssue(string Source, int RecordNumber, string ScenarioId, string Reason);
 
@@ -18,6 +18,7 @@ public sealed class ImportSummary
     public string RequestFile { get; set; } = string.Empty;
     public int InputRequests { get; set; }
     public int InsertedRequests { get; set; }
+    public int UpdatedRequests { get; set; }
     public int SkippedRequests { get; set; }
     public int CommittedBatches { get; set; }
     public bool Cancelled { get; set; }
@@ -71,27 +72,30 @@ public sealed class ScenarioDataLoader(IScenarioImportRepository? repository = n
             }
 
             var requestInserts = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var requestUpdates = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             operation = "Checking existing database records";
             foreach (var batch in spool.ReadBatches(options.BatchSize, cancellationToken))
             {
                 var existing = await repository.ReadExistingAsync(batch.Select(row => row.ScenarioId).ToArray(), cancellationToken);
-                PlanBatch(batch, existing, summary, requestInserts);
+                PlanBatch(batch, existing, summary, requestInserts, requestUpdates);
             }
             if (!summary.Succeeded)
             {
                 return summary;
             }
 
-            operation = "Inserting a database batch";
+            operation = "Writing a database batch";
             foreach (var batch in spool.ReadBatches(options.BatchSize, cancellationToken))
             {
-                var requests = batch.Where(row => requestInserts.Contains(row.ScenarioId)).ToArray();
-                if (requests.Length == 0)
+                var inserts = batch.Where(row => requestInserts.Contains(row.ScenarioId)).ToArray();
+                var updates = batch.Where(row => requestUpdates.Contains(row.ScenarioId)).ToArray();
+                if (inserts.Length + updates.Length == 0)
                 {
                     continue;
                 }
-                await repository.InsertBatchAsync(requests, cancellationToken);
-                summary.InsertedRequests += requests.Length;
+                var result = await repository.ApplyBatchAsync(inserts, updates, cancellationToken);
+                summary.InsertedRequests += result.InsertedRequests;
+                summary.UpdatedRequests += result.UpdatedRequests;
                 summary.CommittedBatches++;
             }
         }
@@ -132,7 +136,8 @@ public sealed class ScenarioDataLoader(IScenarioImportRepository? repository = n
         IReadOnlyList<ScenarioRequestImport> batch,
         ScenarioImportSnapshot existing,
         ImportSummary summary,
-        HashSet<string> requestInserts)
+        HashSet<string> requestInserts,
+        HashSet<string> requestUpdates)
     {
         var requests = existing.Requests.ToDictionary(row => row.ScenarioId, StringComparer.OrdinalIgnoreCase);
         foreach (var row in batch)
@@ -141,14 +146,23 @@ public sealed class ScenarioDataLoader(IScenarioImportRepository? repository = n
             {
                 requestInserts.Add(row.ScenarioId);
             }
-            // Test_tags isn't in the CSV, so tags set on an existing row don't count as a conflict.
-            else if (NormalizeRequest(storedRequest) with { TestTags = string.Empty } == row)
-            {
-                summary.SkippedRequests++;
-            }
             else
             {
-                summary.Issues.Add(new ImportIssue("database", 0, row.ScenarioId, "Request conflicts with an existing scenario; replacement is not allowed."));
+                var normalized = NormalizeRequest(storedRequest) with { TestTags = string.Empty, ScenarioId = row.ScenarioId };
+                if (!string.Equals(normalized.ProductCode, row.ProductCode, StringComparison.Ordinal) ||
+                    !string.Equals(normalized.SchemeCode, row.SchemeCode, StringComparison.Ordinal))
+                {
+                    summary.Issues.Add(new ImportIssue("database", 0, row.ScenarioId,
+                        "Request product or scheme conflicts with an existing scenario; use a new Scenario_id."));
+                }
+                else if (normalized == row)
+                {
+                    summary.SkippedRequests++;
+                }
+                else
+                {
+                    requestUpdates.Add(row.ScenarioId);
+                }
             }
         }
     }

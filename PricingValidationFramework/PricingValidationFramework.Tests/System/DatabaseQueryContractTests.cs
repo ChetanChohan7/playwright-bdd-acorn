@@ -1,6 +1,7 @@
 using System.Reflection;
 using PricingValidationFramework.Core.Configuration;
 using PricingValidationFramework.Core.Database;
+using PricingValidationFramework.Core.Models.Database;
 
 namespace PricingValidationFramework.Tests.System;
 
@@ -211,6 +212,91 @@ public class DatabaseQueryContractTests
     public void Import_insert_should_reject_statement_sizes_outside_the_limit(int rowCount)
     {
         Assert.Throws<ArgumentOutOfRangeException>(() => ScenarioImportRepository.BuildInsertSql(rowCount));
+    }
+
+    [Test]
+    public void Import_updates_should_use_values_and_preserve_identity_tags_creation_and_baselines()
+    {
+        var sql = ScenarioImportRepository.BuildUpdateSql(2);
+        var assignments = sql.Split("SET", StringSplitOptions.None)[1].Split("FROM", StringSplitOptions.None)[0];
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(sql, Does.Contain("FROM xml_request AS target WITH (UPDLOCK, HOLDLOCK)"));
+            Assert.That(sql, Does.Contain("(@s1, @q1, @p1, @c1, @x1, @t1)"));
+            Assert.That(sql, Does.Contain("ON target.Scenario_id = v.Scenario_id"));
+            Assert.That(sql, Does.Contain("target.Product_code = v.Product_code"));
+            Assert.That(sql, Does.Contain("target.Scheme_code = v.Scheme_code"));
+            Assert.That(assignments, Does.Contain("XML_request = v.XML_request"));
+            Assert.That(assignments, Does.Contain("Quote_ref = v.Quote_ref"));
+            Assert.That(assignments, Does.Not.Contain("Test_tags"));
+            Assert.That(assignments, Does.Not.Contain("Product_code"));
+            Assert.That(assignments, Does.Not.Contain("Scheme_code"));
+            Assert.That(sql, Does.Not.Contain("Create_date"));
+            Assert.That(sql, Does.Not.Contain("xml_response"));
+            Assert.That(sql, Does.Not.Contain("#"));
+            Assert.That(sql, Does.Not.Match(@"\bCREATE\s").IgnoreCase);
+            Assert.That(sql, Does.Not.Contain("MERGE").IgnoreCase);
+            Assert.That(sql, Does.Not.Contain("OPENJSON").IgnoreCase);
+        });
+    }
+
+    [TestCase("MOTOR", "ABC")]
+    [TestCase("HOME", "XYZ")]
+    [TestCase("home", "ABC")]
+    public void Import_updates_should_reject_product_or_scheme_changes_after_preflight(string productCode, string schemeCode)
+    {
+        ScenarioRequestImport[] updates = [new("S1", "Q1", "HOME", "ABC", "<Message />", "")];
+        (string ScenarioId, string ProductCode, string SchemeCode)[] identities = [("S1", productCode, schemeCode)];
+
+        Assert.Throws<InvalidOperationException>(() => ScenarioImportRepository.ValidateUpdateIdentities(updates, identities));
+        Assert.That(ReadQuery<ScenarioImportRepository>("ReadUpdateIdentitiesSql"), Does.Contain("WITH (UPDLOCK, HOLDLOCK)"));
+    }
+
+    [Test]
+    public void Import_updates_should_reject_a_row_removed_after_preflight()
+    {
+        ScenarioRequestImport[] updates = [new("S1", "Q1", "HOME", "ABC", "<Message />", "")];
+
+        Assert.Throws<InvalidOperationException>(() => ScenarioImportRepository.ValidateUpdateIdentities(updates, []));
+    }
+
+    [Test]
+    public void Import_parameters_should_bind_large_xml_as_varchar_max()
+    {
+        var xml = "<Message>" + new string('x', 46000) + "</Message>";
+        var parameters = ScenarioImportRepository.BuildParameters([new("S1", "Q1", "HOME", "ABC", xml, "")]);
+        using var connection = new SqlConnectionFactory(new DatabaseSettings()).Create();
+        using var command = connection.CreateCommand();
+        var identity = (Dapper.SqlMapper.Identity)Activator.CreateInstance(
+            typeof(Dapper.SqlMapper.Identity), BindingFlags.Instance | BindingFlags.NonPublic, null,
+            [ScenarioImportRepository.BuildUpdateSql(1), global::System.Data.CommandType.Text, connection, null, parameters.GetType()], null)!;
+        ((Dapper.SqlMapper.IDynamicParameters)parameters).AddParameters(command, identity);
+        var parameter = command.Parameters["x0"];
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(parameter.SqlDbType, Is.EqualTo(global::System.Data.SqlDbType.VarChar));
+            Assert.That(parameter.Size, Is.EqualTo(-1));
+            Assert.That(parameter.Value, Is.EqualTo(xml));
+        });
+    }
+
+    [Test]
+    public void Import_update_should_stay_within_sql_servers_parameter_limit()
+    {
+        var sql = ScenarioImportRepository.BuildUpdateSql(ScenarioImportRepository.MaxRowsPerStatement);
+        var parameters = global::System.Text.RegularExpressions.Regex.Matches(sql, @"@[a-z]\d+")
+            .Select(match => match.Value).Distinct().Count();
+
+        Assert.That(parameters, Is.EqualTo(1998));
+    }
+
+    [TestCase(0)]
+    [TestCase(334)]
+    public void Import_update_should_reject_statement_sizes_outside_the_limit(int rowCount)
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() => ScenarioImportRepository.BuildUpdateSql(rowCount));
     }
 
     private static string ReadQuery<TReader>(string fieldName)

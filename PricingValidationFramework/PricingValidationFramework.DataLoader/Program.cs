@@ -35,7 +35,7 @@ try
         }
     }
     reportPath = values.GetValueOrDefault("--report", reportPath);
-    var batchSize = int.Parse(values.GetValueOrDefault("--batch-size", "500"), CultureInfo.InvariantCulture);
+    var batchSize = int.Parse(values.GetValueOrDefault("--batch-size", "100"), CultureInfo.InvariantCulture);
     IScenarioImportRepository? repository = null;
     if (args[0] == "import")
     {
@@ -65,5 +65,5 @@ catch (Exception exception)
 Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(reportPath))!);
 await File.WriteAllTextAsync(reportPath, JsonSerializer.Serialize(summary, new JsonSerializerOptions { WriteIndented = true }));
 Console.WriteLine($"{summary.Mode}: file={summary.RequestFile}, success={summary.Succeeded}, requests={summary.InputRequests}, " +
-    $"insertedRequests={summary.InsertedRequests}, skippedRequests={summary.SkippedRequests}, issues={summary.Issues.Count}.");
+    $"insertedRequests={summary.InsertedRequests}, updatedRequests={summary.UpdatedRequests}, skippedRequests={summary.SkippedRequests}, issues={summary.Issues.Count}.");
 return summary.Cancelled ? 130 : summary.Succeeded ? 0 : 1;

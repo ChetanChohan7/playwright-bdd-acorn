@@ -8,7 +8,8 @@ public interface IScenarioImportRepository
 		IReadOnlyCollection<string> scenarioIds,
 		CancellationToken cancellationToken = default);
 
-	Task InsertBatchAsync(
-		IReadOnlyCollection<ScenarioRequestImport> requests,
+	Task<ScenarioImportBatchResult> ApplyBatchAsync(
+		IReadOnlyCollection<ScenarioRequestImport> inserts,
+		IReadOnlyCollection<ScenarioRequestImport> updates,
 		CancellationToken cancellationToken = default);
 }

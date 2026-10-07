@@ -39,7 +39,7 @@ public class DataLoaderTests
             Assert.That(request.ProductCode, Is.EqualTo("HOME"));
             Assert.That(request.SchemeCode, Is.EqualTo("ABC"));
             Assert.That(request.TestTags, Is.Empty);
-            Assert.That(request.XmlRequest, Does.Contain("a,\"b\"\nnext"));
+            Assert.That(request.XmlRequest.Replace("\r\n", "\n", StringComparison.Ordinal), Does.Contain("a,\"b\"\nnext"));
         });
     }
 
@@ -181,6 +181,116 @@ public class DataLoaderTests
         });
     }
 
+    [Test]
+    public async Task Changed_xml_should_update_the_request_and_preserve_existing_tags()
+    {
+        var oldXml = PolicyXml("Q1", "HOME", "ABC", "<Label>bob</Label>");
+        var newXml = PolicyXml("Q2", "HOME", "ABC", "<Label>tom</Label>");
+        var requests = WriteCsv("requests.csv", RequestHeaders, [["S1", newXml]]);
+        var repository = new FakeRepository { Requests = [new("S1", "Q1", "HOME", "ABC", oldXml, "smoke")] };
+
+        var summary = await new ScenarioDataLoader(repository).RunAsync(new ImportOptions(requests, false));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(summary.Succeeded, Is.True);
+            Assert.That(summary.InsertedRequests, Is.Zero);
+            Assert.That(summary.UpdatedRequests, Is.EqualTo(1));
+            Assert.That(summary.CommittedBatches, Is.EqualTo(1));
+            Assert.That(repository.Batches, Is.Empty);
+            Assert.That(repository.Requests.Single().XmlRequest, Does.Contain("<Label>tom</Label>"));
+            Assert.That(repository.Requests.Single().QuoteRef, Is.EqualTo("Q2"));
+            Assert.That(repository.Requests.Single().TestTags, Is.EqualTo("smoke"));
+        });
+
+        var rerun = await new ScenarioDataLoader(repository).RunAsync(new ImportOptions(requests, false));
+        Assert.That(rerun.SkippedRequests, Is.EqualTo(1));
+        Assert.That(rerun.UpdatedRequests, Is.Zero);
+        Assert.That(repository.WriteCount, Is.EqualTo(1));
+    }
+
+    [Test]
+    public async Task Mixed_inserts_updates_and_skips_should_use_one_write_batch()
+    {
+        var requests = WriteCsv("requests.csv", RequestHeaders,
+            [["S0", PolicyXml("Q0", "HOME", "ABC")],
+             ["S1", PolicyXml("Q1", "HOME", "ABC", "<Label>tom</Label>")],
+             ["s2", PolicyXml("Q2", "HOME", "ABC")]]);
+        var repository = new FakeRepository
+        {
+            Requests = [new("S1", "Q1", "HOME", "ABC", PolicyXml("Q1", "HOME", "ABC", "<Label>bob</Label>"), "smoke"),
+                new("S2", "Q2", "HOME", "ABC", PolicyXml("Q2", "HOME", "ABC"), "regression")]
+        };
+
+        var summary = await new ScenarioDataLoader(repository).RunAsync(new ImportOptions(requests, false));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(summary.Succeeded, Is.True);
+            Assert.That(summary.InsertedRequests, Is.EqualTo(1));
+            Assert.That(summary.UpdatedRequests, Is.EqualTo(1));
+            Assert.That(summary.SkippedRequests, Is.EqualTo(1));
+            Assert.That(repository.WriteCount, Is.EqualTo(1));
+        });
+    }
+
+    [Test]
+    public async Task A_large_multiline_request_should_update_without_truncation()
+    {
+        var label = string.Join("\n", Enumerable.Repeat(new string('x', 100), 460));
+        var requests = WriteCsv("requests.csv", RequestHeaders,
+            [["S1", PolicyXml("Q1", "HOME", "ABC", $"<Label>{label}</Label>")]]);
+        var repository = new FakeRepository { Requests = [new("S1", "Q1", "HOME", "ABC", PolicyXml("Q1", "HOME", "ABC"), "smoke")] };
+
+        var summary = await new ScenarioDataLoader(repository).RunAsync(new ImportOptions(requests, false));
+        var document = global::System.Xml.Linq.XElement.Parse(repository.Requests.Single().XmlRequest);
+
+        Assert.That(summary.UpdatedRequests, Is.EqualTo(1));
+        Assert.That(document.Element("Policy")!.Element("Label")!.Value, Is.EqualTo(label));
+    }
+
+    [Test]
+    public async Task A_later_write_failure_should_report_only_committed_updates()
+    {
+        var requests = WriteCsv("requests.csv", RequestHeaders,
+            [["S0", PolicyXml("Q0", "HOME", "ABC", "<Label>tom</Label>")],
+             ["S1", PolicyXml("Q1", "HOME", "ABC")]]);
+        var repository = new FakeRepository
+        {
+            Requests = [new("S0", "Q0", "HOME", "ABC", PolicyXml("Q0", "HOME", "ABC", "<Label>bob</Label>"), "smoke")],
+            FailOnBatch = 2
+        };
+
+        var summary = await new ScenarioDataLoader(repository).RunAsync(new ImportOptions(requests, false, 1));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(summary.Succeeded, Is.False);
+            Assert.That(summary.UpdatedRequests, Is.EqualTo(1));
+            Assert.That(summary.InsertedRequests, Is.Zero);
+            Assert.That(summary.CommittedBatches, Is.EqualTo(1));
+            Assert.That(repository.Requests.Single().XmlRequest, Does.Contain("<Label>tom</Label>"));
+        });
+    }
+
+    [TestCase("MOTOR", "ABC")]
+    [TestCase("HOME", "XYZ")]
+    [TestCase("home", "ABC")]
+    public async Task Product_or_scheme_changes_should_reject_the_import(string productCode, string schemeCode)
+    {
+        var requests = WriteCsv("requests.csv", RequestHeaders, [["S1", PolicyXml("Q1", productCode, schemeCode)]]);
+        var repository = new FakeRepository { Requests = [new("S1", "Q1", "HOME", "ABC", PolicyXml("Q1", "HOME", "ABC"), "")] };
+
+        var summary = await new ScenarioDataLoader(repository).RunAsync(new ImportOptions(requests, false));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(summary.Succeeded, Is.False);
+            Assert.That(summary.Issues.Single().Reason, Does.Contain("product or scheme"));
+            Assert.That(repository.WriteCount, Is.Zero);
+        });
+    }
+
     [TestCase("<Request>")]
     [TestCase("<!DOCTYPE Request [<!ENTITY external SYSTEM 'file:///outside'>]><Request>&external;</Request>")]
     public async Task Malformed_xml_and_external_dtds_should_be_rejected_before_database_access(string xml)
@@ -218,7 +328,7 @@ public class DataLoaderTests
     {
         var requests = WriteCsv("requests.csv", RequestHeaders,
             [["S0", PolicyXml("Q0", "HOME", "ABC")], ["S1", PolicyXml("Q1", "HOME", "ABC")]]);
-        var repository = new FakeRepository { Requests = [new("S1", "Q1", "HOME", "ABC", "<DifferentRequest />", "")] };
+        var repository = new FakeRepository { Requests = [new("S1", "Q1", "MOTOR", "ABC", PolicyXml("Q1", "MOTOR", "ABC"), "")] };
         var summary = await new ScenarioDataLoader(repository).RunAsync(new ImportOptions(requests, false, 1));
 
         Assert.Multiple(() =>
@@ -324,29 +434,46 @@ public class DataLoaderTests
 
     private sealed class FakeRepository : IScenarioImportRepository
     {
-        public IReadOnlyList<ScenarioRequestImport> Requests { get; init; } = [];
+        private readonly List<ScenarioRequestImport> storedRequests = [];
+        public IReadOnlyList<ScenarioRequestImport> Requests
+        {
+            get => storedRequests;
+            init => storedRequests.AddRange(value);
+        }
         public int ReadCount { get; private set; }
+        public int WriteCount { get; private set; }
         public List<IReadOnlyList<ScenarioRequestImport>> Batches { get; } = [];
         public int FailOnBatch { get; init; }
-        private int insertAttempts;
 
         public Task<ScenarioImportSnapshot> ReadExistingAsync(IReadOnlyCollection<string> scenarioIds, CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
             ReadCount++;
-            return Task.FromResult(new ScenarioImportSnapshot(Requests.Where(row => scenarioIds.Contains(row.ScenarioId)).ToArray()));
+            return Task.FromResult(new ScenarioImportSnapshot(Requests.Where(row => scenarioIds.Contains(row.ScenarioId, StringComparer.OrdinalIgnoreCase)).ToArray()));
         }
 
-        public Task InsertBatchAsync(IReadOnlyCollection<ScenarioRequestImport> requests, CancellationToken cancellationToken = default)
+        public Task<ScenarioImportBatchResult> ApplyBatchAsync(
+            IReadOnlyCollection<ScenarioRequestImport> inserts,
+            IReadOnlyCollection<ScenarioRequestImport> updates,
+            CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            insertAttempts++;
-            if (insertAttempts == FailOnBatch)
+            if (WriteCount + 1 == FailOnBatch)
             {
                 throw new InvalidOperationException("sensitive-payload");
             }
-            Batches.Add(requests.ToArray());
-            return Task.CompletedTask;
+            foreach (var update in updates)
+            {
+                var index = storedRequests.FindIndex(row => string.Equals(row.ScenarioId, update.ScenarioId, StringComparison.OrdinalIgnoreCase));
+                storedRequests[index] = storedRequests[index] with { XmlRequest = update.XmlRequest, QuoteRef = update.QuoteRef };
+            }
+            if (inserts.Count > 0)
+            {
+                Batches.Add(inserts.ToArray());
+                storedRequests.AddRange(inserts);
+            }
+            WriteCount++;
+            return Task.FromResult(new ScenarioImportBatchResult(inserts.Count, updates.Count));
         }
     }
 }

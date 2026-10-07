@@ -10,3 +10,5 @@ public sealed record ScenarioRequestImport(
 
 public sealed record ScenarioImportSnapshot(
 	IReadOnlyList<ScenarioRequestImport> Requests);
+
+public sealed record ScenarioImportBatchResult(int InsertedRequests, int UpdatedRequests);
