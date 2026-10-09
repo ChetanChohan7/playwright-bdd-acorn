@@ -9,6 +9,16 @@ namespace PricingValidationFramework.Tests.System.Ice;
 public class IceConfigurationTests
 {
 	[Test]
+	public void Ice_discovery_should_preserve_cancellation_before_loading_configuration_or_opening_sql()
+	{
+		using var cancellation = new CancellationTokenSource();
+		cancellation.Cancel();
+
+		Assert.That(async () => await IceTestSetup.DiscoverScenariosAsync(cancellation.Token),
+			Throws.InstanceOf<OperationCanceledException>());
+	}
+
+	[Test]
 	public void Ice_configuration_should_bind_hierarchical_environment_overrides()
 	{
 		const string endpointKey = "IceSettings__IceEndpoint";

@@ -48,7 +48,7 @@ The comparison and reporting paths have regression workloads of 20,000 scenarios
 
 `RadarApiClient` accepts raw XML or a JSON envelope containing a top-level `response` XML string. It deserializes the envelope into `RadarJsonResponse`, then normalizes the extracted XML before XSD validation and pricing comparison. Approved JSON contracts and representative payloads belong under `PricingValidationFramework.Tests/TestAssets/Json`; `placeholder-response.json` is an empty directory placeholder, not a contract. Both asset folders are intentional and must be retained during cleanup.
 
-Database operations open their own SQL connection per operation. Each HTTP attempt uses a new request with scenario-specific URL, authentication header, and XML body. Scenario data is not stored in global logging context; Radar logs retain build-level context and structured scenario identifiers without logging request/response XML or credentials. The final `Radar_<BuildId>.csv` contains one `SUMMARY` row per scenario followed by its dynamic `FIELD` rows. The stable columns include the canonical field key, both XML paths, expected/actual/delta/range/result, and summary counts; request, baseline, and API XML are emitted only on the summary row at the end of the CSV. Report writes use a temporary file before final replacement. ICE remains separate and its single-workload execution and business behavior are unchanged.
+Database operations open their own SQL connection per operation. Each HTTP attempt uses a new request with scenario-specific URL, authentication header, and XML body. Scenario data is not stored in global logging context; Radar logs retain build-level context and structured scenario identifiers without logging request/response XML or credentials. The final `Radar_<BuildId>.csv` contains one `SUMMARY` row per scenario followed by its dynamic `FIELD` rows. The stable columns include the canonical field key, both XML paths, expected/actual/delta/range/result, and summary counts; request, baseline, and API XML are emitted only on the summary row at the end of the CSV. Report writes use a temporary file before final replacement. ICE remains separate with sequential per-scenario NUnit cases and its existing exact-equality comparison.
 
 The live workload is explicit and requires configured database access, Radar endpoints and credentials, approved XSD files, and pipeline inputs:
 
@@ -88,7 +88,7 @@ See [the importer guide](PricingValidationFramework.DataLoader/README.md) for CS
 
 ## Run the ICE validation flow
 
-The ICE flow is an explicit NUnit integration test. It loads passing baseline scenarios from SQL Server, calls ICE for each quote reference, compares the ICE premium with the XML baseline value using exact equality, writes a CSV report, and fails once all mismatches have been collected.
+The ICE flow is an explicit, non-parallel NUnit integration fixture. Database-only discovery loads passing baselines and creates one `Ice_scenario_<ScenarioId>` test case per scenario through `TestCaseSource`. Each case calls ICE for its quote reference, compares the ICE premium with the XML baseline using exact equality, records its report row, and asserts independently. Fixture teardown writes one consolidated CSV.
 
 ### Prerequisites
 
@@ -218,7 +218,7 @@ The test is marked `Explicit`, so select it directly:
 dotnet test .\PricingValidationFramework.Tests\PricingValidationFramework.Tests.csproj --no-restore --filter "FullyQualifiedName~IceValidationTests" -- NUnit.ExplicitMode=Relaxed
 ```
 
-The workload executes one NUnit test and iterates through all selected scenarios internally. It continues after value mismatches so the final report contains every scenario; an unexpected request, extraction, database, or certificate error stops the run immediately.
+The fixture runs its discovered cases sequentially using one shared client and certificate initialized in `OneTimeSetUp`. A mismatch or technical API/extraction error fails only that case; remaining cases continue, and the row is collected before the assertion. Empty selection, duplicate scenario IDs, and discovery failures produce an explicit failed discovery case. Teardown writes all completed scenario rows with a non-cancelled reporting token before disposing resources, preserving partial results after cancellation. Discovery does not load the certificate or create the API client. Scenario selection remains the newest passing baseline per product/scheme; test-tag filtering is not enabled for ICE.
 
 To set the report build identifier, set `BUILD_BUILDID` before running. If it is not set, the report uses `local`.
 
@@ -235,7 +235,7 @@ The report is written under the test output directory:
 PricingValidationFramework.Tests/bin/Debug/net10.0/TestResults/Reports/Ice_{BuildId}.csv
 ```
 
-It contains `BuildId`, scenario and quote identifiers, product/scheme data, ICE value, baseline value, and `PASS` or `FAIL` result.
+It contains `BuildId`, scenario and quote identifiers, product/scheme data, ICE value, baseline value, and a `PASS`, `FAIL`, or technical `ERROR` result. Both `FAIL` and `ERROR` fail the corresponding NUnit case.
 
 ### Troubleshooting
 
@@ -246,8 +246,8 @@ It contains `BuildId`, scenario and quote identifiers, product/scheme data, ICE 
 | HTTP 401 or 403 | Verify `ApiKeyHeaderName` and `ApiKeyHeaderValue` with the ICE provider. |
 | TLS or handshake error | Verify the client certificate is authorized by ICE and that `IceEndpoint` uses the expected host and certificate chain. |
 | SQL connection error | Verify `DatabaseSettings:ConnectionString`, network access, SQL authentication, and access to `xml_request` and `xml_response`. |
-| No report appears | Resolve setup/request/extraction failures first. Reports are written only after all scenarios complete. |
-| Test reports no scenarios | Check that `xml_response` contains `PASS` rows linked to `xml_request` by `Scenario_id`. |
+| No report appears | Resolve discovery or setup failures first. Teardown writes a report when scenario rows have been collected or execution cancellation was observed. |
+| Discovery case fails because no scenarios matched | Check that `xml_response` contains `PASS` rows linked to `xml_request` by `Scenario_id`. Empty selection is a test failure, not a passing empty workload. |
 
 ### Security checklist
 

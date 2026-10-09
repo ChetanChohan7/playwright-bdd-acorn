@@ -232,8 +232,12 @@ Scenario discovery preserves the existing test-tag filter and rejects duplicate 
 
 ```text
 xml_response with Status = PASS, joined to xml_request by Scenario_id
-  -> IceBaselineScenario
-  -> ICE processing
+  -> Newest IceBaselineScenario per product/scheme
+  -> Database-only discovery creates TestCaseSource entries
+  -> OneTimeSetUp initializes shared ICE client and certificate
+  -> Each non-parallel NUnit case performs ICE comparison
+  -> Record report row before asserting that case
+  -> OneTimeTearDown writes one consolidated report and disposes resources
 ```
 
 Adding or changing Radar scenarios is a data and configuration concern, not a code change. ICE scenario units are selected from passing `xml_response` data by `BaselineDataReader`.
@@ -970,8 +974,8 @@ IceTestSetup
   -> XmlValueExtractor
   -> Baseline Premium
   -> Exact value comparison
-  -> NUnit assertion
   -> IceValidationReportRow
+  -> Independent NUnit assertion
   -> One Ice_<BuildId>.csv report per run
   -> ICE log
 ```
@@ -980,7 +984,7 @@ ICE remains independent from Radar. It does not resolve scheme configuration, us
 
 ICE uses `BaselineDataReader` as its only database reader, obtains identifiers through the `xml_request` join without loading request XML, and performs comparison/assertion logic directly in the NUnit test.
 
-ICE remains its existing single workload test, iterating its selected baselines and producing one combined report. This Radar change does not alter ICE execution or business behavior.
+ICE uses one named `TestCaseSource` case per selected baseline and remains explicitly `[NonParallelizable]`. Discovery loads only database/retry configuration and passing baseline data, without creating the API client or loading its certificate. Empty discovery, duplicate IDs, and discovery exceptions produce a failing discovery case. One-time setup creates the shared execution resources; each scenario records PASS/FAIL/ERROR before its independent assertion, and subsequent cases continue after a failed case. Teardown uses a non-cancelled reporting token to write one combined report, including completed rows after cancellation, and disposes resources in `finally`. Baseline selection, exact comparison, authentication, and retries are unchanged; ICE tag filtering remains pending.
 
 ## 20. Final Design Decisions
 
@@ -1000,12 +1004,12 @@ ICE remains its existing single workload test, iterating its selected baselines 
 - `RequestDataReader` reads only `xml_request`; `BaselineDataReader` reads baseline XML from `xml_response` joined to `xml_request`; `ResultUpdater` updates `xml_response` by unique `Scenario_id`.
 - ICE does not call `ResultUpdater` or update `xml_response`.
 - `IceValidationTests` is the ICE pipeline orchestrator; no separate ICE application orchestrator is required.
-- ICE retains its existing single workload test over selected baseline scenarios and one combined report per run.
+- ICE runs one named, sequential NUnit case per selected baseline through `TestCaseSource`, with independent assertions and one combined report in fixture teardown.
 - Database and API retries are transient-only, configurable, exponentially backed off, jittered, cancellation-aware, and logged by flow.
 - `ResultUpdater` is retry-safe through `Scenario_id`-scoped updates that set absolute values.
 - All DTOs, contracts, result models, report row models, and future enums belong under `Models`; service folders contain services only.
 - Business failures, validation failures, mismatches, and configuration failures are never retried.
-- NUnit owns Radar concurrency with four workers; each logical endpoint has an independent 2-per-second sliding-window budget and a queue of four waiting attempts. Every retry consumes another permit. There is no in-flight request limit, and ICE behavior is unchanged.
+- NUnit owns Radar concurrency with four workers and one configurable staggered request budget shared by every endpoint and retry. There is no separate in-flight request limit; ICE cases remain sequential and do not use Radar pacing.
 - Radar cases collect one terminal row each in a thread-safe keyed collection; fixture teardown writes one deterministic CSV. NLog remains flow-separated and scenario values use structured properties, not global context.
 - Cancellation stops active work and limiter waits without turning cancellation into FAIL or ERROR.
 - Radar uses one shared header name and endpoint-group-specific API key values.
