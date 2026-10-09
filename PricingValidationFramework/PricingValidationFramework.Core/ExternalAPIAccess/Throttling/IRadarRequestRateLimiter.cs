@@ -2,5 +2,8 @@ namespace PricingValidationFramework.Core.ExternalAPIAccess.Throttling;
 
 public interface IRadarRequestRateLimiter
 {
-	ValueTask WaitAsync(string endpointName, CancellationToken cancellationToken = default);
+	Task<HttpResponseMessage> SendAsync(
+		string endpointName,
+		Func<Task<HttpResponseMessage>> sendAsync,
+		CancellationToken cancellationToken = default);
 }

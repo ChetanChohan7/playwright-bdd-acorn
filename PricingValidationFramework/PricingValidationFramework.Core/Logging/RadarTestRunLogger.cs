@@ -24,10 +24,9 @@ public class RadarTestRunLogger
 		string executionStage,
 		Exception exception,
 		int? statusCode = null,
-		bool? queueRejected = null,
 		string? safeDetail = null)
 		=> logger.LogError(
-			"Radar execution failed. ScenarioId={ScenarioId}, QuoteRef={QuoteRef}, ProductCode={ProductCode}, SchemeCode={SchemeCode}, EndpointName={EndpointName}, ExecutionStage={ExecutionStage}, ErrorType={ErrorType}, StatusCode={StatusCode}, QueueRejected={QueueRejected}, ErrorDetail={ErrorDetail}.",
+			"Radar execution failed. ScenarioId={ScenarioId}, QuoteRef={QuoteRef}, ProductCode={ProductCode}, SchemeCode={SchemeCode}, EndpointName={EndpointName}, ExecutionStage={ExecutionStage}, ErrorType={ErrorType}, StatusCode={StatusCode}, ErrorDetail={ErrorDetail}.",
 			scenarioId,
 			quoteRef,
 			productCode,
@@ -36,7 +35,6 @@ public class RadarTestRunLogger
 			executionStage,
 			exception.GetType().Name,
 			statusCode,
-			queueRejected,
 			safeDetail);
 
 	public void ReportGenerationFailed(Exception exception)

@@ -191,8 +191,7 @@ public class RadarValidationTests
                     _ => "BaselineLoad"
                 },
                 exception,
-                (exception as HttpRequestException)?.StatusCode is { } statusCode ? (int)statusCode : null,
-                (exception as RadarRequestRateLimitException)?.QueueRejected);
+                (exception as HttpRequestException)?.StatusCode is { } statusCode ? (int)statusCode : null);
             row = BuildErrorRow(scenario, setup, baseline?.XmlResponse ?? string.Empty, string.Empty, "ScenarioExecution", exception.Message);
         }
 

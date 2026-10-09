@@ -161,25 +161,25 @@ public class RadarApiClient : IDisposable
 		CancellationToken cancellationToken)
 	{
 		var permitWaitStart = Stopwatch.GetTimestamp();
-		await rateLimiter.WaitAsync(diagnostics.EndpointName, cancellationToken);
-
-		logger.LogDebug(
-			"Radar request permit acquired. ScenarioId={ScenarioId}, QuoteRef={QuoteRef}, ProductCode={ProductCode}, SchemeCode={SchemeCode}, EndpointName={EndpointName}, Attempt={Attempt}, ExecutionStage={ExecutionStage}, PermitWaitDuration={PermitWaitDuration}.",
-			diagnostics.ScenarioId,
-			diagnostics.QuoteRef,
-			diagnostics.ProductCode,
-			diagnostics.SchemeCode,
-			diagnostics.EndpointName,
-			attempt + 1,
-			"RateLimitPermit",
-			Stopwatch.GetElapsedTime(permitWaitStart));
-
 		using var request = new HttpRequestMessage(HttpMethod.Post, url);
 		request.Headers.TryAddWithoutValidation(apiKeyHeaderName, apiKeyValue);
 		request.Headers.Accept.ParseAdd("application/json");
 		request.Content = new StringContent(requestXml, Encoding.UTF8, "application/xml");
 
-		var response = await httpClient.SendAsync(request, cancellationToken);
+		var response = await rateLimiter.SendAsync(diagnostics.EndpointName, () =>
+		{
+			logger.LogDebug(
+				"Radar request permit acquired. ScenarioId={ScenarioId}, QuoteRef={QuoteRef}, ProductCode={ProductCode}, SchemeCode={SchemeCode}, EndpointName={EndpointName}, Attempt={Attempt}, ExecutionStage={ExecutionStage}, PermitWaitDuration={PermitWaitDuration}.",
+				diagnostics.ScenarioId,
+				diagnostics.QuoteRef,
+				diagnostics.ProductCode,
+				diagnostics.SchemeCode,
+				diagnostics.EndpointName,
+				attempt + 1,
+				"RateLimitPermit",
+				Stopwatch.GetElapsedTime(permitWaitStart));
+			return httpClient.SendAsync(request, cancellationToken);
+		}, cancellationToken);
 		cancellationToken.ThrowIfCancellationRequested();
 		return response;
 	}

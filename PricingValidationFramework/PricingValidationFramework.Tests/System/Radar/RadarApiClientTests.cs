@@ -559,18 +559,24 @@ public class RadarApiClientTests
     }
 
     [Test]
-    public void PostAsync_should_not_send_when_endpoint_queue_rejects_a_permit()
+    public void PostAsync_should_not_send_when_endpoint_is_unknown()
     {
+        using var limiter = new RadarRequestRateLimiter(new RadarRateLimitSettings(), ["PricingA"]);
         var requestCount = 0;
         using var client = CreateClient(_ =>
         {
             requestCount++;
             return SuccessResponse();
-        }, new RejectingRateLimiter());
+        }, limiter);
 
-        Assert.ThrowsAsync<RadarRequestRateLimitException>(async () =>
-            await client.PostAsync("PricingA", "https://placeholder-radar.example.com/quote", "X-API-KEY", "secret-value", "<Request />"));
-        Assert.That(requestCount, Is.Zero);
+        var exception = Assert.ThrowsAsync<RadarRequestRateLimitException>(async () =>
+            await client.PostAsync("PricingUnknown", "https://placeholder-radar.example.com/quote", "X-API-KEY", "secret-value", "<Request />"));
+        Assert.Multiple(() =>
+        {
+            Assert.That(exception!.EndpointName, Is.EqualTo("PricingUnknown"));
+            Assert.That(exception.Message, Does.Contain("missing or unknown"));
+            Assert.That(requestCount, Is.Zero);
+        });
     }
 
     [Test]
@@ -657,6 +663,43 @@ public class RadarApiClientTests
         Assert.That(delays.Single(), Is.EqualTo(TimeSpan.FromSeconds(2)));
     }
 
+    [Test]
+    public async Task PostAsync_should_stagger_requests_and_retries_across_endpoints()
+    {
+        using var limiter = new RadarRequestRateLimiter(
+            new RadarRateLimitSettings { RequestsPerSecond = 4 },
+            ["Endpoint1", "Endpoint2"]);
+        var starts = new ConcurrentQueue<long>();
+        var firstEndpointAttempts = 0;
+        using var client = CreateClient(request =>
+        {
+            starts.Enqueue(global::System.Diagnostics.Stopwatch.GetTimestamp());
+            if (request.RequestUri!.Host == "pricinga.example.test" &&
+                Interlocked.Increment(ref firstEndpointAttempts) == 1)
+            {
+                return new HttpResponseMessage(HttpStatusCode.ServiceUnavailable);
+            }
+
+            return SuccessResponse();
+        }, limiter, new RetrySettings { ApiRetryCount = 1, ApiRetryDelaySeconds = 0 });
+
+        await Task.WhenAll(
+            client.PostAsync("Endpoint1", "https://pricinga.example.test/quote", "X-API-KEY", "secret-value", "<Request />"),
+            client.PostAsync("Endpoint2", "https://pricingb.example.test/quote", "X-API-KEY", "secret-value", "<Request />"));
+
+        var dispatches = starts.ToArray();
+        Assert.Multiple(() =>
+        {
+            Assert.That(firstEndpointAttempts, Is.EqualTo(2));
+            Assert.That(dispatches, Has.Length.EqualTo(3));
+        });
+        for (var index = 1; index < dispatches.Length; index++)
+        {
+            Assert.That(global::System.Diagnostics.Stopwatch.GetElapsedTime(dispatches[index - 1], dispatches[index]),
+                Is.GreaterThanOrEqualTo(TimeSpan.FromMilliseconds(250)));
+        }
+    }
+
     private static RadarApiClient CreateClient(
         Func<HttpRequestMessage, HttpResponseMessage> responseFactory,
         IRadarRequestRateLimiter? rateLimiter = null,
@@ -730,19 +773,14 @@ public class RadarApiClientTests
 
         public int AcquisitionCount => Volatile.Read(ref acquisitionCount);
 
-        public ValueTask WaitAsync(string endpointName, CancellationToken cancellationToken = default)
+        public Task<HttpResponseMessage> SendAsync(
+            string endpointName,
+            Func<Task<HttpResponseMessage>> sendAsync,
+            CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
             Interlocked.Increment(ref acquisitionCount);
-            return ValueTask.CompletedTask;
-        }
-    }
-
-    private sealed class RejectingRateLimiter : IRadarRequestRateLimiter
-    {
-        public ValueTask WaitAsync(string endpointName, CancellationToken cancellationToken = default)
-        {
-            throw new RadarRequestRateLimitException(endpointName, queueRejected: true);
+            return sendAsync();
         }
     }
 
@@ -804,11 +842,14 @@ public class RadarApiClientTests
             this.events = events;
         }
 
-        public ValueTask WaitAsync(string endpointName, CancellationToken cancellationToken = default)
+        public Task<HttpResponseMessage> SendAsync(
+            string endpointName,
+            Func<Task<HttpResponseMessage>> sendAsync,
+            CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
             events.Add("permit");
-            return ValueTask.CompletedTask;
+            return sendAsync();
         }
     }
 

@@ -285,10 +285,13 @@ public class RadarPricingServiceTests
 
 	private sealed class NoWaitRateLimiter : IRadarRequestRateLimiter
 	{
-		public ValueTask WaitAsync(string endpointName, CancellationToken cancellationToken = default)
+		public Task<HttpResponseMessage> SendAsync(
+			string endpointName,
+			Func<Task<HttpResponseMessage>> sendAsync,
+			CancellationToken cancellationToken = default)
 		{
 			cancellationToken.ThrowIfCancellationRequested();
-			return ValueTask.CompletedTask;
+			return sendAsync();
 		}
 	}
 }

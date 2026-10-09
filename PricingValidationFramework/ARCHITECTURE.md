@@ -348,10 +348,9 @@ Recommended starting values are three retries and a two-second base delay for bo
 
 ```text
 RequestsPerSecond
-QueueLimit
 ```
 
-Radar limiting is mandatory and cannot be disabled. Checked-in configuration uses `RequestsPerSecond = 2` and `QueueLimit = 4`. Each configured logical endpoint receives one independent `SlidingWindowRateLimiter` with a one-second window divided into 10 segments, oldest-first queueing, and automatic replenishment. Every initial attempt and retry consumes a permit from that endpoint's limiter. There is no concurrent in-flight request limit.
+Radar limiting is mandatory and cannot be disabled. Checked-in configuration uses `RequestsPerSecond = 2`, giving a minimum 500 ms gap between HTTP starts across all Radar endpoints combined. A value of 4 gives 250 ms. One shared asynchronous gate uses monotonic elapsed time and starts each initial attempt or retry before releasing the gate, without waiting for the response. There are no catch-up bursts, separate endpoint budgets, bounded rejection queue, or `QueueLimit` setting. NUnit's four scenario workers bound the callers waiting asynchronously with cancellation support. The budget is local to one run and is not shared with ICE or other processes.
 
 ## 5. Validation and Comparison Rules
 
@@ -455,8 +454,7 @@ Shared structure and non-secret defaults only:
     "ApiRetryAfterMaxDelaySeconds": 60
   },
   "RadarRateLimitSettings": {
-    "RequestsPerSecond": 2,
-    "QueueLimit": 4
+    "RequestsPerSecond": 2
   }
 }
 ```
@@ -518,8 +516,7 @@ Each `ResponseXsdMappings` entry is keyed by route ID and contains only an XSD f
     "ApiRetryAfterMaxDelaySeconds": 60
   },
   "RadarRateLimitSettings": {
-    "RequestsPerSecond": 2,
-    "QueueLimit": 4
+    "RequestsPerSecond": 2
   }
 }
 ```
@@ -569,8 +566,7 @@ Each `ResponseXsdMappings` entry is keyed by route ID and contains only an XSD f
     "ApiRetryAfterMaxDelaySeconds": 60
   },
   "RadarRateLimitSettings": {
-    "RequestsPerSecond": 2,
-    "QueueLimit": 4
+    "RequestsPerSecond": 2
   }
 }
 ```
@@ -886,9 +882,9 @@ NUnit owns Radar scenario discovery and concurrency. Each selected scenario is o
 
 ### Radar throttling
 
-One run-level `RadarRequestRateLimiter` registry is shared by every parallel Radar scenario and injected into `RadarApiClient`. It contains one .NET `SlidingWindowRateLimiter` per configured logical endpoint, keyed case-insensitively. Each has a one-second window divided into 10 segments, permits 2 starts per window, and queues up to 4 waiting attempts in oldest-first order. These budgets are independent: saturation on `PricingA` does not consume `PricingB` or `PricingC` capacity. Limiting is mandatory, cannot be disabled, and there is no separate in-flight request limit.
+One run-level `RadarRequestRateLimiter` is shared by every parallel Radar scenario and injected into `RadarApiClient`. A single `SemaphoreSlim` guards HTTP dispatch across all configured endpoints, whose names remain registered case-insensitively for validation. The minimum interval is calculated from `RequestsPerSecond`: 2 gives 500 ms and 4 gives 250 ms. Monotonic elapsed time is rechecked after asynchronous delays; the next interval is measured from actual dispatch, so scheduling delays never cause catch-up bursts. The gate is released before awaiting the response, allowing in-flight requests to overlap. NUnit's four workers bound the active callers; waiting is cancellable and there is no queue-full rejection. Separate processes and pipeline runs do not share the budget.
 
-`RadarTestSetup` binds and validates the required settings, rejects case-insensitive duplicate endpoint keys, and verifies every route points to a configured endpoint before database discovery. It creates and disposes the registry once for the Radar run. `RadarApiClient` acquires the selected endpoint's permit immediately before each outbound attempt and creates an independent `HttpRequestMessage`. Each retry first waits for local backoff or valid `Retry-After` (whichever is longer), then acquires another permit from that same endpoint limiter. Queue rejection sends no HTTP request and becomes a technical ERROR. Exhausted HTTP 429 likewise remains a technical ERROR without PASS/FAIL persistence.
+`RadarTestSetup` binds and validates the required settings, rejects case-insensitive duplicate endpoint keys, and verifies every route points to a configured endpoint before database discovery. It creates and disposes the limiter once for the Radar run. `RadarApiClient` creates an independent `HttpRequestMessage` and dispatches it through the shared gate for every outbound attempt. Each retry first waits for local backoff or valid `Retry-After` (whichever is longer), then enters that same pacing gate again. Exhausted HTTP 429 remains a technical ERROR without PASS/FAIL persistence. ICE is unchanged and does not use the Radar gate.
 
 ## 16. Cancellation Strategy
 
@@ -1047,8 +1043,8 @@ The architecture reflects the current implementation:
 - Radar and ICE have separate reports, logs, output names, and flow-specific responsibilities.
 - XSD files have a fixed location and are resolved from scheme configuration.
 - NUnit owns Radar concurrency with four workers; there is no internal scenario worker pool.
-- Radar rate limiting is mandatory with the checked-in 2 requests-per-second and 4 queued attempts per endpoint.
-- Every Radar HTTP retry acquires the same endpoint's permit after the longer of local backoff and valid `Retry-After`; one sorted report is written after scenario cases complete.
+- Radar rate limiting is mandatory with a configurable overall request rate, staggered starts, and no catch-up bursts; the checked-in 2 requests-per-second gives a minimum 500 ms gap.
+- Every Radar HTTP retry enters the shared pacing gate after the longer of local backoff and valid `Retry-After`; one sorted report is written after scenario cases complete.
 - Result update retry safety is defined through idempotent scenario/build-scoped updates.
 - Radar and ICE report ordering is deterministic and independent of parallel scenario completion order.
 - Radar reports include `SchemeCode` for endpoint-routing diagnostics.

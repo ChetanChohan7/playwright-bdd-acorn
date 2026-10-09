@@ -210,16 +210,13 @@ public class RadarExecutionInfrastructureTests
 		}
 	}
 
-	[TestCase(0, 4)]
-	[TestCase(-1, 4)]
-	[TestCase(2, 0)]
-	[TestCase(2, -1)]
-	public void Rate_limiter_settings_should_reject_non_positive_values(int requestsPerSecond, int queueLimit)
+	[TestCase(0)]
+	[TestCase(-1)]
+	public void Rate_limiter_settings_should_reject_non_positive_values(int requestsPerSecond)
 	{
 		Assert.Throws<ArgumentOutOfRangeException>(() => new RadarRateLimitSettings
 		{
-			RequestsPerSecond = requestsPerSecond,
-			QueueLimit = queueLimit
+			RequestsPerSecond = requestsPerSecond
 		}.Validate());
 	}
 
@@ -231,7 +228,6 @@ public class RadarExecutionInfrastructureTests
 		Assert.Multiple(() =>
 		{
 			Assert.That(settings.RequestsPerSecond, Is.EqualTo(2));
-			Assert.That(settings.QueueLimit, Is.EqualTo(4));
 			Assert.That(typeof(RadarRateLimitSettings).GetProperty("Enabled"), Is.Null);
 		});
 	}
@@ -303,26 +299,125 @@ public class RadarExecutionInfrastructureTests
 	}
 
 	[Test]
-	public async Task Endpoint_limiters_should_have_independent_budgets_and_bounded_cancellable_queues()
+	public async Task Rate_limiter_should_cancel_waiting_requests_without_dispatching_or_rejecting_them()
 	{
 		using var limiter = new RadarRequestRateLimiter(
 			new RadarRateLimitSettings(),
 			["PricingA", "PricingB", "PricingC"]);
-		await limiter.WaitAsync("PricingA");
-		await limiter.WaitAsync("PricingA");
+		var dispatchCount = 0;
+		Task<HttpResponseMessage> SendResponse()
+		{
+			dispatchCount++;
+			return Task.FromResult(new HttpResponseMessage());
+		}
+		using var firstResponse = await limiter.SendAsync("PricingA", SendResponse);
 
 		using var cancellationTokenSource = new CancellationTokenSource();
-		var queuedRequests = Enumerable.Range(0, 4)
-			.Select(_ => limiter.WaitAsync("pricinga", cancellationTokenSource.Token).AsTask())
+		var queuedRequests = Enumerable.Range(0, 8)
+			.Select(_ => limiter.SendAsync("pricingb", SendResponse, cancellationTokenSource.Token))
 			.ToArray();
-		Assert.That(queuedRequests, Has.All.Property("IsCompleted").False);
-
-		await limiter.WaitAsync("PricingB");
-		await limiter.WaitAsync("PricingB");
-		Assert.ThrowsAsync<RadarRequestRateLimitException>(async () => await limiter.WaitAsync("PricingA"));
 
 		cancellationTokenSource.Cancel();
 		Assert.That(async () => await Task.WhenAll(queuedRequests), Throws.InstanceOf<OperationCanceledException>());
+		Assert.That(dispatchCount, Is.EqualTo(1));
+		using var nextResponse = await limiter.SendAsync("PricingC", SendResponse);
+		Assert.That(dispatchCount, Is.EqualTo(2));
+	}
+
+	[TestCase(2)]
+	[TestCase(4)]
+	public async Task Rate_limiter_should_stagger_requests_across_endpoints(int requestsPerSecond)
+	{
+		using var limiter = new RadarRequestRateLimiter(
+			new RadarRateLimitSettings { RequestsPerSecond = requestsPerSecond },
+			["PricingA", "PricingB"]);
+		var starts = new List<long>();
+		var requests = new[] { "PricingA", "PricingB", "pricinga", "PricingB" }
+			.Select(endpoint => limiter.SendAsync(endpoint, () =>
+			{
+				starts.Add(global::System.Diagnostics.Stopwatch.GetTimestamp());
+				return Task.FromResult(new HttpResponseMessage());
+			}));
+		var responses = await Task.WhenAll(requests);
+		foreach (var response in responses)
+		{
+			response.Dispose();
+		}
+
+		Assert.That(starts, Has.Count.EqualTo(4));
+		for (var index = 1; index < starts.Count; index++)
+		{
+			Assert.That(global::System.Diagnostics.Stopwatch.GetElapsedTime(starts[index - 1], starts[index]),
+				Is.GreaterThanOrEqualTo(TimeSpan.FromSeconds(1d / requestsPerSecond)));
+		}
+	}
+
+	[Test]
+	public async Task Rate_limiter_should_release_the_gate_before_the_response_completes()
+	{
+		using var limiter = new RadarRequestRateLimiter(new RadarRateLimitSettings(), ["PricingA", "PricingB"]);
+		var pendingResponse = new TaskCompletionSource<HttpResponseMessage>(TaskCreationOptions.RunContinuationsAsynchronously);
+		var firstRequest = limiter.SendAsync("PricingA", () => pendingResponse.Task);
+		try
+		{
+			using var secondResponse = await limiter.SendAsync("PricingB", () => Task.FromResult(new HttpResponseMessage()))
+				.WaitAsync(TimeSpan.FromSeconds(5));
+			Assert.That(firstRequest.IsCompleted, Is.False);
+		}
+		finally
+		{
+			pendingResponse.SetResult(new HttpResponseMessage());
+			using var firstResponse = await firstRequest;
+		}
+	}
+
+	[Test]
+	public async Task Rate_limiter_should_not_catch_up_with_a_burst_after_an_idle_gap()
+	{
+		using var limiter = new RadarRequestRateLimiter(
+			new RadarRateLimitSettings { RequestsPerSecond = 10 }, ["PricingA", "PricingB"]);
+		var starts = new List<long>();
+		Task<HttpResponseMessage> SendResponse()
+		{
+			starts.Add(global::System.Diagnostics.Stopwatch.GetTimestamp());
+			return Task.FromResult(new HttpResponseMessage());
+		}
+
+		using var firstResponse = await limiter.SendAsync("PricingA", SendResponse);
+		await Task.Delay(250);
+		var responses = await Task.WhenAll(
+			limiter.SendAsync("PricingA", SendResponse),
+			limiter.SendAsync("PricingB", SendResponse));
+		foreach (var response in responses)
+		{
+			response.Dispose();
+		}
+
+		Assert.That(starts, Has.Count.EqualTo(3));
+		Assert.That(global::System.Diagnostics.Stopwatch.GetElapsedTime(starts[1], starts[2]),
+			Is.GreaterThanOrEqualTo(TimeSpan.FromMilliseconds(100)));
+	}
+
+	[Test]
+	public async Task Rate_limiter_should_release_and_pace_the_gate_after_a_synchronous_send_failure()
+	{
+		using var limiter = new RadarRequestRateLimiter(
+			new RadarRateLimitSettings { RequestsPerSecond = 10 }, ["PricingA"]);
+		var failedDispatch = 0L;
+		Assert.ThrowsAsync<HttpRequestException>(async () => await limiter.SendAsync("PricingA", () =>
+		{
+			failedDispatch = global::System.Diagnostics.Stopwatch.GetTimestamp();
+			throw new HttpRequestException("Simulated dispatch failure.");
+		}));
+
+		var nextDispatch = 0L;
+		using var response = await limiter.SendAsync("PricingA", () =>
+		{
+			nextDispatch = global::System.Diagnostics.Stopwatch.GetTimestamp();
+			return Task.FromResult(new HttpResponseMessage());
+		});
+		Assert.That(global::System.Diagnostics.Stopwatch.GetElapsedTime(failedDispatch, nextDispatch),
+			Is.GreaterThanOrEqualTo(TimeSpan.FromMilliseconds(100)));
 	}
 
 	[Test]
@@ -332,14 +427,14 @@ public class RadarExecutionInfrastructureTests
 
 		Assert.Multiple(() =>
 		{
-			Assert.ThrowsAsync<RadarRequestRateLimitException>(async () => await limiter.WaitAsync("PricingB"));
+			Assert.ThrowsAsync<RadarRequestRateLimitException>(async () =>
+				await limiter.SendAsync("PricingB", () => Task.FromResult(new HttpResponseMessage())));
 			Assert.Throws<ArgumentException>(() => new RadarRequestRateLimiter(
 				new RadarRateLimitSettings(), ["PricingA", "pricinga"]));
 		});
 	}
 
 	[TestCase("RadarRateLimitSettings__RequestsPerSecond", "0")]
-	[TestCase("RadarRateLimitSettings__QueueLimit", "-1")]
 	[TestCase("RetrySettings__ApiRetryAfterMaxDelaySeconds", "-1")]
 	public void Radar_setup_should_reject_invalid_limiter_configuration_before_database_discovery(
 		string environmentVariable,
