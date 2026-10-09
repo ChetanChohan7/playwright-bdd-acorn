@@ -138,11 +138,11 @@ Filtering, grouping, ranking, and selection belong in SQL whenever practical. Th
 
 ```text
 GetAllScenariosAsync()
-GetScenariosByTestTagAsync(string testTag)
+GetScenariosByProductCodeAsync(string productCode)
 GetScenarioByIdAsync(string scenarioId)
 ```
 
-If a test tag is supplied, use `GetScenariosByTestTagAsync`. Otherwise use `GetAllScenariosAsync`. A specific scenario uses `GetScenarioByIdAsync`.
+The user-facing `TestTag` input is a product-code selector. If supplied, pass it to `GetScenariosByProductCodeAsync`, which filters `xml_request.Product_code = @ProductCode` across all schemes. Otherwise use `GetAllScenariosAsync`. A specific scenario uses `GetScenarioByIdAsync`. Stored `Test_tags` remains scenario metadata and NUnit categories, not a workload filter.
 
 All queries must explicitly select:
 
@@ -162,7 +162,7 @@ Create_date
 
 `IBaselineDataReader` is the database boundary for baseline retrieval and supports isolated tests with a fake reader. `BaselineDataReader.GetPassingBaselineScenariosAsync()` reads `xml_response`, filters `Status = 'PASS'`, and returns the latest `IceBaselineScenario` per `ProductCode` and `SchemeCode`, ordered by `Last_updated DESC` and `Scenario_id`. Filtering, grouping, and ranking are performed in SQL.
 
-`ResultUpdater.InsertBaselineAsync()` inserts a new scenario's first Radar response as its `PASS` baseline, guarded so it never replaces an existing row. `ResultUpdater.UpdateResultAsync()` updates `xml_response` by unique `Scenario_id`, preserving `Create_date` and requiring exactly one affected row. On PASS it updates `Status`, `Build_id`, `Last_updated` and `XML_Response`, so the Radar response becomes the new baseline. On FAIL it updates `Status` and `Build_id` only, so the existing baseline XML is never overwritten.
+`ResultUpdater.InsertBaselineAsync()` inserts a new scenario's first Radar response as its `PASS` baseline, guarded so it never replaces an existing row. `ResultUpdater.UpdateResultAsync()` updates `xml_response` by unique `Scenario_id`, preserving `Create_date` and requiring exactly one affected row. On PASS it updates `Status`, `Last_updated` and `XML_Response`, so the Radar response becomes the new baseline. On FAIL it updates `Status` only, so the existing baseline XML is never overwritten. `BuildId` is supplied at runtime for reporting and logging; `xml_response` does not require a build-ID column.
 
 ### External API access
 
@@ -312,7 +312,7 @@ MaxThreshold
 Sources:
 
 - `BuildId`: Azure DevOps.
-- `TestTag`: `PipelineSettings:TestTag` or the `TEST_TAG` pipeline override.
+- `TestTag`: `PipelineSettings:TestTag` or the `TEST_TAG` pipeline override; the value identifies `xml_request.Product_code`.
 - `RequestTime`: `PipelineSettings:RequestTime` or the `RADAR_REQUEST_DATETIME` pipeline override.
 - `MinThreshold`: `PipelineSettings:MinThreshold` or the `RADAR_MIN_THRESHOLD` pipeline override.
 - `MaxThreshold`: `PipelineSettings:MaxThreshold` or the `RADAR_MAX_THRESHOLD` pipeline override.
@@ -327,7 +327,7 @@ Required values:
 
 Optional values:
 
-- `TestTag` selects tagged scenarios when supplied.
+- `TestTag` selects all request scenarios with the supplied product code when supplied, regardless of their scheme or stored `Test_tags`.
 - `RequestTime` must match `yyyy-MM-ddZHH:mm:ss` when supplied. The `Z` is a literal separator in this business format, not a UTC offset suffix.
 
 `PipelineInputValidator` runs before any database access, API call, report generation, or log generation. Invalid input fails execution immediately with clear validation messages.
@@ -989,7 +989,7 @@ ICE uses one named `TestCaseSource` case per selected baseline and remains expli
 ## 20. Final Design Decisions
 
 - `BuildId` is the required ICE report identifier.
-- `TestTag` and `RequestTime` are optional pipeline inputs for Radar only.
+- `TestTag` and `RequestTime` are optional pipeline inputs for Radar only; `TestTag` retains its user-facing name but filters `xml_request.Product_code`.
 - `RequestTime` uses the literal-`Z` format `yyyy-MM-ddZHH:mm:ss`; missing values use current UTC time.
 - ICE validation is exact equality: `IceValue == BaselineValue`.
 - ICE does not use Radar thresholds, `MinThreshold`, `MaxThreshold`, or `FuzzyPricingMatcher`.

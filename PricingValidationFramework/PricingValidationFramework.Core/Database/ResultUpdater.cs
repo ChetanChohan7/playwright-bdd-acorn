@@ -14,25 +14,23 @@ public class ResultUpdater
 	private const string UpdatePassingResultSql = """
 		UPDATE xml_response
 		SET Status = @Status,
-		    Build_id = @BuildId,
 		    Last_updated = SYSUTCDATETIME(),
 		    XML_Response = @XmlResponse
 		WHERE Scenario_id = @ScenarioId;
 		""";
 
-	// FAIL: only the status and build change, so the existing baseline XML is never overwritten.
+	// FAIL: only the status changes, so the existing baseline XML is never overwritten.
 	private const string UpdateFailedStatusSql = """
 		UPDATE xml_response
-		SET Status = @Status,
-		    Build_id = @BuildId
+		SET Status = @Status
 		WHERE Scenario_id = @ScenarioId;
 		""";
 
 	// New scenario: the first Radar response becomes its baseline. The NOT EXISTS guard (with
 	// UPDLOCK/HOLDLOCK) means an existing baseline is never replaced, even by a concurrent run.
 	private const string InsertBaselineSql = """
-		INSERT INTO xml_response (Scenario_id, XML_Response, Build_id, Status, Create_date, Last_updated)
-		SELECT @ScenarioId, @XmlResponse, @BuildId, @Status, SYSUTCDATETIME(), SYSUTCDATETIME()
+		INSERT INTO xml_response (Scenario_id, XML_Response, Status, Create_date, Last_updated)
+		SELECT @ScenarioId, @XmlResponse, @Status, SYSUTCDATETIME(), SYSUTCDATETIME()
 		WHERE NOT EXISTS (
 		    SELECT 1 FROM xml_response WITH (UPDLOCK, HOLDLOCK)
 		    WHERE Scenario_id = @ScenarioId);
@@ -51,14 +49,12 @@ public class ResultUpdater
 			? await ExecuteAsync(UpdatePassingResultSql, new
 			{
 				response.Status,
-				response.BuildId,
 				response.XmlResponse,
 				response.ScenarioId
 			}, cancellationToken)
 			: await ExecuteAsync(UpdateFailedStatusSql, new
 			{
 				response.Status,
-				response.BuildId,
 				response.ScenarioId
 			}, cancellationToken);
 		EnsureSingleRowUpdated(response.ScenarioId, affectedRows);
@@ -70,7 +66,6 @@ public class ResultUpdater
 		{
 			response.ScenarioId,
 			response.XmlResponse,
-			response.BuildId,
 			response.Status
 		}, cancellationToken);
 		if (affectedRows != 1)

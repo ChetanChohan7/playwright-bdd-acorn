@@ -42,7 +42,6 @@ public class BaselineDataReader : IBaselineDataReader
 			response.Scenario_id AS ScenarioId,
 			request.Quote_ref AS QuoteRef,
 			response.XML_Response AS XmlResponse,
-			response.Build_id AS BuildId,
 			response.Create_date AS CreatedDate,
 			response.Last_updated AS LastUpdated,
 			response.Status AS Status

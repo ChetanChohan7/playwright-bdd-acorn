@@ -28,7 +28,7 @@ public class DatabaseQueryContractTests
     }
 
     [TestCase("AllScenariosSql")]
-    [TestCase("TaggedScenariosSql")]
+    [TestCase("ProductScenariosSql")]
     [TestCase("ScenarioByIdSql")]
     public void Request_queries_should_use_the_current_table_columns(string queryName)
     {
@@ -49,8 +49,28 @@ public class DatabaseQueryContractTests
     {
         Assert.Multiple(() =>
         {
-            Assert.That(ReadQuery<RequestDataReader>("TaggedScenariosSql"), Does.Contain("Test_tags = @TestTag"));
+            Assert.That(ReadQuery<RequestDataReader>("ProductScenariosSql"), Does.Contain("Product_code = @ProductCode"));
             Assert.That(ReadQuery<RequestDataReader>("ScenarioByIdSql"), Does.Contain("Scenario_id = @ScenarioId"));
+        });
+    }
+
+    [Test]
+    public void Radar_product_filter_should_preserve_all_schemes_and_tags_as_metadata()
+    {
+        var productSql = ReadQuery<RequestDataReader>("ProductScenariosSql");
+        var allSql = ReadQuery<RequestDataReader>("AllScenariosSql");
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(productSql, Does.Contain("WHERE Product_code = @ProductCode ORDER BY Create_date, Scenario_id;"));
+            Assert.That(productSql, Does.Contain("Test_tags AS TestTags"));
+            Assert.That(productSql, Does.Not.Contain("Test_tags ="));
+            Assert.That(productSql, Does.Not.Contain("@TestTag"));
+            Assert.That(productSql, Does.Not.Contain("Scheme_code ="));
+            Assert.That(productSql, Does.Not.Contain("ROW_NUMBER"));
+            Assert.That(productSql, Does.Not.Contain("xml_response"));
+            Assert.That(allSql, Does.Not.Contain("WHERE"));
+            Assert.That(allSql, Does.Contain("ORDER BY Create_date, Scenario_id;"));
         });
     }
 
@@ -101,13 +121,13 @@ public class DatabaseQueryContractTests
             Assert.That(sql, Does.Not.Contain("Status = 'PASS'"));
             Assert.That(sql, Does.Contain("response.Create_date AS CreatedDate"));
             Assert.That(sql, Does.Contain("response.Last_updated AS LastUpdated"));
-            Assert.That(sql, Does.Contain("response.Build_id AS BuildId"));
+            Assert.That(sql, Does.Not.Contain("Build_id"));
             Assert.That(sql, Does.Contain("response.Scenario_id = @ScenarioId"));
         });
     }
 
     [Test]
-    public void Passing_result_update_should_preserve_creation_date_and_update_status_response_build_and_timestamp()
+    public void Passing_result_update_should_preserve_creation_date_and_update_status_response_and_timestamp()
     {
         var sql = ReadQuery<ResultUpdater>("UpdatePassingResultSql");
 
@@ -115,7 +135,8 @@ public class DatabaseQueryContractTests
         {
             Assert.That(sql, Does.Contain("UPDATE xml_response"));
             Assert.That(sql, Does.Contain("Status = @Status"));
-            Assert.That(sql, Does.Contain("Build_id = @BuildId"));
+            Assert.That(sql, Does.Not.Contain("Build_id"));
+            Assert.That(sql, Does.Not.Contain("@BuildId"));
             Assert.That(sql, Does.Contain("XML_Response = @XmlResponse"));
             Assert.That(sql, Does.Contain("Last_updated = SYSUTCDATETIME()"));
             Assert.That(sql, Does.Contain("Scenario_id = @ScenarioId"));
@@ -127,7 +148,7 @@ public class DatabaseQueryContractTests
     }
 
     [Test]
-    public void Failed_result_update_should_change_only_the_status_and_build()
+    public void Failed_result_update_should_change_only_the_status()
     {
         var sql = ReadQuery<ResultUpdater>("UpdateFailedStatusSql");
 
@@ -135,7 +156,8 @@ public class DatabaseQueryContractTests
         {
             Assert.That(sql, Does.Contain("UPDATE xml_response"));
             Assert.That(sql, Does.Contain("SET Status = @Status"));
-            Assert.That(sql, Does.Contain("Build_id = @BuildId"));
+            Assert.That(sql, Does.Not.Contain("Build_id"));
+            Assert.That(sql, Does.Not.Contain("@BuildId"));
             Assert.That(sql, Does.Contain("Scenario_id = @ScenarioId"));
             Assert.That(sql, Does.Not.Contain("XML_Response"));
             Assert.That(sql, Does.Not.Contain("Last_updated"));
@@ -149,7 +171,10 @@ public class DatabaseQueryContractTests
 
         Assert.Multiple(() =>
         {
-            Assert.That(sql, Does.Contain("INSERT INTO xml_response (Scenario_id, XML_Response, Build_id, Status, Create_date, Last_updated)"));
+            Assert.That(sql, Does.Contain("INSERT INTO xml_response (Scenario_id, XML_Response, Status, Create_date, Last_updated)"));
+            Assert.That(sql, Does.Not.Contain("Build_id"));
+            Assert.That(sql, Does.Not.Contain("@BuildId"));
+            Assert.That(sql, Does.Contain("SELECT @ScenarioId, @XmlResponse, @Status, SYSUTCDATETIME(), SYSUTCDATETIME()"));
             Assert.That(sql, Does.Contain("WHERE NOT EXISTS"));
             Assert.That(sql, Does.Contain("WITH (UPDLOCK, HOLDLOCK)"));
             Assert.That(sql, Does.Not.Contain("UPDATE"));

@@ -135,7 +135,6 @@ public class RadarValidationTests
                             ScenarioId = scenario.ScenarioId,
                             QuoteRef = scenario.QuoteRef,
                             XmlResponse = run.RadarResponseXml,
-                            BuildId = setup.BuildId,
                             Status = "PASS"
                         }, cancellationToken);
                     }
@@ -260,7 +259,6 @@ public class RadarValidationTests
             ScenarioId = baseline.ScenarioId,
             QuoteRef = baseline.QuoteRef,
             XmlResponse = row.RadarResponseXml,
-            BuildId = setup.BuildId,
             CreatedDate = baseline.CreatedDate,
             LastUpdated = baseline.LastUpdated,
             Status = row.Result == ScenarioResult.Pass ? "PASS" : "FAIL"

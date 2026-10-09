@@ -113,7 +113,7 @@ public sealed class RadarTestSetup : IDisposable
 
         return string.IsNullOrWhiteSpace(pipelineSettings.TestTag)
             ? await reader.GetAllScenariosAsync(cancellationToken)
-            : await reader.GetScenariosByTestTagAsync(pipelineSettings.TestTag, cancellationToken);
+            : await reader.GetScenariosByProductCodeAsync(pipelineSettings.TestTag, cancellationToken);
     }
 
     private static (PipelineSettings PipelineSettings, RetrySettings RetrySettings) LoadValidatedPipelineInputs(

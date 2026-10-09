@@ -20,7 +20,7 @@ public class RequestDataReader
 		Create_date AS CreatedDate
 		""";
 	private const string AllScenariosSql = $"SELECT {ScenarioColumns} FROM xml_request ORDER BY Create_date, Scenario_id;";
-	private const string TaggedScenariosSql = $"SELECT {ScenarioColumns} FROM xml_request WHERE Test_tags = @TestTag ORDER BY Create_date, Scenario_id;";
+	private const string ProductScenariosSql = $"SELECT {ScenarioColumns} FROM xml_request WHERE Product_code = @ProductCode ORDER BY Create_date, Scenario_id;";
 	private const string ScenarioByIdSql = $"SELECT {ScenarioColumns} FROM xml_request WHERE Scenario_id = @ScenarioId;";
 
 	public RequestDataReader(SqlConnectionFactory connectionFactory, RetrySettings? retrySettings = null)
@@ -35,9 +35,9 @@ public class RequestDataReader
 		return QueryScenariosAsync(AllScenariosSql, null, cancellationToken);
 	}
 
-	public Task<IReadOnlyList<ScenarioRequest>> GetScenariosByTestTagAsync(string testTag, CancellationToken cancellationToken = default)
+	public Task<IReadOnlyList<ScenarioRequest>> GetScenariosByProductCodeAsync(string productCode, CancellationToken cancellationToken = default)
 	{
-		return QueryScenariosAsync(TaggedScenariosSql, new { TestTag = testTag }, cancellationToken);
+		return QueryScenariosAsync(ProductScenariosSql, new { ProductCode = productCode }, cancellationToken);
 	}
 
 	public async Task<ScenarioRequest?> GetScenarioByIdAsync(string scenarioId, CancellationToken cancellationToken = default)
