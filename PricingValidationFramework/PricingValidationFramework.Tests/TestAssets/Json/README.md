@@ -2,7 +2,7 @@
 
 This folder is the permanent integration point for client-provided Radar JSON contracts and representative payloads.
 
-`RadarJsonResponse` represents the current envelope containing a top-level `response` XML string. `RadarApiClient` deserializes this envelope and normalizes the XML before XSD validation and pricing comparison. Raw XML responses remain supported. Place approved contracts and sample payloads here; changes to the envelope must preserve the XML extraction behavior.
+`RadarJsonResponse` represents the current envelope containing a top-level `response` XML string. `RadarApiClient` deserializes this envelope and normalizes the XML before XPath extraction and pricing comparison. Raw XML responses remain supported. Place approved contracts and sample payloads here; changes to the envelope must preserve the XML extraction behavior. Pricing mappings and named XPath files live separately under `TestAssets/Radar`.
 
 `placeholder-response.json` is an empty placeholder only. It does not define a Radar JSON contract and must not be treated as a production payload.
 

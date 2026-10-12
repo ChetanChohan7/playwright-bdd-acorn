@@ -9,7 +9,7 @@ public class RadarValidationReportRow
 	public string QuoteRef { get; set; } = string.Empty;
 	public string SchemeCode { get; set; } = string.Empty;
 	public string ProductCode { get; set; } = string.Empty;
-	public string SchemaProfile { get; set; } = string.Empty;
+	public string ProfileId { get; set; } = string.Empty;
 	public string RequestXml { get; set; } = string.Empty;
 	public string BaselineXml { get; set; } = string.Empty;
 	public string RadarResponseXml { get; set; } = string.Empty;

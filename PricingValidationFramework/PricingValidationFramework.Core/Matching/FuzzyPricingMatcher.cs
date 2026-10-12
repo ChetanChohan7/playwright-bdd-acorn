@@ -25,8 +25,8 @@ public sealed class FuzzyPricingMatcher
 			decimal? delta = hasActual ? actualValue - field.Value : null;
 			comparisons.Add(new DecimalFieldComparison(
 				field.Key,
-				field.Key,
-				hasActual ? field.Key : string.Empty,
+				expected.Paths[field.Key],
+				hasActual ? actual.Paths[field.Key] : string.Empty,
 				field.Value,
 				hasActual ? actualValue : null,
 				delta,
@@ -38,7 +38,7 @@ public sealed class FuzzyPricingMatcher
 			if (!expected.Values.ContainsKey(field.Key))
 			{
 				comparisons.Add(new DecimalFieldComparison(
-					field.Key, string.Empty, field.Key, null, field.Value, null, ScenarioResult.Fail));
+					field.Key, string.Empty, actual.Paths[field.Key], null, field.Value, null, ScenarioResult.Fail));
 			}
 		}
 

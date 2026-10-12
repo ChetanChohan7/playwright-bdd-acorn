@@ -1,239 +1,178 @@
-using PricingValidationFramework.Core.Configuration;
-using PricingValidationFramework.Core.Matching;
-using PricingValidationFramework.Core.Models.Enums;
-using PricingValidationFramework.Core.Models.Reporting;
-using PricingValidationFramework.Core.Validation;
+using System.Globalization;
+using System.Text.Json;
 using Microsoft.Extensions.Configuration;
+using PricingValidationFramework.Core.Configuration;
+using PricingValidationFramework.Core.Models.Enums;
+using PricingValidationFramework.Core.Validation;
+using PricingValidationFramework.Tests.Helpers.Setup;
 
 namespace PricingValidationFramework.Tests.System.Radar;
 
 [TestFixture]
 public class PricingComparisonServiceTests
 {
-    private readonly string xsdPath = new XsdFileResolver().Resolve("PricingComparisonFixture.xsd");
+    private static PricingProfileConfiguration LoadFixture() => PricingProfileConfiguration.Load(
+        Path.Combine(TestContext.CurrentContext.TestDirectory, "TestAssets", "Radar", "Fixtures", "mappings.json"));
 
     [Test]
-    public void Compare_should_extract_all_decimal_fields_from_the_same_xsd_contract()
+    public void Compare_should_extract_only_configured_fields_and_keep_paths_and_names()
     {
-        var result = CreateService().Compare(
-            "HOME",
-            "A",
-            CreateXml("412.30", "49.48", "461.78", "25.00", "baseline"),
-            CreateXml("412.31", "49.48", "461.79", "30.00", "response"),
-            -0.01m,
-            0.01m);
-
+        var result = new PricingComparisonService(LoadFixture().Profiles).Compare("HOME", "A",
+            CreateXml("412.30", "49.48", "461.78", "25.00"),
+            CreateXml("412.31", "49.48", "461.79", "30.00"), -0.01m, 0.01m);
         Assert.Multiple(() =>
         {
-            Assert.That(result.Error, Is.Null, result.Error);
+            Assert.That(result.Error, Is.Null);
             Assert.That(result.Result, Is.EqualTo(ScenarioResult.Fail));
-            Assert.That(result.SchemaProfile, Is.EqualTo("HOME-A"));
+            Assert.That(result.ProfileId, Is.EqualTo("Route001"));
             Assert.That(result.Fields, Has.Count.EqualTo(4));
             Assert.That(result.PassedFieldCount, Is.EqualTo(3));
             Assert.That(result.FailedFieldCount, Is.EqualTo(1));
-            Assert.That(result.Fields.Single(field => field.FieldKey == "/PricingResponse/Premium/AnnualNet").Expected, Is.EqualTo(412.30m));
-            Assert.That(result.Fields.Single(field => field.FieldKey == "/PricingResponse/Fees/AdminFee").Delta, Is.EqualTo(5m));
-            Assert.That(result.Fields.All(field => field.FieldKey != "/PricingResponse/Label"), Is.True);
+            Assert.That(result.Fields.Single(field => field.FieldKey == "AnnualNet").Expected, Is.EqualTo(412.30m));
+            Assert.That(result.Fields.Single(field => field.FieldKey == "AdminFee").Delta, Is.EqualTo(5m));
+            Assert.That(result.Fields.Single(field => field.FieldKey == "AdminFee").ExpectedPath, Is.EqualTo("/PricingResponse/Fees/AdminFee"));
         });
     }
 
-    [Test]
-    public void Compare_should_fail_when_response_does_not_match_its_xsd()
+    [TestCase(true, "BaselineExtraction")]
+    [TestCase(false, "ResponseExtraction")]
+    public void Extraction_failures_should_be_errors_with_field_and_path(bool invalidBaseline, string stage)
     {
-        var result = CreateService().Compare(
-            "HOME", "A",
-            CreateXml("412.30", "49.48", "461.78", "25.00", "baseline"),
-            CreateXml("412.30", "not-decimal", "461.78", "25.00", "response"),
-            -0.01m, 0.01m);
-
-        Assert.Multiple(() =>
-        {
-            Assert.That(result.Result, Is.EqualTo(ScenarioResult.Fail));
-            Assert.That(result.FailureStage, Is.EqualTo("ResponseXsdValidation"));
-            Assert.That(result.Fields, Is.Empty);
-        });
-    }
-
-    [Test]
-    public void Compare_should_error_when_baseline_does_not_match_its_xsd()
-    {
-        var result = CreateService().Compare(
-            "HOME", "A",
-            CreateXml("not-decimal", "49.48", "461.78", "25.00", "baseline"),
-            CreateXml("412.30", "49.48", "461.78", "25.00", "response"),
-            -0.01m, 0.01m);
-
+        var valid = CreateXml("1", "2", "3", "4");
+        var invalid = CreateXml("invalid", "2", "3", "4");
+        var result = new PricingComparisonService(LoadFixture().Profiles).Compare("HOME", "A",
+            invalidBaseline ? invalid : valid, invalidBaseline ? valid : invalid, -1m, 1m);
         Assert.Multiple(() =>
         {
             Assert.That(result.Result, Is.EqualTo(ScenarioResult.Error));
-            Assert.That(result.FailureStage, Is.EqualTo("BaselineXsdValidation"));
+            Assert.That(result.FailureStage, Is.EqualTo(stage));
+            Assert.That(result.Error, Does.Contain("AnnualNet").And.Contain("/PricingResponse/Premium/AnnualNet"));
             Assert.That(result.Fields, Is.Empty);
         });
     }
 
     [Test]
-    public void Compare_should_error_when_no_profile_matches_product_and_scheme()
+    public void Missing_profile_should_fail_explicitly()
     {
-        var result = CreateService().Compare(
-            "MOTOR", "A",
-            CreateXml("1", "2", "3", "4", "baseline"),
-            CreateXml("1", "2", "3", "4", "response"),
-            -0.01m, 0.01m);
-
-        Assert.That(result.FailureStage, Is.EqualTo("SchemaProfileResolution"));
+        var result = new PricingComparisonService(LoadFixture().Profiles).Compare("UNKNOWN", "A", "<Response/>", "<Response/>", 0, 0);
+        Assert.That(result.FailureStage, Is.EqualTo("ProfileResolution"));
     }
 
-    [Test]
     [TestCase("A")]
     [TestCase("B")]
-    public void Profile_factory_should_use_the_route_xsd_without_field_mappings(string schemeCode)
+    public void Schemes_should_share_one_profile_and_route(string scheme)
     {
-        var settings = CreateRouteSettings();
-        var service = new RadarPricingProfileFactory(
-            new XsdFileResolver(),
-            new XsdValidator(),
-            new FuzzyPricingMatcher()).Create(settings);
-
-        var result = service.Compare(
-            "HOME", schemeCode,
-            CreateXml("10", "20", "30", "4", "baseline"),
-            CreateXml("10.01", "20", "30", "4", "response"),
-            -0.01m, 0.01m);
-
+        var configuration = LoadFixture();
+        var service = new PricingComparisonService(configuration.Profiles);
         Assert.Multiple(() =>
         {
-            Assert.That(result.Result, Is.EqualTo(ScenarioResult.Pass));
-            Assert.That(result.SchemaProfile, Is.EqualTo("Route001"));
-            Assert.That(result.Fields, Has.Count.EqualTo(4));
-            Assert.That(result.Fields.Single(field => field.FieldKey.EndsWith("/AnnualNet", StringComparison.Ordinal)).ExpectedPath, Does.EndWith("AnnualNet"));
+            Assert.That(service.GetProfile("HOME", scheme).ProfileId, Is.EqualTo("Route001"));
+            Assert.That(configuration.CreateRadarRoutes()["Route001"].RouteKey, Is.EqualTo("shared-home"));
         });
     }
 
     [Test]
-    public void Profile_factory_should_reject_a_route_without_an_xsd_mapping()
+    public void All_16_configured_profiles_should_load_and_resolve_their_fields()
     {
-        var settings = CreateRouteSettings();
-        settings.ResponseXsdMappings.Clear();
-        var factory = new RadarPricingProfileFactory(new XsdFileResolver(), new XsdValidator(), new FuzzyPricingMatcher());
-
-        var exception = Assert.Throws<InvalidOperationException>(() => factory.Create(settings));
-
-        Assert.That(exception!.Message, Does.Contain("Route001"));
+        var configuration = new ConfigurationBuilder().SetBasePath(TestContext.CurrentContext.TestDirectory)
+            .AddJsonFile("appsettings.json").Build();
+        var mappings = TestConfigurationLoader.LoadProfiles(configuration);
+        var service = new PricingComparisonService(mappings.Profiles);
+        Assert.That(mappings.Profiles, Has.Count.EqualTo(16));
+        Assert.That(mappings.Profiles.Select(profile => profile.PathsFile).Distinct().Count(), Is.EqualTo(16));
+        Assert.That(configuration.GetSection("RadarSettings:Routes").Exists(), Is.False);
+        foreach (var profile in mappings.Profiles)
+        {
+            foreach (var scheme in profile.SchemeCodes)
+            {
+                var selected = service.GetProfile(profile.ProductCode, scheme);
+                Assert.That(selected, Is.SameAs(profile));
+                Assert.That(selected.Fields, Is.Not.Empty);
+                Assert.That(selected.Fields.ContainsKey(selected.IceField), Is.True);
+            }
+        }
     }
 
     [Test]
-    public async Task Route_comparison_should_isolate_decimal_values_across_20000_concurrent_scenarios()
+    public void Ice_should_use_its_configured_field_without_extracting_the_other_radar_fields()
     {
-        var service = new RadarPricingProfileFactory(
-            new XsdFileResolver(), new XsdValidator(), new FuzzyPricingMatcher()).Create(CreateRouteSettings());
+        var profile = LoadFixture().Profiles.Single();
+        var service = new PricingComparisonService([profile]);
+        const string xml = "<PricingResponse><Premium><AnnualGross>123.45</AnnualGross></Premium></PricingResponse>";
+        Assert.That(service.ExtractIceBaseline("HOME", "ABC", xml), Is.EqualTo(123.45m));
+        Assert.That(service.ValidateBaseline("HOME", "ABC", xml).IsValid, Is.False);
+        profile.IceField = "AdminFee";
+        Assert.Throws<InvalidDataException>(() => service.ExtractIceBaseline("HOME", "ABC", xml));
+    }
+
+    [Test]
+    public void Test_appsettings_should_resolve_its_fixture_without_radar_credentials_for_ice()
+    {
+        var configuration = new ConfigurationBuilder().SetBasePath(TestContext.CurrentContext.TestDirectory)
+            .AddJsonFile("appsettings.PricingProfileTest.json").Build();
+        var service = new PricingComparisonService(TestConfigurationLoader.LoadProfiles(configuration).Profiles);
+        Assert.That(service.ExtractIceBaseline("HOME", "FIXTURE", CreateXml("1", "2", "3", "4")), Is.EqualTo(3m));
+    }
+
+    [TestCase("missingFile")]
+    [TestCase("duplicateProduct")]
+    [TestCase("duplicateId")]
+    [TestCase("missingIceField")]
+    [TestCase("invalidXPath")]
+    [TestCase("emptyFields")]
+    [TestCase("invalidJson")]
+    [TestCase("duplicateField")]
+    public void Loader_should_reject_invalid_mappings(string problem)
+    {
+        var directory = Path.Combine(Path.GetTempPath(), $"pricing-profiles-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(directory);
+        var mappingPath = Path.Combine(directory, "mappings.json");
+        var pathsPath = Path.Combine(directory, "paths.json");
+        var mapping = LoadFixture();
+        var profile = mapping.Profiles.Single();
+        profile.PathsFile = problem == "missingFile" ? "missing.json" : "paths.json";
+        if (problem == "missingIceField") profile.IceField = "not-a-field";
+        if (problem == "duplicateProduct") profile.SchemeCodes.Add("A");
+        if (problem == "duplicateId") mapping.Profiles.Add(profile);
+        var fields = problem == "emptyFields" ? new Dictionary<string, string>() :
+            new Dictionary<string, string> { ["AnnualGross"] = problem == "invalidXPath" ? "[" : "/Response/Amount" };
+        try
+        {
+            File.WriteAllText(mappingPath, problem == "invalidJson" ? "{" : JsonSerializer.Serialize(mapping));
+            File.WriteAllText(pathsPath, problem == "duplicateField"
+                ? """{"fields":{"AnnualGross":"/Response/First","AnnualGross":"/Response/Second"}}"""
+                : JsonSerializer.Serialize(new { fields }));
+            Assert.That(() => PricingProfileConfiguration.Load(mappingPath),
+                problem == "missingFile" ? Throws.TypeOf<FileNotFoundException>() :
+                problem is "invalidJson" or "duplicateField" ? Throws.TypeOf<JsonException>() : Throws.TypeOf<InvalidDataException>());
+        }
+        finally
+        {
+            File.Delete(mappingPath);
+            File.Delete(pathsPath);
+            Directory.Delete(directory);
+        }
+    }
+
+    [Test]
+    public async Task Comparison_should_isolate_values_across_20000_concurrent_scenarios()
+    {
+        var service = new PricingComparisonService(LoadFixture().Profiles);
         var completed = 0;
-        var elapsed = global::System.Diagnostics.Stopwatch.StartNew();
-
         await Parallel.ForEachAsync(Enumerable.Range(0, 20000), new ParallelOptions { MaxDegreeOfParallelism = 8 },
-            (scenarioIndex, _) =>
+            (index, _) =>
             {
-                var amount = scenarioIndex.ToString(global::System.Globalization.CultureInfo.InvariantCulture);
-                var baseline = CreateXml(amount, "2", "3", "4", "baseline")
-                    .Replace("<Fees><AdminFee>4</AdminFee></Fees>",
-                        "<Fees><AdminFee>4</AdminFee><Surcharge>0.5</Surcharge><Surcharge>0.75</Surcharge></Fees>", StringComparison.Ordinal)
-                    .Replace("<PricingResponse xmlns=", "<PricingResponse indexAdjustment=\"1.25\" xmlns=", StringComparison.Ordinal);
-                var response = baseline.Replace("<Surcharge>0.75</Surcharge>", "<Surcharge>0.76</Surcharge>", StringComparison.Ordinal);
-                var result = service.Compare("HOME", scenarioIndex % 2 == 0 ? "A" : "B", baseline, response, -0.01m, 0.01m);
-
-                if (result.Result != ScenarioResult.Pass || result.Fields.Count != 7 ||
-                    result.Fields.Single(field => field.FieldKey.EndsWith("/AnnualNet", StringComparison.Ordinal)).Expected != scenarioIndex ||
-                    result.Fields.Single(field => field.FieldKey.EndsWith("/Surcharge[1]", StringComparison.Ordinal)).Delta != 0.01m)
-                {
-                    throw new InvalidOperationException($"Scenario {scenarioIndex} produced an incorrect comparison: {result.Error}");
-                }
+                var xml = CreateXml(index.ToString(CultureInfo.InvariantCulture), "2", "3", "4");
+                var result = service.Compare("HOME", index % 2 == 0 ? "A" : "B", xml, xml, -0.01m, 0.01m);
+                if (result.Result != ScenarioResult.Pass || result.Fields.Count != 4 ||
+                    result.Fields.Single(field => field.FieldKey == "AnnualNet").Expected != index)
+                    throw new InvalidOperationException($"Scenario {index} produced an incorrect comparison.");
                 Interlocked.Increment(ref completed);
                 return ValueTask.CompletedTask;
             });
-
         Assert.That(completed, Is.EqualTo(20000));
-        TestContext.Out.WriteLine($"Compared {completed} scenarios with seven decimal fields in {elapsed.Elapsed.TotalSeconds:F2} seconds (XML validation and comparison only).");
     }
 
-    [Test]
-    public void Profile_factory_should_reject_a_missing_xsd_file()
-    {
-        var settings = CreateRouteSettings();
-        settings.ResponseXsdMappings["Route001"] = "missing-schema.xsd";
-        var factory = new RadarPricingProfileFactory(new XsdFileResolver(), new XsdValidator(), new FuzzyPricingMatcher());
-
-        Assert.Throws<FileNotFoundException>(() => factory.Create(settings));
-    }
-
-    [Test]
-    public void Pricing_profile_test_appsettings_should_bind_and_run_the_fixture_profile()
-    {
-        var configuration = new ConfigurationBuilder()
-            .SetBasePath(TestContext.CurrentContext.TestDirectory)
-            .AddJsonFile("appsettings.PricingProfileTest.json", optional: false)
-            .Build();
-        var radarSettings = configuration.GetSection("RadarSettings").Get<RadarSettings>()!;
-        var pipelineSettings = configuration.GetSection("PipelineSettings").Get<global::PricingValidationFramework.Core.Models.Common.PipelineSettings>()!;
-        var service = new RadarPricingProfileFactory(
-            new XsdFileResolver(),
-            new XsdValidator(),
-            new FuzzyPricingMatcher()).Create(radarSettings);
-
-        var result = service.Compare(
-            "HOME", "FIXTURE",
-            CreateXml("412.30", "49.48", "461.78", "25.00", "baseline"),
-            CreateXml("412.31", "49.48", "461.79", "25.00", "response"),
-            pipelineSettings.MinThreshold,
-            pipelineSettings.MaxThreshold);
-
-        Assert.Multiple(() =>
-        {
-            Assert.That(radarSettings.ResponseXsdMappings, Has.Count.EqualTo(1));
-            Assert.That(result.Result, Is.EqualTo(ScenarioResult.Pass));
-            Assert.That(result.Fields, Has.Count.EqualTo(4));
-        });
-    }
-
-    private PricingComparisonService CreateService()
-    {
-        return new PricingComparisonService(
-        [
-            new PricingSchemaProfile(
-                "HOME-A",
-                "HOME",
-                "A",
-                xsdPath,
-                new XsdValidator(),
-                new FuzzyPricingMatcher())
-        ]);
-    }
-
-    private static RadarSettings CreateRouteSettings()
-    {
-        return new RadarSettings
-        {
-            Routes = new Dictionary<string, RadarRouteSettings>
-            {
-                ["Route001"] = new() { ProductCode = "HOME", SchemeCodes = ["A", "B"] }
-            },
-            ResponseXsdMappings = new Dictionary<string, string>
-            {
-                ["Route001"] = "PricingComparisonFixture.xsd"
-            }
-        };
-    }
-
-    private static string CreateXml(string annualNet, string insuranceTax, string annualGross, string adminFee, string label)
-    {
-        return $"""
-            <PricingResponse xmlns="urn:pricing-comparison-fixture">
-              <Premium>
-                <AnnualNet>{annualNet}</AnnualNet>
-                <InsuranceTax>{insuranceTax}</InsuranceTax>
-                <AnnualGross>{annualGross}</AnnualGross>
-              </Premium>
-              <Fees><AdminFee>{adminFee}</AdminFee></Fees>
-              <Label>{label}</Label>
-            </PricingResponse>
-            """;
-    }
+    private static string CreateXml(string net, string tax, string gross, string fee) =>
+        $"<PricingResponse><Premium><AnnualNet>{net}</AnnualNet><InsuranceTax>{tax}</InsuranceTax><AnnualGross>{gross}</AnnualGross></Premium><Fees><AdminFee>{fee}</AdminFee></Fees><Unmapped>not-a-decimal</Unmapped></PricingResponse>";
 }

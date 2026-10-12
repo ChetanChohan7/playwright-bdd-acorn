@@ -16,8 +16,8 @@ namespace PricingValidationFramework.Tests.System.Radar;
 [TestFixture]
 public class RadarPricingServiceTests
 {
-	private const string XmlNamespace = "urn:pricing-comparison-fixture";
-	private readonly string xsdPath = new XsdFileResolver().Resolve("PricingComparisonFixture.xsd");
+	private static PricingProfileConfiguration LoadProfiles() => PricingProfileConfiguration.Load(
+		Path.Combine(TestContext.CurrentContext.TestDirectory, "TestAssets", "Radar", "Fixtures", "mappings.json"));
 
 	[TestCase("ABC")]
 	[TestCase("XYS")]
@@ -39,8 +39,7 @@ public class RadarPricingServiceTests
 			NullLogger<RadarApiClient>.Instance,
 			new RetrySettings { ApiRetryCount = 1, ApiRetryDelaySeconds = 0 });
 		var settings = CreateSettings();
-		var comparisonService = new RadarPricingProfileFactory(
-			new XsdFileResolver(), new XsdValidator(), new FuzzyPricingMatcher()).Create(settings);
+		var comparisonService = new PricingComparisonService(LoadProfiles().Profiles);
 		var pricingService = new RadarPricingService(settings, apiClient, new RadarUrlBuilder(), comparisonService);
 
 		var result = await pricingService.RunAsync(
@@ -74,7 +73,7 @@ public class RadarPricingServiceTests
 		Assert.Multiple(() =>
 		{
 			Assert.That(reportRow.Result, Is.EqualTo(ScenarioResult.Pass));
-			Assert.That(reportRow.SchemaProfile, Is.EqualTo("Route001"));
+			Assert.That(reportRow.ProfileId, Is.EqualTo("Route001"));
 			Assert.That(reportRow.FieldComparisons, Has.Count.EqualTo(4));
 			Assert.That(reportRow.BaselineXml, Does.Contain("412.30"));
 			Assert.That(reportRow.RadarResponseXml, Does.Contain("412.31"));
@@ -82,7 +81,7 @@ public class RadarPricingServiceTests
 	}
 
 	[Test]
-	public async Task RunAsync_should_not_call_radar_when_the_scheme_has_no_schema_profile()
+	public async Task RunAsync_should_not_call_radar_when_the_scheme_has_no_profile()
 	{
 		var requestCount = 0;
 		using var httpClient = new HttpClient(new StubHandler(_ =>
@@ -110,13 +109,13 @@ public class RadarPricingServiceTests
 		Assert.Multiple(() =>
 		{
 			Assert.That(result.Comparison.Result, Is.EqualTo(ScenarioResult.Error));
-			Assert.That(result.Comparison.FailureStage, Is.EqualTo("SchemaProfileResolution"));
+			Assert.That(result.Comparison.FailureStage, Is.EqualTo("ProfileResolution"));
 			Assert.That(requestCount, Is.Zero);
 		});
 	}
 
 	[Test]
-	public async Task RunAsync_should_not_call_radar_when_baseline_fails_its_xsd()
+	public async Task RunAsync_should_not_call_radar_when_baseline_extraction_fails()
 	{
 		var requestCount = 0;
 		using var httpClient = new HttpClient(new StubHandler(_ =>
@@ -141,7 +140,7 @@ public class RadarPricingServiceTests
 		Assert.Multiple(() =>
 		{
 			Assert.That(result.Comparison.Result, Is.EqualTo(ScenarioResult.Error));
-			Assert.That(result.Comparison.FailureStage, Is.EqualTo("BaselineXsdValidation"));
+			Assert.That(result.Comparison.FailureStage, Is.EqualTo("BaselineExtraction"));
 			Assert.That(requestCount, Is.Zero);
 		});
 	}
@@ -155,7 +154,7 @@ public class RadarPricingServiceTests
 			capturedRequest = request;
 			return new HttpResponseMessage(HttpStatusCode.OK)
 			{
-				Content = new StringContent("<NotInTheXsd><Premium>1</Premium></NotInTheXsd>", global::System.Text.Encoding.UTF8, "application/xml")
+				Content = new StringContent("<UnmappedResponse><Premium>1</Premium></UnmappedResponse>", global::System.Text.Encoding.UTF8, "application/xml")
 			};
 		}));
 		using var apiClient = new RadarApiClient(
@@ -170,7 +169,7 @@ public class RadarPricingServiceTests
 		Assert.Multiple(() =>
 		{
 			Assert.That(result.RouteId, Is.EqualTo("Route001"));
-			Assert.That(result.RadarResponseXml, Is.EqualTo("<NotInTheXsd><Premium>1</Premium></NotInTheXsd>"));
+			Assert.That(result.RadarResponseXml, Is.EqualTo("<UnmappedResponse><Premium>1</Premium></UnmappedResponse>"));
 			Assert.That(result.Comparison.Result, Is.EqualTo(ScenarioResult.Pass));
 			Assert.That(result.Comparison.FailureStage, Is.EqualTo(RadarPricingService.BaselineCreatedStage));
 			Assert.That(result.Comparison.Fields, Is.Empty);
@@ -227,26 +226,15 @@ public class RadarPricingServiceTests
 					EndpointName = "Endpoint1",
 					RouteKey = "shared-home"
 				}
-			},
-			ResponseXsdMappings = new Dictionary<string, string>(StringComparer.Ordinal)
-			{
-				["Route001"] = "PricingComparisonFixture.xsd"
 			}
 		};
 	}
 
 	private PricingComparisonService CreateComparisonService()
 	{
-		return new PricingComparisonService(
-		[
-			new PricingSchemaProfile(
-				"HOME-ABC-fixture",
-				"HOME",
-				"ABC",
-				xsdPath,
-				new XsdValidator(),
-				new FuzzyPricingMatcher())
-		]);
+		var profile = LoadProfiles().Profiles.Single();
+		profile.SchemeCodes = ["ABC"];
+		return new PricingComparisonService([profile]);
 	}
 
 	private static ScenarioRequest CreateScenario(string schemeCode)
@@ -264,7 +252,7 @@ public class RadarPricingServiceTests
 	private static string CreateXml(string annualNet, string insuranceTax, string annualGross, string adminFee)
 	{
 		return $"""
-			<PricingResponse xmlns="{XmlNamespace}">
+			<PricingResponse>
 			  <Premium>
 			    <AnnualNet>{annualNet}</AnnualNet>
 			    <InsuranceTax>{insuranceTax}</InsuranceTax>

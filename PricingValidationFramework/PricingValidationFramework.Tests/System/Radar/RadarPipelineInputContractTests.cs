@@ -78,13 +78,7 @@ public class RadarPipelineInputContractTests
         var originalMax = Environment.GetEnvironmentVariable("RADAR_MAX_THRESHOLD");
         var originalRequestDate = Environment.GetEnvironmentVariable("RADAR_REQUEST_DATETIME");
         var originalTestTag = Environment.GetEnvironmentVariable("TEST_TAG");
-        var schemaVariables = new[]
-        {
-            "RadarSettings__ResponseXsdMappings__Route001",
-            "RadarSettings__ResponseXsdMappings__Route002",
-            "RadarSettings__ResponseXsdMappings__Route003"
-        };
-        var originalSchemas = schemaVariables.ToDictionary(name => name, Environment.GetEnvironmentVariable);
+        var originalMapping = Environment.GetEnvironmentVariable("PricingProfiles__MappingFile");
 
         try
         {
@@ -93,10 +87,7 @@ public class RadarPipelineInputContractTests
             Environment.SetEnvironmentVariable("RADAR_MAX_THRESHOLD", "20.25");
             Environment.SetEnvironmentVariable("RADAR_REQUEST_DATETIME", "2024-03-01Z09:30:45");
             Environment.SetEnvironmentVariable("TEST_TAG", "smoke");
-            foreach (var name in schemaVariables)
-            {
-                Environment.SetEnvironmentVariable(name, "PricingComparisonFixture.xsd");
-            }
+            Environment.SetEnvironmentVariable("PricingProfiles__MappingFile", "TestAssets/Radar/Fixtures/mappings.json");
 
             using var settings = RadarTestSetup.Create();
 
@@ -113,10 +104,7 @@ public class RadarPipelineInputContractTests
             Environment.SetEnvironmentVariable("RADAR_MAX_THRESHOLD", originalMax);
             Environment.SetEnvironmentVariable("RADAR_REQUEST_DATETIME", originalRequestDate);
             Environment.SetEnvironmentVariable("TEST_TAG", originalTestTag);
-            foreach (var originalSchema in originalSchemas)
-            {
-                Environment.SetEnvironmentVariable(originalSchema.Key, originalSchema.Value);
-            }
+            Environment.SetEnvironmentVariable("PricingProfiles__MappingFile", originalMapping);
         }
     }
 
@@ -159,9 +147,7 @@ public class RadarPipelineInputContractTests
             "BUILD_BUILDID", "RADAR_MIN_THRESHOLD", "RADAR_MAX_THRESHOLD", "RADAR_REQUEST_DATETIME", "TEST_TAG",
             "PipelineSettings__MinThreshold", "PipelineSettings__MaxThreshold",
             "PipelineSettings__RequestTime", "PipelineSettings__TestTag",
-            "RadarSettings__ResponseXsdMappings__Route001",
-            "RadarSettings__ResponseXsdMappings__Route002",
-            "RadarSettings__ResponseXsdMappings__Route003"
+            "PricingProfiles__MappingFile"
         };
         var originalValues = variableNames.ToDictionary(name => name, Environment.GetEnvironmentVariable);
 
@@ -177,10 +163,7 @@ public class RadarPipelineInputContractTests
             Environment.SetEnvironmentVariable("PipelineSettings__MaxThreshold", "20.25");
             Environment.SetEnvironmentVariable("PipelineSettings__RequestTime", "2024-03-01Z09:30:45");
             Environment.SetEnvironmentVariable("PipelineSettings__TestTag", "smoke");
-            foreach (var name in variableNames.Skip(9))
-            {
-                Environment.SetEnvironmentVariable(name, "PricingComparisonFixture.xsd");
-            }
+            Environment.SetEnvironmentVariable("PricingProfiles__MappingFile", "TestAssets/Radar/Fixtures/mappings.json");
 
             using var settings = RadarTestSetup.Create();
 

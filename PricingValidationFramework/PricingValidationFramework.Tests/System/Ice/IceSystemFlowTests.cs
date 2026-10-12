@@ -11,6 +11,7 @@ using PricingValidationFramework.Core.Models.Reporting;
 using PricingValidationFramework.Core.Reporting;
 using PricingValidationFramework.Tests.Helpers.Reporting;
 using PricingValidationFramework.Tests.Integration.Ice;
+using PricingValidationFramework.Core.Validation;
 
 namespace PricingValidationFramework.Tests.System.Ice;
 
@@ -115,9 +116,9 @@ public class IceSystemFlowTests
             Assert.Multiple(() =>
             {
                 Assert.That(lines, Has.Length.EqualTo(4));
-                Assert.That(lines[1], Does.EndWith(",FAIL"));
-                Assert.That(lines[2], Does.EndWith(",ERROR"));
-                Assert.That(lines[3], Does.EndWith(",PASS"));
+                Assert.That(lines[1], Does.Contain(",FAIL,"));
+                Assert.That(lines[2], Does.Contain(",ERROR,"));
+                Assert.That(lines[3], Does.Contain(",PASS,"));
             });
         }
         finally
@@ -144,7 +145,7 @@ public class IceSystemFlowTests
             xml = retainOuterQuotes ? json : json[1..^1];
         }
 
-        var value = new XmlValueExtractor().ExtractBaselineValue(xml);
+        var value = new XmlValueExtractor().ExtractValue(xml, "premium", "/Response/Premium");
 
         Assert.That(value, Is.EqualTo(100.00m));
     }
@@ -175,7 +176,12 @@ public class IceSystemFlowTests
         try
         {
             var iceValue = new JsonValueExtractor().ExtractPremium(payload);
-            var baselineValue = new XmlValueExtractor().ExtractBaselineValue(scenario.XmlResponse);
+            var profiles = new PricingComparisonService([new PricingProfile
+            {
+                ProfileId = "ice-test", ProductCode = "HOME", SchemeCodes = ["ABC"], IceField = "premium",
+                Fields = new Dictionary<string, string> { ["premium"] = "/Response/Premium", ["unused"] = "/Response/Missing" }
+            }]);
+            var baselineValue = profiles.ExtractIceBaseline(scenario.ProductCode, scenario.SchemeCode, scenario.XmlResponse);
             row = IceReportingHelper.BuildRow("system-test", scenario, iceValue, baselineValue,
                 iceValue == baselineValue ? ScenarioResult.Pass : ScenarioResult.Fail);
         }

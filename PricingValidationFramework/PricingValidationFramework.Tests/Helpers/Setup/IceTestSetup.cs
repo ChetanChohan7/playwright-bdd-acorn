@@ -9,6 +9,7 @@ using PricingValidationFramework.Core.ExternalAPIAccess.UrlBuilders;
 using PricingValidationFramework.Core.Extraction;
 using PricingValidationFramework.Core.Logging;
 using PricingValidationFramework.Core.Models.Database;
+using PricingValidationFramework.Core.Validation;
 
 namespace PricingValidationFramework.Tests.Helpers.Setup;
 
@@ -22,7 +23,7 @@ public sealed class IceTestSetup : IDisposable
         IceApiClient apiClient,
         IceUrlBuilder urlBuilder,
         JsonValueExtractor jsonExtractor,
-        XmlValueExtractor xmlExtractor,
+        PricingComparisonService pricingProfiles,
         IceTestRunLogger logger,
         ILoggerFactory loggerFactory)
     {
@@ -31,7 +32,7 @@ public sealed class IceTestSetup : IDisposable
         ApiClient = apiClient;
         UrlBuilder = urlBuilder;
         JsonExtractor = jsonExtractor;
-        XmlExtractor = xmlExtractor;
+        PricingProfiles = pricingProfiles;
         Logger = logger;
         this.loggerFactory = loggerFactory;
     }
@@ -41,7 +42,7 @@ public sealed class IceTestSetup : IDisposable
     public IceApiClient ApiClient { get; }
     public IceUrlBuilder UrlBuilder { get; }
     public JsonValueExtractor JsonExtractor { get; }
-    public XmlValueExtractor XmlExtractor { get; }
+    public PricingComparisonService PricingProfiles { get; }
     public IceTestRunLogger Logger { get; }
 
     public static async Task<IReadOnlyList<IceBaselineScenario>> DiscoverScenariosAsync(
@@ -68,6 +69,7 @@ public sealed class IceTestSetup : IDisposable
         var retrySettings = configuration.GetSection("RetrySettings").Get<RetrySettings>()
             ?? throw new InvalidOperationException("RetrySettings is missing.");
         retrySettings.ValidateApiRetrySettings();
+        var profiles = TestConfigurationLoader.LoadProfiles(configuration);
 
         var buildId = Environment.GetEnvironmentVariable("BUILD_BUILDID") ?? "local";
 
@@ -85,7 +87,7 @@ public sealed class IceTestSetup : IDisposable
             apiClient,
             new IceUrlBuilder(),
             new JsonValueExtractor(),
-            new XmlValueExtractor(),
+            new PricingComparisonService(profiles.Profiles),
             new IceTestRunLogger(loggerFactory.CreateLogger<IceTestRunLogger>()),
             loggerFactory);
     }

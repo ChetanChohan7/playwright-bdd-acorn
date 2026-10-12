@@ -61,8 +61,8 @@ NUnit ICE test
 │   └── CsvReportWriter.cs
 └── Validation/
     ├── PipelineInputValidator.cs
-    ├── XsdFileResolver.cs
-    └── XsdValidator.cs
+    ├── PricingComparisonService.cs
+    └── RadarPricingService.cs
 
 PricingValidationFramework.Tests/
 ├── Integration/
@@ -73,7 +73,6 @@ PricingValidationFramework.Tests/
 ├── TestAssets/
 │   ├── Ice/
 │   ├── Radar/
-│   ├── Xsd/
 │   └── Json/
 ├── TestResults/
 │   ├── Reports/
@@ -90,7 +89,8 @@ NUnit owns scenario discovery and scenario-level concurrency. The Radar fixture 
 ### Configuration
 
 - `DatabaseSettings`: owns `ConnectionString`.
-- `RadarSettings`: owns the case-sensitive `Endpoints`, `Routes`, and route-keyed `ResponseXsdMappings` dictionaries as configuration data only.
+- `RadarSettings`: owns endpoint settings and in-memory routes derived from the central mapping file. Appsettings contains endpoints, not product/scheme routes.
+- `PricingProfileConfiguration`: loads `PricingProfiles:MappingFile` and referenced XPath files once, validates unique product/scheme mappings and Ice field references, and derives Radar routes. All product-specific configuration lives under `TestAssets/Radar`.
 - `RadarEndpointSettings`: owns one physical endpoint's `BaseUrl`, `ApiKeyHeaderName`, and `ApiKeyValue`.
 - `RadarRouteSettings`: owns one explicitly keyed route's `ProductCode`, `SchemeCodes`, `EndpointName`, and `RouteKey`.
 - `IceSettings`: owns the ICE endpoint, API authentication, and mandatory client-certificate configuration, including local PFX or Key Vault PFX material.
@@ -106,7 +106,7 @@ NUnit owns scenario discovery and scenario-level concurrency. The Radar fixture 
 - `Models/Database/ScenarioResponse`: represents baseline/result data associated with `xml_response`.
 - `Models/External/RadarJsonResponse`: represents the JSON envelope's top-level `response` XML string. `RadarApiClient` deserializes the envelope and normalizes its XML; raw XML responses are also supported.
 - `Models/Reporting/RadarValidationReportRow`: represents one Radar scenario summary with its dynamic decimal field results.
-- `Models/Reporting/DecimalFieldComparison`: represents one automatically discovered decimal XML path comparison.
+- `Models/Reporting/DecimalFieldComparison`: represents a named configured field comparison, retaining its XPath and decimal values.
 - `Models/Reporting/IceValidationReportRow`: represents one ICE report row.
 - `Models/Enums/ScenarioResult`: shared scenario outcome enum for PASS, FAIL, and ERROR semantics.
 
@@ -180,17 +180,15 @@ API clients own HTTP communication only. `RadarApiClient` acquires a permit for 
 ### Radar support
 
 - `RadarPricingService`: resolves the API route, verifies a product/scheme pricing profile exists, validates the baseline before the HTTP call, calls Radar, then delegates the two-XML comparison to Core.
-- `RadarPricingProfileFactory`: creates one profile per exact ProductCode/SchemeCode route mapping, resolving one shared baseline/response XSD without manual decimal field mappings.
-- `PricingComparisonService`: validates both XML documents against the same profile XSD, extracts decimal values into `PricingDocument`, and returns field-level and overall outcomes.
-- `XsdFileResolver`: resolves a configured XSD filename within the trusted test XSD directory.
-- `XsdValidator`: validates XML and caches compiled schemas by full path.
+- `PricingComparisonService`: resolves a product/scheme profile, extracts both documents using the same named XPaths, and returns field-level and overall outcomes. Ice reuses its profile lookup and single-field baseline extraction.
+- `XmlValueExtractor`: parses stored/raw XML safely and extracts exactly one decimal element or attribute per configured field. No XSD validation remains.
 - `RadarTestRunLogger`: writes Radar-specific logs.
 
 ### Matching
 
-- `FuzzyPricingMatcher`: compares two scenario-local, XSD-derived `PricingDocument` value maps by full XML path using dictionary lookups and inclusive `MinThreshold <= Actual - Expected <= MaxThreshold` bounds. The route-based flow needs no configured field mappings.
+- `FuzzyPricingMatcher`: compares scenario-local `PricingDocument` values by configured field name with inclusive `MinThreshold <= Actual - Expected <= MaxThreshold` bounds. Paths remain available for reporting.
 
-Non-decimal values are ignored by the matcher but remain subject to full XSD validation. Optional decimal paths absent on both sides are skipped; one-sided missing paths fail. Each present XSD decimal's full XML path is its FieldKey and is matched directly between baseline and response. ICE remains separate and unchanged.
+Only configured fields are extracted. Missing, ambiguous or non-numeric values produce extraction ERRORs, even if absent on both sides; unrelated XML is ignored. Ice extracts only its selected field and keeps exact equality.
 
 ### ICE support
 
@@ -211,20 +209,19 @@ xml_request
   -> Trim ProductCode and SchemeCode
   -> NUnit test loads baseline XML and calls RadarPricingService
   -> Resolve exactly one API route by ProductCode + SchemeCode
-  -> Select the cached route XSD through ResponseXsdMappings
-  -> Validate baseline XML against the route XSD
+  -> Select the referenced XPath file from the shared mapping
+  -> Extract configured baseline values
   -> Call Radar using route EndpointName + RouteKey
-  -> Validate response XML against the same route XSD
-  -> Extract XSD-typed decimal elements and attributes into scenario-local PricingDocuments
-  -> FuzzyPricingMatcher compares matching full paths automatically
+  -> Extract response values using the same XPaths into a scenario-local PricingDocument
+  -> FuzzyPricingMatcher compares matching field names
   -> Return scenario outcome and field details to the test
   -> Test persists overall PASS/FAIL and spools the completed report row to disk
-  -> Teardown streams one CSV containing each SUMMARY followed by its dynamic FIELD rows
+  -> Teardown streams one flat CSV with XML only on the first row per scenario
 ```
 
-`RadarSettings.ResponseXsdMappings` maps each route ID to one XSD filename. All schemes on that route share the contract. Schemes needing different schemas belong to separate routes, which may still share an endpoint and RouteKey. Schemas are resolved and compiled during setup; missing mappings, missing files, and invalid schemas fail before API resources are created.
+`TestAssets/Radar/mappings.json` owns each profile's ID, product, schemes, endpoint reference, route key, paths filename and Ice field. Referenced files under `XPathProfiles` contain only named XPath expressions. Setup loads them once and rejects missing/invalid mappings before HTTP resources are created. The 16 shipped files are editable templates, not production contracts. Multiple mappings may share a paths file.
 
-The Radar CSV uses a fixed header for every schema. It writes one SUMMARY row per scenario and one FIELD row per discovered decimal field. Full XML paths are the field keys; request, baseline, and API XML appear only in the final columns of the SUMMARY row. Completed rows are held in a temporary disk spool, with only scenario IDs and offsets indexed in memory. Teardown reads rows in scenario order without materializing all payloads; disposal deletes the spool. This supports the 20,000-scenario report workload without retaining every completed response in memory. NUnit retains request test cases separately.
+Radar writes one row per configured field, repeating scenario identifiers and overall result. Request, baseline and API XML appear only on the first row of each scenario. A scenario with no comparisons still gets an outcome row. Completed results are held in a disk spool with only IDs and offsets indexed in memory. Teardown streams scenario-sorted results; disposal deletes the spool. A 20,000-scenario regression workload covers this path. NUnit retains request test cases separately.
 
 Scenario discovery preserves the existing test-tag filter and rejects duplicate `ScenarioId` values before execution. Test names include only a sanitized, bounded `ScenarioId`; discovery errors become one visible failed discovery case. The Radar fixture uses `[Parallelizable(ParallelScope.Children)]`, with `[assembly: LevelOfParallelism(4)]`. No internal worker pool or scenario scheduler exists.
 
@@ -254,9 +251,9 @@ ConnectionString
 
 `RadarSettings.Endpoints` contains entries keyed by explicit physical endpoint codes such as `Endpoint1` and `Endpoint2`.
 
-`RadarSettings.Routes` contains entries keyed by explicit user-supplied route codes such as `Route001` and `Route002`. Route dictionary keys have no business meaning and are not derived from scenario data.
+`RadarSettings.Routes` is populated in memory from the central mappings, keyed by profile ID. It is not read from appsettings.
 
-`RadarSettings.ResponseXsdMappings` registers one baseline/response XSD filename per route ID. Compiled schemas are cached for the run with thread-safe lazy initialization. Every baseline and response is validated before comparing decimal values. No field paths or values belong in appsettings, and validation cannot be disabled.
+`PricingProfiles:MappingFile` points to the central mapping file. Each mapping references a separate XPath dictionary used against both baseline and API XML. Named fields and routing are not duplicated in appsettings.
 
 Each `RadarEndpointSettings` entry contains:
 
@@ -275,7 +272,7 @@ EndpointName
 RouteKey
 ```
 
-Radar request XML is sent unchanged and is not validated against an XSD. The stored baseline XML and Radar response XML are both validated by the selected pricing profile.
+Radar request XML is sent unchanged. Configured decimal fields are extracted from both the stored baseline and API XML; no full-document schema validation is performed.
 
 Runtime selection trims the database ProductCode and SchemeCode values, then performs case-sensitive field matching. Exactly one route must match. Zero or multiple matches are scenario ERRORs.
 
@@ -393,17 +390,16 @@ If comparison cannot complete because of a technical failure, the row is written
 
 ```text
 Baseline XML + Radar response XML
-  -> Validate both against the selected shared profile XSD
-  -> Extract all XSD-declared decimal elements and attributes
+  -> Extract configured fields using the same XPath file
   -> Build shared PricingDocument values for each XML
-  -> FuzzyPricingMatcher compares XSD-derived decimal fields by full path
+  -> FuzzyPricingMatcher compares decimal fields by configured name
   -> PricingComparisonResult (field results + overall result)
   -> RadarValidationReportRow
   -> ResultUpdater
-  -> One CSV summary row followed by dynamic field rows
+  -> Flat CSV field rows, with payloads only on the first row per scenario
 ```
 
-Pricing comparison and XSD validation live in Core. NUnit loads the baseline, calls `RadarPricingService`, persists the returned overall status, collects the report row, and asserts the returned outcome. `FuzzyPricingMatcher` ignores non-decimal properties; full-document schema validity remains the XSD validator's responsibility.
+Pricing comparison and XPath extraction live in Core. NUnit loads the baseline, invokes the service, persists eligible PASS/FAIL results and asserts the outcome. There is no whole-document schema validation. Initial-baseline creation still stores the API response without extraction or comparison.
 
 ICE comparison remains in the ICE test and is unchanged.
 
@@ -416,11 +412,11 @@ AND
 Delta <= MaxThreshold
 ```
 
-Both bounds are inclusive. Overall scenario PASS requires all compared decimal fields to pass. Optional or nil fields absent on both sides are skipped; a value present on only one side fails. An empty comparison is ERROR. Repeated elements are paired by index and require stable ordering. Baseline XSD failure is ERROR before the API request; response XSD failure is reported as scenario FAIL.
+Both bounds are inclusive. All compared fields must pass. An empty comparison or an extraction failure is ERROR, not PASS/FAIL persistence. Repeated elements require explicit one-based positions or identifying predicates in the mapping. Each XPath must select exactly one element or attribute.
 
 No percentage difference or zero-baseline special rule is used. A baseline value of zero is valid because the comparison is subtraction-based.
 
-Retries are infrastructure concerns only. A retry must never recalculate business results or convert a threshold failure, premium mismatch, XSD failure, pipeline validation failure, configuration failure, or data validation failure into a pass. Once a scenario has a business failure, it remains failed.
+Retries are infrastructure concerns only. A retry must not convert a threshold mismatch, extraction error or configuration error into a pass.
 
 ### Financial data types
 
@@ -440,9 +436,10 @@ Shared structure and non-secret defaults only:
     "ConnectionString": ""
   },
   "RadarSettings": {
-    "Endpoints": {},
-    "Routes": {},
-    "ResponseXsdMappings": {}
+    "Endpoints": {}
+  },
+  "PricingProfiles": {
+    "MappingFile": "TestAssets/Radar/mappings.json"
   },
   "IceSettings": {
     "IceEndpoint": "",
@@ -463,7 +460,7 @@ Shared structure and non-secret defaults only:
 }
 ```
 
-Each `ResponseXsdMappings` entry is keyed by route ID and contains only an XSD filename. The same XSD validates stored baseline Radar XML and current Radar response XML. Decimal elements and attributes are discovered at runtime; no field mappings are configured. Separate routes may share a `RouteKey` while selecting different contracts.
+Each central mapping declares profile ID, product/schemes, Radar routing, paths file and Ice field. XPath files contain named expressions only. Separate mappings may share a route key or paths file. The endpoint and runtime settings below remain environment-specific.
 
 ### appsettings.Development.json
 
@@ -484,24 +481,6 @@ Each `ResponseXsdMappings` entry is keyed by route ID and contains only an XSD f
         "ApiKeyHeaderName": "PLACEHOLDER-HEADER-2",
         "ApiKeyValue": "development-placeholder-value-2"
       }
-    },
-    "Routes": {
-      "Route001": {
-        "ProductCode": "HOME",
-        "SchemeCodes": ["ABC", "XYS", "POL"],
-        "EndpointName": "Endpoint1",
-        "RouteKey": "home-abc"
-      },
-      "Route002": {
-        "ProductCode": "HOME",
-        "SchemeCodes": ["XYZ"],
-        "EndpointName": "Endpoint1",
-        "RouteKey": "home-xyz"
-      }
-    },
-    "ResponseXsdMappings": {
-      "Route001": "Home_ABC.xsd",
-      "Route002": "Home_XYZ.xsd"
     }
   },
   "IceSettings": {
@@ -544,17 +523,6 @@ Each `ResponseXsdMappings` entry is keyed by route ID and contains only an XSD f
         "ApiKeyHeaderName": "PLACEHOLDER-HEADER-2",
         "ApiKeyValue": "development-placeholder-value-2"
       }
-    },
-    "Routes": {
-      "Route001": {
-        "ProductCode": "HOME",
-        "SchemeCodes": ["ABC"],
-        "EndpointName": "Endpoint1",
-        "RouteKey": "home-abc"
-      }
-    },
-    "ResponseXsdMappings": {
-      "Route001": "Home_ABC.xsd"
     }
   },
   "IceSettings": {
@@ -667,7 +635,7 @@ NUnit test
     -> RadarPricingService
     -> Resolve API route + pricing profile independently
     -> BaselineDataReader provides xml_response baseline XML
-    -> Validate/extract baseline and Radar decimals from shared profile XSD
+    -> Extract baseline and Radar decimals using the shared XPath file
     -> Match baseline/response decimal values by full XML path
     -> Compare each Actual - Expected against inclusive delta range
     -> UpdateResultAsync: PASS writes status + Radar response XML; FAIL writes status + build ID only
@@ -705,7 +673,7 @@ ICE must not:
 - Resolve `SchemeCode`.
 - Read `RadarSettings`.
 - Use Radar endpoint settings or Radar authentication.
-- Perform XSD validation.
+- Perform pricing extraction or comparison.
 - Call `ResultUpdater`.
 - Update `xml_response`.
 - Store results in the database.
@@ -724,7 +692,7 @@ ScenarioId
 QuoteRef
 SchemeCode
 ProductCode
-SchemaProfile
+ProfileId
 FieldComparisons
 FailureStage
 Error
@@ -735,7 +703,7 @@ Result
 
 ### ICE report
 
-`Models/Reporting/IceValidationReportRow` contains only:
+`Models/Reporting/IceValidationReportRow` contains:
 
 ```text
 BuildId
@@ -746,9 +714,13 @@ ProductCode
 IceValue
 BaselineValue
 Result
+ProfileId
+FieldName
+XPath
+Error
 ```
 
-The `Result` field uses `ScenarioResult` and serializes to `PASS`, `FAIL`, or `ERROR` in CSV. `Difference`, `MinThreshold`, `MaxThreshold`, `FuzzyMatch`, request XML, response XML, and failure-reason fields are not part of the ICE report.
+The `Result` field serializes to `PASS`, `FAIL`, or `ERROR`. Ice also reports `ProfileId`, `FieldName`, `XPath` and `Error`. It has no difference/threshold columns or XML payload columns.
 
 `CsvReportWriter` writes the ICE report to `Ice_<BuildId>.csv`.
 
@@ -761,7 +733,7 @@ ICE report field ownership:
 
 ICE validation is exact equality and does not calculate or report `Difference` values.
 
-Radar CSV contains one SUMMARY row per scenario and one FIELD row per discovered decimal field. Field rows use the full XML path as FieldKey and include baseline/API paths, expected/actual/delta, the inclusive range, and field result. Request, baseline, and API XML are stored in the final columns of the SUMMARY row only. Completed payloads are spooled to disk and streamed into the final atomic CSV rather than accumulated in memory.
+Radar CSV is flat with the header `ScenarioId,QuoteRef,ProductCode,SchemeCode,ProfileId,FieldName,XPath,BaselineValue,ApiValue,Difference,MinDifference,MaxDifference,FieldResult,ScenarioResult,FailureStage,Error,RequestXml,BaselineXml,ApiXml`. Difference is API minus baseline. There are no summary or record-type rows. XML appears only on the first row per scenario; remaining rows refer back by ScenarioId. Outcomes without comparisons still produce one row. Completed payloads are spooled and streamed to the atomic final CSV.
 
 ICE and Radar use the same operational logging standard but different report columns.
 
@@ -805,33 +777,27 @@ These report and log names are mandatory. Radar and ICE output remains separate.
 
 `TestResults/` is not part of the source-code structure and must be excluded from source control. Separate top-level `Reports/` and `Logs/` folders are not permitted.
 
-### Radar XSD validation failure handling
+### Extraction failure handling
 
-When a Radar response fails XSD validation:
+Baseline extraction fails before the Radar call. Response extraction errors occur after the call. Both are technical ERROR results: log the field/path diagnostics, report the scenario, do not update the baseline, and continue with other cases. Initial-baseline creation deliberately bypasses extraction.
 
-1. Mark the current scenario as `FAILED`.
-2. Write the validation errors to the Radar log.
-3. Create a Radar report entry.
-4. Persist scenario-level FAIL with `UpdateResultAsync` (status and build ID; the baseline XML is kept).
-5. Do not compare decimal fields after validation fails.
-6. Continue processing the remaining scenarios.
+Local outputs are written under the test output's `TestResults` directory. Both pipelines stage Reports and Logs and publish them with `always()` conditions, including after test failures. Missing outputs are surfaced after available files are staged. Cancellation publication is best-effort; process/agent loss cannot guarantee files. Routine logs exclude credentials and XML; restrict access to the CSV payloads.
 
-A single scenario validation failure must not terminate the full execution.
+## 12. Pricing Mapping Storage
 
-## 12. XSD Storage
-
-XSD files are stored under:
+Files are stored under:
 
 ```text
 PricingValidationFramework.Tests/
 └── TestAssets/
-    └── Xsd/
-        ├── Home.xsd
-        ├── Motor.xsd
-        └── Travel.xsd
+    └── Radar/
+        ├── mappings.json
+        └── XPathProfiles/
+            ├── Profile01.json
+            └── ... Profile16.json
 ```
 
-Future XSD-to-combination configuration is outside the endpoint model prepared here. `RadarEndpointSettings` remains limited to `BaseUrl` and `ApiKeyValue`.
+Mappings contain product/scheme selection, routing, paths file reference and Ice field selection. Paths files contain only a `fields` dictionary. Appsettings retains the mapping-file location and environment/runtime settings, not duplicate routes. URLs/credentials stay outside assets. Files are copied to output and loaded once per setup. Namespace-prefix configuration is not provided; expressions must work with the actual XML. See README for the editable template format and production setup checklist.
 
 ## 13. Certificate Strategy
 
@@ -902,7 +868,6 @@ Cancellation applies to:
 - `RadarApiClient`
 - `IceApiClient`
 - `PipelineInputValidator`
-- `XsdValidator`
 - `CsvReportWriter`
 - `RadarTestRunLogger`
 - `IceTestRunLogger`
@@ -927,7 +892,7 @@ Radar cases never write directly to a shared CSV. Each case creates one terminal
 
 ### Report ordering
 
-Reports must be deterministic and sorted by `ScenarioId` ascending before final CSV generation. Radar writes each scenario SUMMARY followed by its field details sorted by FieldKey in `Radar_<BuildId>.csv`. ICE report rows are sorted by `ScenarioId` ascending before writing `Ice_<BuildId>.csv`.
+Reports sort by ScenarioId, then Radar field name. XML appears on the first row per scenario; sorting/filtering can move or hide that row. Radar writes `Radar_<BuildId>.csv`; Ice writes `Ice_<BuildId>.csv`.
 
 Parallel completion order does not affect report ordering. ICE reporting and logging remain separate and are not changed by this Radar implementation.
 
@@ -945,16 +910,16 @@ RequestDataReader
   -> Up to four NUnit child cases execute concurrently
   -> Each case loads its baseline XML and delegates to Core RadarPricingService
   -> Resolve API route and exact product/scheme pricing profile separately
-  -> Validate baseline XSD before making the API request
+  -> Extract baseline XPath values before making the API request
   -> RadarApiClient acquires shared limiter permit per HTTP attempt
-  -> Validate both XMLs with the profile XSD and extract decimal values to scenario-local PricingDocuments
+  -> Extract API values using the same XPath file into a scenario-local PricingDocument
   -> FuzzyPricingMatcher returns decimal field details and the overall result
   -> When an API response exists: PASS persists status + response XML; FAIL persists status + build ID only
   -> Add one summary row with its field details to the concurrent collection
-  -> One Radar CSV writes summary then dynamic detail rows per scenario
+  -> One flat Radar CSV writes dynamic field rows with XML once per scenario
 ```
 
-Each case asserts its own PASS, FAIL, or ERROR outcome, so one failed scenario does not prevent unrelated cases from completing. Request XML is not XSD-validated. Baseline and Radar response XML are both validated and decimal-extracted using the same selected profile XSD. An absent profile/XSD is a configuration ERROR, not a fallback. Every configured route requires its approved XSD; decimal paths are discovered automatically. Cancellation propagates separately and does not add a normal comparison row. ICE remains a separate flow and is not changed by this Radar implementation.
+Each case asserts its own outcome without preventing unrelated cases from completing. Baseline and Radar response values are extracted with the same configured XPaths; missing profiles are errors, not fallbacks. No whole-document validation is performed. Cancellation propagates separately. Ice shares profile resolution and single-field extraction, not Radar API execution.
 
 ## 19. Updated ICE Execution Flow
 
@@ -971,7 +936,8 @@ IceTestSetup
   -> IceApiClient with certificate and transient retry policy
   -> JsonValueExtractor
   -> ICE Premium
-  -> XmlValueExtractor
+  -> Resolve product/scheme mapping and its iceField
+  -> XmlValueExtractor evaluates only that configured XPath
   -> Baseline Premium
   -> Exact value comparison
   -> IceValidationReportRow
@@ -980,7 +946,7 @@ IceTestSetup
   -> ICE log
 ```
 
-ICE remains independent from Radar. It does not resolve scheme configuration, use Radar authentication or throttling, perform XSD validation, call `ResultUpdater`, or update `xml_response`.
+Ice reads the shared product/scheme mappings but does not use Radar credentials or throttling, call `ResultUpdater`, or update `xml_response`. Its API JSON extraction and exact comparison are unchanged.
 
 ICE uses `BaselineDataReader` as its only database reader, obtains identifiers through the `xml_request` join without loading request XML, and performs comparison/assertion logic directly in the NUnit test.
 
@@ -1018,8 +984,8 @@ ICE uses one named `TestCaseSource` case per selected baseline and remains expli
 - UAT certificate material is loaded in memory and attached to an ICE-specific `HttpClientHandler`; agent certificate-store installation is not required.
 - Radar and ICE produce separate reports and log files.
 - Report and log names are fixed as `Radar_<BuildId>.csv`, `Ice_<BuildId>.csv`, `Radar_<BuildId>.log`, and `Ice_<BuildId>.log`.
-- XSD files are resolved from `PricingValidationFramework.Tests/TestAssets/Xsd`.
-- Radar baseline XSD failure is ERROR before the API call. Radar response XSD failure is scenario-level FAIL: log, report, persist the FAIL status and build ID with `UpdateResultAsync` (the baseline XML is kept), skip field matching, then continue with the next scenario.
+- Pricing mappings and XPath files are resolved from `TestAssets/Radar` by default and copied into test output.
+- Baseline/response extraction failures are technical ERRORs. Log and report them without updating the baseline; continue with other scenarios.
 
 NUnit owns scenario execution, schemes select Radar endpoint groups, endpoint groups own Radar credentials, and ICE remains an independent validation path.
 
@@ -1038,14 +1004,14 @@ The architecture reflects the current implementation:
 - Azure Key Vault supplies UAT Radar keys, ICE secrets, and certificate material.
 - ICE certificates are mandatory and loaded in memory without agent certificate-store installation.
 - Radar endpoint grouping allows multiple schemes to share one endpoint group and credential.
-- New schemes require only configuration, an XSD file, and test data.
+- New schemes require a mapping, a matching XPath file and test data, not product-specific classes.
 - NUnit tests orchestrate execution; no application-level orchestrator is required.
 - Pipeline input validation occurs before database access, API calls, or output generation.
 - Database responsibilities are separated between request reads, baseline reads, and result updates.
 - ICE uses `BaselineDataReader.GetPassingBaselineScenariosAsync()` and `IceBaselineScenario`, with identifiers joined from `xml_request` without loading request XML.
-- Radar XSD failures are isolated to the current scenario and do not stop the run.
+- Radar extraction failures are isolated to the current scenario and do not stop the run.
 - Radar and ICE have separate reports, logs, output names, and flow-specific responsibilities.
-- XSD files have a fixed location and are resolved from scheme configuration.
+- Mapping-file location is configurable; paths-file locations are relative to that file.
 - NUnit owns Radar concurrency with four workers; there is no internal scenario worker pool.
 - Radar rate limiting is mandatory with a configurable overall request rate, staggered starts, and no catch-up bursts; the checked-in 2 requests-per-second gives a minimum 500 ms gap.
 - Every Radar HTTP retry enters the shared pacing gate after the longer of local backoff and valid `Retry-After`; one sorted report is written after scenario cases complete.

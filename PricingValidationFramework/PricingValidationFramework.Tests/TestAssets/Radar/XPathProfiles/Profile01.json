@@ -1,0 +1,9 @@
+{
+  "fields": {
+    "grossPremium": "/Response/Totals/GrossPremium",
+    "tax": "/Response/Totals/Tax",
+    "netPremium": "/Response/Totals/NetPremium",
+    "fee": "/Response/Totals/Fee",
+    "discount": "/Response/Totals/Discount"
+  }
+}

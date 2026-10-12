@@ -12,4 +12,8 @@ public class IceValidationReportRow
 	public decimal? IceValue { get; set; }
 	public decimal? BaselineValue { get; set; }
 	public ScenarioResult Result { get; set; }
+	public string ProfileId { get; set; } = string.Empty;
+	public string FieldName { get; set; } = string.Empty;
+	public string XPath { get; set; } = string.Empty;
+	public string Error { get; set; } = string.Empty;
 }

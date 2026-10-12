@@ -15,6 +15,10 @@ public class IceTestRunLogger
 
 	public void ExecutionCompleted(string buildId) => logger.LogInformation("ICE workload completed. BuildId={BuildId}.", buildId);
 
+	public void BaselineFieldSelected(string scenarioId, string profileId, string fieldName, string xpath)
+		=> logger.LogInformation("ICE baseline selection. ScenarioId={ScenarioId}, ProfileId={ProfileId}, FieldName={FieldName}, XPath={XPath}.",
+			scenarioId, profileId, fieldName, xpath);
+
 	public void ExecutionFailed(string scenarioId, string quoteRef, Exception exception)
 		=> logger.LogError(exception, "ICE execution failed. ScenarioId={ScenarioId}, QuoteRef={QuoteRef}.", scenarioId, quoteRef);
 

@@ -16,7 +16,7 @@ public class CsvReportWriter
 		Directory.CreateDirectory(Path.GetDirectoryName(outputPath) ?? ".");
 
 		await using var writer = new StreamWriter(outputPath, false, new UTF8Encoding(false));
-		await writer.WriteLineAsync("BuildId,ScenarioId,QuoteRef,SchemeCode,ProductCode,IceValue,BaselineValue,Result");
+		await writer.WriteLineAsync("BuildId,ScenarioId,QuoteRef,SchemeCode,ProductCode,IceValue,BaselineValue,Result,ProfileId,FieldName,XPath,Error");
 
 		foreach (var row in rows.OrderBy(row => row.ScenarioId, StringComparer.Ordinal))
 		{
@@ -30,7 +30,7 @@ public class CsvReportWriter
 				row.ProductCode,
 				row.IceValue is null ? string.Empty : row.IceValue.Value.ToString(CultureInfo.InvariantCulture),
 				row.BaselineValue is null ? string.Empty : row.BaselineValue.Value.ToString(CultureInfo.InvariantCulture),
-				ToCsvValue(row.Result)
+				ToCsvValue(row.Result), row.ProfileId, row.FieldName, row.XPath, row.Error
 			};
 
 			await writer.WriteLineAsync(string.Join(',', values.Select(Escape)));
@@ -58,36 +58,28 @@ public class CsvReportWriter
 		Directory.CreateDirectory(Path.GetDirectoryName(outputPath) ?? ".");
 
 		await using var writer = new StreamWriter(outputPath, false, new UTF8Encoding(false));
-		await writer.WriteLineAsync("RecordType,BuildId,ScenarioId,QuoteRef,ProductCode,SchemeCode,SchemaProfile,FieldKey,ExpectedPath,ActualPath,Expected,Actual,Delta,MinDelta,MaxDelta,FieldResult,OverallResult,ComparedFields,PassedFields,FailedFields,FailureStage,Error,RequestXml,BaselineXml,ApiXml");
+		await writer.WriteLineAsync("ScenarioId,QuoteRef,ProductCode,SchemeCode,ProfileId,FieldName,XPath,BaselineValue,ApiValue,Difference,MinDifference,MaxDifference,FieldResult,ScenarioResult,FailureStage,Error,RequestXml,BaselineXml,ApiXml");
 
 		foreach (var row in sortedRows)
 		{
 			cancellationToken.ThrowIfCancellationRequested();
-			var fields = row.FieldComparisons;
-			var summary = new[]
+			var fields = row.FieldComparisons.OrderBy(field => field.FieldKey, StringComparer.Ordinal).ToArray();
+			// Scenarios that never reached comparison still need an outcome row.
+			for (var index = 0; index < Math.Max(1, fields.Length); index++)
 			{
-				"SUMMARY", buildId, row.ScenarioId, row.QuoteRef, row.ProductCode, row.SchemeCode,
-				row.SchemaProfile, string.Empty, string.Empty, string.Empty, string.Empty, string.Empty,
-				string.Empty, row.MinThreshold.ToString(CultureInfo.InvariantCulture), row.MaxThreshold.ToString(CultureInfo.InvariantCulture),
-				string.Empty, ToCsvValue(row.Result), fields.Count.ToString(CultureInfo.InvariantCulture),
-				fields.Count(field => field.Result == ScenarioResult.Pass).ToString(CultureInfo.InvariantCulture),
-				fields.Count(field => field.Result == ScenarioResult.Fail).ToString(CultureInfo.InvariantCulture),
-				row.FailureStage ?? string.Empty, row.Error ?? string.Empty,
-				NormalizeXml(row.RequestXml),
-				NormalizeXml(row.BaselineXml), NormalizeXml(row.RadarResponseXml)
-			};
-			await writer.WriteLineAsync(string.Join(',', summary.Select(Escape)));
-
-			foreach (var field in fields.OrderBy(field => field.FieldKey, StringComparer.Ordinal))
-			{
+				var field = fields.Length == 0 ? null : fields[index];
 				var detail = new[]
 				{
-					"FIELD", buildId, row.ScenarioId, row.QuoteRef, row.ProductCode, row.SchemeCode,
-					row.SchemaProfile, field.FieldKey, field.ExpectedPath, field.ActualPath,
-					FormatDecimal(field.Expected), FormatDecimal(field.Actual), FormatDecimal(field.Delta),
+					row.ScenarioId, row.QuoteRef, row.ProductCode, row.SchemeCode,
+					row.ProfileId, field?.FieldKey ?? string.Empty,
+					string.IsNullOrEmpty(field?.ExpectedPath) ? field?.ActualPath ?? string.Empty : field.ExpectedPath,
+					FormatDecimal(field?.Expected), FormatDecimal(field?.Actual), FormatDecimal(field?.Delta),
 					row.MinThreshold.ToString(CultureInfo.InvariantCulture), row.MaxThreshold.ToString(CultureInfo.InvariantCulture),
-					ToCsvValue(field.Result), ToCsvValue(row.Result), string.Empty, string.Empty, string.Empty,
-					string.Empty, string.Empty, string.Empty, string.Empty, string.Empty
+					field is null ? string.Empty : ToCsvValue(field.Result), ToCsvValue(row.Result),
+					row.FailureStage ?? string.Empty, row.Error ?? string.Empty,
+					index == 0 ? NormalizeXml(row.RequestXml) : string.Empty,
+					index == 0 ? NormalizeXml(row.BaselineXml) : string.Empty,
+					index == 0 ? NormalizeXml(row.RadarResponseXml) : string.Empty
 				};
 				await writer.WriteLineAsync(string.Join(',', detail.Select(Escape)));
 			}

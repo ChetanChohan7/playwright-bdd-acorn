@@ -93,7 +93,7 @@ public class RadarExecutionInfrastructureTests
 		try
 		{
 			Assert.That(File.Exists(reportPath), Is.True);
-			Assert.That(await File.ReadAllTextAsync(reportPath), Does.Contain(buildId));
+			Assert.That(await File.ReadAllTextAsync(reportPath), Does.Contain("SCENARIO-1,"));
 		}
 		finally
 		{
@@ -117,7 +117,7 @@ public class RadarExecutionInfrastructureTests
 	}
 
 	[Test]
-	public async Task Report_collection_should_stream_20000_scenario_summaries_and_field_results()
+	public async Task Report_collection_should_stream_20000_scenarios_as_flat_field_rows()
 	{
 		var buildId = $"volume-{Guid.NewGuid():N}";
 		var reportPath = Path.Combine(TestContext.CurrentContext.TestDirectory, "TestResults", "Reports", $"Radar_{buildId}.csv");
@@ -134,7 +134,7 @@ public class RadarExecutionInfrastructureTests
 						ScenarioId = $"SCENARIO-{scenarioIndex:D5}",
 						ProductCode = "HOME",
 						SchemeCode = "ABC",
-						SchemaProfile = "Route001",
+						ProfileId = "Route001",
 						RequestXml = xml,
 						BaselineXml = xml,
 						RadarResponseXml = xml,
@@ -150,35 +150,27 @@ public class RadarExecutionInfrastructureTests
 				});
 
 			await RadarReportingHelper.WriteReportAsync(buildId, collection.ReadSortedRows(), CancellationToken.None);
-			var summaryCount = 0;
 			var fieldCount = 0;
-			foreach (var line in File.ReadLines(reportPath))
+			foreach (var line in File.ReadLines(reportPath).Skip(1))
 			{
-				if (line.StartsWith("SUMMARY,", StringComparison.Ordinal))
+				if (!line.StartsWith($"SCENARIO-{fieldCount:D5},", StringComparison.Ordinal))
 				{
-					if (!line.StartsWith($"SUMMARY,{buildId},SCENARIO-{summaryCount:D5},", StringComparison.Ordinal))
-					{
-						throw new InvalidOperationException("The streamed report is not sorted by ScenarioId.");
-					}
-					summaryCount++;
+					throw new InvalidOperationException("The streamed report is not sorted by ScenarioId.");
 				}
-				else if (line.StartsWith("FIELD,", StringComparison.Ordinal))
+				if (!line.Contains($",{fieldCount},{fieldCount},0,-0.01,0.01,PASS,PASS,", StringComparison.Ordinal))
 				{
-					if (!line.Contains($",{fieldCount},{fieldCount},0,-0.01,0.01,PASS,PASS,", StringComparison.Ordinal))
-					{
-						throw new InvalidOperationException("The streamed report contains an incorrect decimal field result.");
-					}
-					fieldCount++;
+					throw new InvalidOperationException("The streamed report contains an incorrect decimal field result.");
 				}
+				Assert.That(line, Does.EndWith($",{xml},{xml},{xml}"));
+				fieldCount++;
 			}
 
 			Assert.Multiple(() =>
 			{
 				Assert.That(collection.Count, Is.EqualTo(20000));
-				Assert.That(summaryCount, Is.EqualTo(20000));
 				Assert.That(fieldCount, Is.EqualTo(20000));
 			});
-			TestContext.Out.WriteLine($"Spooled and streamed {summaryCount} scenarios in {elapsed.Elapsed.TotalSeconds:F2} seconds.");
+			TestContext.Out.WriteLine($"Spooled and streamed {fieldCount} scenarios in {elapsed.Elapsed.TotalSeconds:F2} seconds.");
 		}
 		finally
 		{
@@ -457,9 +449,15 @@ public class RadarExecutionInfrastructureTests
 	[Test]
 	public void Radar_setup_should_reject_a_route_to_an_unknown_endpoint_before_database_discovery()
 	{
-		const string variableName = "RadarSettings__Routes__Route001__EndpointName";
+		const string variableName = "PricingProfiles__MappingFile";
 		var originalValue = Environment.GetEnvironmentVariable(variableName);
-		Environment.SetEnvironmentVariable(variableName, "PricingUnknown");
+		var sourcePath = Path.Combine(TestContext.CurrentContext.TestDirectory, "TestAssets", "Radar", "Fixtures", "mappings.json");
+		var mappings = PricingProfileConfiguration.Load(sourcePath);
+		mappings.Profiles[0].Radar.EndpointName = "PricingUnknown";
+		mappings.Profiles[0].PathsFile = Path.Combine(Path.GetDirectoryName(sourcePath)!, "paths.json");
+		var mappingPath = Path.Combine(Path.GetTempPath(), $"unknown-endpoint-{Guid.NewGuid():N}.json");
+		File.WriteAllText(mappingPath, global::System.Text.Json.JsonSerializer.Serialize(mappings));
+		Environment.SetEnvironmentVariable(variableName, mappingPath);
 
 		try
 		{
@@ -470,6 +468,7 @@ public class RadarExecutionInfrastructureTests
 		finally
 		{
 			Environment.SetEnvironmentVariable(variableName, originalValue);
+			File.Delete(mappingPath);
 		}
 	}
 

@@ -9,7 +9,7 @@ using PricingValidationFramework.Tests.Helpers.Validation;
 namespace PricingValidationFramework.Tests.Integration.Radar;
 
 [TestFixture]
-[Explicit("Requires XML database access, Radar endpoint credentials, pipeline inputs, and route-mapped pricing XSDs.")]
+[Explicit("Requires XML database access, Radar endpoint credentials, pipeline inputs, and pricing XPath mappings.")]
 [Parallelizable(ParallelScope.Children)]
 public class RadarValidationTests
 {
@@ -17,6 +17,7 @@ public class RadarValidationTests
     private RadarTestSetup? setup;
     private Exception? setupFailure;
     private int cancellationObserved;
+    private readonly NLog.Logger diagnostics = NLog.LogManager.GetLogger("PricingValidationFramework.Tests.Integration.Radar");
 
     public static IEnumerable<TestCaseData> RadarScenarios
     {
@@ -43,6 +44,8 @@ public class RadarValidationTests
     [OneTimeSetUp]
     public void SetUp()
     {
+        NLog.GlobalDiagnosticsContext.Set("RadarBuildId", Environment.GetEnvironmentVariable("BUILD_BUILDID") ?? "local");
+        diagnostics.Info("Radar setup starting.");
         try
         {
             setup = RadarTestSetup.Create();
@@ -51,6 +54,8 @@ public class RadarValidationTests
         catch (Exception exception)
         {
             setupFailure = exception;
+            diagnostics.Error("Radar setup failed ({0}). {1}", exception.GetType().Name,
+                exception is InvalidDataException or FileNotFoundException ? exception.Message : "Check runtime inputs and configuration.");
         }
     }
 
@@ -59,6 +64,9 @@ public class RadarValidationTests
     {
         if (discoveryFailure is not null)
         {
+            reportRows.Add(new RadarValidationReportRow { ScenarioId = "RadarDiscovery", Result = ScenarioResult.Error,
+                FailureStage = "Discovery", Error = discoveryFailure });
+            diagnostics.Error(discoveryFailure);
             throw new AssertionException(discoveryFailure);
         }
 
@@ -69,6 +77,10 @@ public class RadarValidationTests
 
         if (setup is null)
         {
+            reportRows.Add(new RadarValidationReportRow { ScenarioId = scenario.ScenarioId, QuoteRef = scenario.QuoteRef,
+                ProductCode = scenario.ProductCode, SchemeCode = scenario.SchemeCode, RequestXml = scenario.XmlRequest,
+                Result = ScenarioResult.Error, FailureStage = "Setup",
+                Error = $"Radar setup failed ({setupFailure?.GetType().Name ?? "Unknown"}). Check the run log." });
             throw new InvalidOperationException($"Radar test setup failed ({setupFailure?.GetType().Name ?? "Unknown"}).");
         }
 
@@ -203,30 +215,28 @@ public class RadarValidationTests
     {
         try
         {
-            if (setup is not null)
+            setup?.Logger.ExecutionCompleted(setup.BuildId);
+            if (reportRows.Count == 0)
             {
-                setup.Logger.ExecutionCompleted(setup.BuildId);
-                if (reportRows.Count > 0 || Volatile.Read(ref cancellationObserved) != 0)
-                {
-                    try
-                    {
-                        await RadarReportingHelper.WriteReportAsync(
-                            setup.BuildId,
-                            reportRows.ReadSortedRows(),
-                            CancellationToken.None);
-                    }
-                    catch (Exception exception)
-                    {
-                        setup.Logger.ReportGenerationFailed(exception);
-                        throw;
-                    }
-                }
+                reportRows.Add(new RadarValidationReportRow { ScenarioId = "RadarRun", Result = ScenarioResult.Error,
+                    FailureStage = "Execution", Error = Volatile.Read(ref cancellationObserved) != 0
+                        ? "Radar run was cancelled before any scenario completed." : "No Radar scenarios completed." });
             }
+            await RadarReportingHelper.WriteReportAsync(
+                setup?.BuildId ?? Environment.GetEnvironmentVariable("BUILD_BUILDID") ?? "local",
+                reportRows.ReadSortedRows(), CancellationToken.None);
+            diagnostics.Info("Radar report written.");
+        }
+        catch (Exception exception)
+        {
+            diagnostics.Error("Radar report generation failed ({0}).", exception.GetType().Name);
+            throw;
         }
         finally
         {
             reportRows.Dispose();
             setup?.Dispose();
+            NLog.LogManager.Flush();
         }
     }
 

@@ -9,7 +9,6 @@ using PricingValidationFramework.Core.ExternalAPIAccess.ApiClients;
 using PricingValidationFramework.Core.ExternalAPIAccess.Throttling;
 using PricingValidationFramework.Core.ExternalAPIAccess.UrlBuilders;
 using PricingValidationFramework.Core.Logging;
-using PricingValidationFramework.Core.Matching;
 using PricingValidationFramework.Core.Models.Common;
 using PricingValidationFramework.Core.Models.Database;
 using PricingValidationFramework.Core.Validation;
@@ -62,10 +61,7 @@ public sealed class RadarTestSetup : IDisposable
         var databaseSettings = configuration.GetSection("DatabaseSettings").Get<DatabaseSettings>()
             ?? throw new InvalidOperationException("DatabaseSettings is missing.");
         var (pipelineSettings, retrySettings) = LoadValidatedPipelineInputs(configuration);
-        var comparisonService = new RadarPricingProfileFactory(
-            new XsdFileResolver(),
-            new XsdValidator(),
-            new FuzzyPricingMatcher()).Create(radarConfiguration.RadarSettings);
+        var comparisonService = new PricingComparisonService(radarConfiguration.Profiles.Profiles);
         var rateLimiter = new RadarRequestRateLimiter(
             radarConfiguration.RateLimitSettings,
             radarConfiguration.RadarSettings.Endpoints.Keys);
@@ -198,6 +194,8 @@ public sealed class RadarTestSetup : IDisposable
 
         var radarSettings = radarSection.Get<RadarSettings>()
             ?? throw new InvalidOperationException("RadarSettings is missing.");
+        var profiles = TestConfigurationLoader.LoadProfiles(configuration);
+        radarSettings.Routes = profiles.CreateRadarRoutes();
         var rateLimitSection = configuration.GetSection("RadarRateLimitSettings");
         if (!rateLimitSection.Exists())
         {
@@ -208,7 +206,7 @@ public sealed class RadarTestSetup : IDisposable
             ?? throw new InvalidOperationException("RadarRateLimitSettings is missing.");
         ValidateRadarConfiguration(radarSettings, rateLimitSettings);
 
-        return new RadarRunConfiguration(radarSettings, rateLimitSettings);
+        return new RadarRunConfiguration(radarSettings, rateLimitSettings, profiles);
     }
 
     internal static void ValidateRadarConfiguration(
@@ -297,5 +295,6 @@ public sealed class RadarTestSetup : IDisposable
 
     private sealed record RadarRunConfiguration(
         RadarSettings RadarSettings,
-        RadarRateLimitSettings RateLimitSettings);
+        RadarRateLimitSettings RateLimitSettings,
+        PricingProfileConfiguration Profiles);
 }

@@ -33,6 +33,7 @@
     <None Include="NLog.config" CopyToOutputDirectory="PreserveNewest" />
     <None Update="TestAssets\Ice\cert.p12" CopyToOutputDirectory="PreserveNewest" />
     <None Update="TestAssets\Json\**\*" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="TestAssets\Radar\**\*.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

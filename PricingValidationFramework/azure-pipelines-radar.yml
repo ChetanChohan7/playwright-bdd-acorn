@@ -38,7 +38,7 @@ jobs:
           RADAR_REQUEST_DATETIME: $(RadarRequestDateTime)
 
       - task: PublishTestResults@2
-        condition: succeededOrFailed()
+        condition: always()
         displayName: Publish Radar test results
         inputs:
           testResultsFormat: VSTest
@@ -47,18 +47,24 @@ jobs:
           failTaskOnMissingResultsFile: true
 
       - pwsh: |
-          $reportDirectory = '$(Build.SourcesDirectory)/PricingValidationFramework/PricingValidationFramework.Tests/bin/Release/net10.0/TestResults/Reports'
+          $resultDirectory = '$(Build.SourcesDirectory)/PricingValidationFramework/PricingValidationFramework.Tests/bin/Release/net10.0/TestResults'
           $artifactDirectory = '$(Build.ArtifactStagingDirectory)/RadarReports'
           New-Item -ItemType Directory -Force -Path $artifactDirectory | Out-Null
-          if (Test-Path $reportDirectory) {
-            Get-ChildItem $reportDirectory -Filter 'Radar_*.csv' -File | Copy-Item -Destination $artifactDirectory
+          $missing = @()
+          foreach ($output in @(@{ Folder = 'Reports'; Pattern = 'Radar_*.csv' }, @{ Folder = 'Logs'; Pattern = 'Radar_*.log' })) {
+            $source = Join-Path $resultDirectory $output.Folder
+            $target = Join-Path $artifactDirectory $output.Folder
+            New-Item -ItemType Directory -Force -Path $target | Out-Null
+            $files = @(if (Test-Path $source) { Get-ChildItem $source -Filter $output.Pattern -File })
+            if ($files.Count -eq 0) { $missing += $output.Folder } else { $files | Copy-Item -Destination $target }
           }
-        condition: succeededOrFailed()
-        displayName: Stage Radar CSV reports
+          if ($missing.Count -gt 0) { throw "Missing Radar outputs: $($missing -join ', '). Available outputs have been staged." }
+        condition: always()
+        displayName: Stage Radar reports and logs
 
       - task: PublishPipelineArtifact@1
-        condition: succeededOrFailed()
-        displayName: Publish Radar CSV artifact
+        condition: always()
+        displayName: Publish Radar reports and logs
         inputs:
           targetPath: '$(Build.ArtifactStagingDirectory)/RadarReports'
           artifact: RadarReports

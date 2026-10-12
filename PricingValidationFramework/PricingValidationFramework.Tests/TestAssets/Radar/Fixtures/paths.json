@@ -1,0 +1,8 @@
+{
+  "fields": {
+    "AnnualNet": "/PricingResponse/Premium/AnnualNet",
+    "InsuranceTax": "/PricingResponse/Premium/InsuranceTax",
+    "AnnualGross": "/PricingResponse/Premium/AnnualGross",
+    "AdminFee": "/PricingResponse/Fees/AdminFee"
+  }
+}

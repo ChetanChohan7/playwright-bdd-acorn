@@ -1,0 +1,212 @@
+{
+  "profiles": [
+    {
+      "profileId": "Profile01",
+      "productCode": "REPLACE_PRODUCT_01",
+      "schemeCodes": [
+        "REPLACE_SCHEME_01"
+      ],
+      "radar": {
+        "endpointName": "Endpoint1",
+        "routeKey": "replace-route-01"
+      },
+      "pathsFile": "XPathProfiles/Profile01.json",
+      "iceField": "grossPremium"
+    },
+    {
+      "profileId": "Profile02",
+      "productCode": "REPLACE_PRODUCT_02",
+      "schemeCodes": [
+        "REPLACE_SCHEME_02"
+      ],
+      "radar": {
+        "endpointName": "Endpoint1",
+        "routeKey": "replace-route-02"
+      },
+      "pathsFile": "XPathProfiles/Profile02.json",
+      "iceField": "grossPremium"
+    },
+    {
+      "profileId": "Profile03",
+      "productCode": "REPLACE_PRODUCT_03",
+      "schemeCodes": [
+        "REPLACE_SCHEME_03"
+      ],
+      "radar": {
+        "endpointName": "Endpoint1",
+        "routeKey": "replace-route-03"
+      },
+      "pathsFile": "XPathProfiles/Profile03.json",
+      "iceField": "grossPremium"
+    },
+    {
+      "profileId": "Profile04",
+      "productCode": "REPLACE_PRODUCT_04",
+      "schemeCodes": [
+        "REPLACE_SCHEME_04"
+      ],
+      "radar": {
+        "endpointName": "Endpoint1",
+        "routeKey": "replace-route-04"
+      },
+      "pathsFile": "XPathProfiles/Profile04.json",
+      "iceField": "grossPremium"
+    },
+    {
+      "profileId": "Profile05",
+      "productCode": "REPLACE_PRODUCT_05",
+      "schemeCodes": [
+        "REPLACE_SCHEME_05"
+      ],
+      "radar": {
+        "endpointName": "Endpoint1",
+        "routeKey": "replace-route-05"
+      },
+      "pathsFile": "XPathProfiles/Profile05.json",
+      "iceField": "grossPremium"
+    },
+    {
+      "profileId": "Profile06",
+      "productCode": "REPLACE_PRODUCT_06",
+      "schemeCodes": [
+        "REPLACE_SCHEME_06"
+      ],
+      "radar": {
+        "endpointName": "Endpoint1",
+        "routeKey": "replace-route-06"
+      },
+      "pathsFile": "XPathProfiles/Profile06.json",
+      "iceField": "grossPremium"
+    },
+    {
+      "profileId": "Profile07",
+      "productCode": "REPLACE_PRODUCT_07",
+      "schemeCodes": [
+        "REPLACE_SCHEME_07"
+      ],
+      "radar": {
+        "endpointName": "Endpoint1",
+        "routeKey": "replace-route-07"
+      },
+      "pathsFile": "XPathProfiles/Profile07.json",
+      "iceField": "grossPremium"
+    },
+    {
+      "profileId": "Profile08",
+      "productCode": "REPLACE_PRODUCT_08",
+      "schemeCodes": [
+        "REPLACE_SCHEME_08"
+      ],
+      "radar": {
+        "endpointName": "Endpoint1",
+        "routeKey": "replace-route-08"
+      },
+      "pathsFile": "XPathProfiles/Profile08.json",
+      "iceField": "grossPremium"
+    },
+    {
+      "profileId": "Profile09",
+      "productCode": "REPLACE_PRODUCT_09",
+      "schemeCodes": [
+        "REPLACE_SCHEME_09"
+      ],
+      "radar": {
+        "endpointName": "Endpoint1",
+        "routeKey": "replace-route-09"
+      },
+      "pathsFile": "XPathProfiles/Profile09.json",
+      "iceField": "grossPremium"
+    },
+    {
+      "profileId": "Profile10",
+      "productCode": "REPLACE_PRODUCT_10",
+      "schemeCodes": [
+        "REPLACE_SCHEME_10"
+      ],
+      "radar": {
+        "endpointName": "Endpoint1",
+        "routeKey": "replace-route-10"
+      },
+      "pathsFile": "XPathProfiles/Profile10.json",
+      "iceField": "grossPremium"
+    },
+    {
+      "profileId": "Profile11",
+      "productCode": "REPLACE_PRODUCT_11",
+      "schemeCodes": [
+        "REPLACE_SCHEME_11"
+      ],
+      "radar": {
+        "endpointName": "Endpoint1",
+        "routeKey": "replace-route-11"
+      },
+      "pathsFile": "XPathProfiles/Profile11.json",
+      "iceField": "grossPremium"
+    },
+    {
+      "profileId": "Profile12",
+      "productCode": "REPLACE_PRODUCT_12",
+      "schemeCodes": [
+        "REPLACE_SCHEME_12"
+      ],
+      "radar": {
+        "endpointName": "Endpoint1",
+        "routeKey": "replace-route-12"
+      },
+      "pathsFile": "XPathProfiles/Profile12.json",
+      "iceField": "grossPremium"
+    },
+    {
+      "profileId": "Profile13",
+      "productCode": "REPLACE_PRODUCT_13",
+      "schemeCodes": [
+        "REPLACE_SCHEME_13"
+      ],
+      "radar": {
+        "endpointName": "Endpoint1",
+        "routeKey": "replace-route-13"
+      },
+      "pathsFile": "XPathProfiles/Profile13.json",
+      "iceField": "grossPremium"
+    },
+    {
+      "profileId": "Profile14",
+      "productCode": "REPLACE_PRODUCT_14",
+      "schemeCodes": [
+        "REPLACE_SCHEME_14"
+      ],
+      "radar": {
+        "endpointName": "Endpoint1",
+        "routeKey": "replace-route-14"
+      },
+      "pathsFile": "XPathProfiles/Profile14.json",
+      "iceField": "grossPremium"
+    },
+    {
+      "profileId": "Profile15",
+      "productCode": "REPLACE_PRODUCT_15",
+      "schemeCodes": [
+        "REPLACE_SCHEME_15"
+      ],
+      "radar": {
+        "endpointName": "Endpoint1",
+        "routeKey": "replace-route-15"
+      },
+      "pathsFile": "XPathProfiles/Profile15.json",
+      "iceField": "grossPremium"
+    },
+    {
+      "profileId": "Profile16",
+      "productCode": "REPLACE_PRODUCT_16",
+      "schemeCodes": [
+        "REPLACE_SCHEME_16"
+      ],
+      "radar": {
+        "endpointName": "Endpoint1",
+        "routeKey": "replace-route-16"
+      },
+      "pathsFile": "XPathProfiles/Profile16.json",
+      "iceField": "grossPremium"
+    }
+  ]
+}

@@ -47,8 +47,8 @@ public sealed class RadarPricingService
 
 		if (!comparisonService.HasProfile(scenario.ProductCode, scenario.SchemeCode))
 		{
-			return Failed(target.RouteId, string.Empty, "SchemaProfileResolution",
-				$"No pricing schema profile is configured for ProductCode '{scenario.ProductCode}' and SchemeCode '{scenario.SchemeCode}'.");
+			return Failed(target.RouteId, string.Empty, "ProfileResolution",
+				$"No pricing profile is configured for ProductCode '{scenario.ProductCode}' and SchemeCode '{scenario.SchemeCode}'.");
 		}
 
 		var baselineValidation = comparisonService.ValidateBaseline(
@@ -61,7 +61,7 @@ public sealed class RadarPricingService
 				Array.Empty<DecimalFieldComparison>(),
 				baselineValidation.Error,
 				baselineValidation.FailureStage,
-				schemaProfile: baselineValidation.SchemaProfile);
+				profileId: baselineValidation.ProfileId);
 			return new RadarPricingRunResult(target.RouteId, string.Empty, result);
 		}
 
@@ -82,7 +82,7 @@ public sealed class RadarPricingService
 	}
 
 	/// For a new scenario with no baseline yet: calls Radar and returns its response as a PASS,
-	/// without XSD validation or the fuzzy comparison. The caller stores it as the baseline.
+	/// without XPath extraction or comparison. The caller stores it as the baseline.
 	public async Task<RadarPricingRunResult> CreateBaselineAsync(
 		ScenarioRequest scenario,
 		string requestTime,
@@ -109,7 +109,8 @@ public sealed class RadarPricingService
 			new PricingComparisonResult(
 				Array.Empty<DecimalFieldComparison>(),
 				failureStage: BaselineCreatedStage,
-				result: ScenarioResult.Pass));
+				result: ScenarioResult.Pass,
+				profileId: target.RouteId));
 	}
 
 	public const string BaselineCreatedStage = "BaselineCreated";

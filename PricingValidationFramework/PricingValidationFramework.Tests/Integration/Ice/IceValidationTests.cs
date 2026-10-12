@@ -16,6 +16,7 @@ public class IceValidationTests
     private IceTestSetup? setup;
     private Exception? setupFailure;
     private bool cancellationObserved;
+    private readonly NLog.Logger diagnostics = NLog.LogManager.GetLogger("PricingValidationFramework.Tests.Integration.Ice");
 
     public static IEnumerable<TestCaseData> IceScenarios
     {
@@ -75,6 +76,8 @@ public class IceValidationTests
     [OneTimeSetUp]
     public void SetUp()
     {
+        NLog.GlobalDiagnosticsContext.Set("BuildId", Environment.GetEnvironmentVariable("BUILD_BUILDID") ?? "local");
+        diagnostics.Info("ICE setup starting.");
         try
         {
             setup = IceTestSetup.Create();
@@ -83,6 +86,8 @@ public class IceValidationTests
         catch (Exception exception)
         {
             setupFailure = exception;
+            diagnostics.Error("ICE setup failed ({0}). {1}", exception.GetType().Name,
+                exception is InvalidDataException or FileNotFoundException ? exception.Message : "Check runtime inputs and configuration.");
         }
     }
 
@@ -91,6 +96,8 @@ public class IceValidationTests
     {
         if (discoveryFailure is not null)
         {
+            reportRows.Add(new IceValidationReportRow { ScenarioId = "IceDiscovery", Result = ScenarioResult.Error, Error = discoveryFailure });
+            diagnostics.Error(discoveryFailure);
             throw new AssertionException(discoveryFailure);
         }
 
@@ -101,19 +108,28 @@ public class IceValidationTests
 
         if (setup is null)
         {
+            reportRows.Add(IceReportingHelper.BuildRow(Environment.GetEnvironmentVariable("BUILD_BUILDID") ?? "local",
+                scenario, null, null, ScenarioResult.Error));
+            reportRows[^1].Error = $"ICE setup failed ({setupFailure?.GetType().Name ?? "Unknown"}). Check the run log.";
             throw new InvalidOperationException($"ICE test setup failed ({setupFailure?.GetType().Name ?? "Unknown"}).");
         }
 
         var cancellationToken = TestContext.CurrentContext.CancellationToken;
         IceValidationReportRow row;
         Exception? scenarioError = null;
+        string profileId = string.Empty, fieldName = string.Empty, xpath = string.Empty;
         try
         {
             cancellationToken.ThrowIfCancellationRequested();
             var url = setup.UrlBuilder.Build(setup.IceSettings.IceEndpoint, scenario.QuoteRef);
             var payload = await setup.ApiClient.GetAsync(url, cancellationToken);
             var iceValue = setup.JsonExtractor.ExtractPremium(payload);
-            var baselineValue = setup.XmlExtractor.ExtractBaselineValue(scenario.XmlResponse);
+            var profile = setup.PricingProfiles.GetProfile(scenario.ProductCode, scenario.SchemeCode);
+            profileId = profile.ProfileId;
+            fieldName = profile.IceField;
+            xpath = profile.Fields[fieldName];
+            setup.Logger.BaselineFieldSelected(scenario.ScenarioId, profile.ProfileId, profile.IceField, profile.Fields[profile.IceField]);
+            var baselineValue = setup.PricingProfiles.ExtractIceBaseline(scenario.ProductCode, scenario.SchemeCode, scenario.XmlResponse);
             row = IceReportingHelper.BuildRow(
                 setup.BuildId,
                 scenario,
@@ -135,13 +151,21 @@ public class IceValidationTests
             scenarioError = exception;
             setup.Logger.ExecutionFailed(scenario.ScenarioId, scenario.QuoteRef, exception);
             row = IceReportingHelper.BuildRow(setup.BuildId, scenario, null, null, ScenarioResult.Error);
+            row.Error = exception.Message;
         }
 
+        row.ProfileId = profileId;
+        row.FieldName = fieldName;
+        row.XPath = xpath;
         RecordScenarioResult(row, scenarioError);
     }
 
     internal void RecordScenarioResult(IceValidationReportRow row, Exception? scenarioError = null)
     {
+        if (scenarioError is not null && string.IsNullOrEmpty(row.Error))
+        {
+            row.Error = scenarioError.Message;
+        }
         reportRows.Add(row);
         if (row.Result == ScenarioResult.Pass)
         {
@@ -171,16 +195,26 @@ public class IceValidationTests
                 setup.Logger.ExecutionCompleted(setup.BuildId);
             }
 
-            if (reportRows.Count > 0 || cancellationObserved)
+            if (reportRows.Count == 0)
             {
-                var buildId = setup?.BuildId ?? reportRows.FirstOrDefault()?.BuildId
-                    ?? Environment.GetEnvironmentVariable("BUILD_BUILDID") ?? "local";
-                await IceReportingHelper.WriteReportAsync(buildId, reportRows, CancellationToken.None);
+                reportRows.Add(new IceValidationReportRow { ScenarioId = "IceRun", Result = ScenarioResult.Error,
+                    Error = cancellationObserved ? "ICE run was cancelled before any scenario completed." : "No ICE scenarios completed." });
             }
+            var buildId = setup?.BuildId ?? reportRows.Select(row => row.BuildId)
+                .FirstOrDefault(id => !string.IsNullOrWhiteSpace(id))
+                ?? Environment.GetEnvironmentVariable("BUILD_BUILDID") ?? "local";
+            await IceReportingHelper.WriteReportAsync(buildId, reportRows, CancellationToken.None);
+            diagnostics.Info("ICE report written.");
+        }
+        catch (Exception exception)
+        {
+            diagnostics.Error("ICE report generation failed ({0}).", exception.GetType().Name);
+            throw;
         }
         finally
         {
             setup?.Dispose();
+            NLog.LogManager.Flush();
         }
     }
 }

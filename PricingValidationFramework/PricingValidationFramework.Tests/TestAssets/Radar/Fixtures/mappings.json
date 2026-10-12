@@ -1,0 +1,12 @@
+{
+  "profiles": [
+    {
+      "profileId": "Route001",
+      "productCode": "HOME",
+      "schemeCodes": ["A", "B", "ABC", "XYS", "POL", "FIXTURE"],
+      "radar": { "endpointName": "Endpoint1", "r+outeKey": "shared-home" },
+      "pathsFile": "paths.json",
+      "iceField": "AnnualGross"
+    }
+  ]
+}
