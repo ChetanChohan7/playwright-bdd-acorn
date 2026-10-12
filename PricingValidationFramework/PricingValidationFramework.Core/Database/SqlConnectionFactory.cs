@@ -12,6 +12,9 @@ public class SqlConnectionFactory
 		this.settings = settings;
 	}
 
+	/// The configured audit user, or null so the SQL falls back to SUSER_SNAME().
+	public string? AuditUser => string.IsNullOrWhiteSpace(settings.AuditUser) ? null : settings.AuditUser.Trim();
+
 	public SqlConnection Create()
 	{
 		return new SqlConnection(settings.ConnectionString);

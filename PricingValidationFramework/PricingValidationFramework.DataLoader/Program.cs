@@ -4,7 +4,7 @@ using PricingValidationFramework.Core.Configuration;
 using PricingValidationFramework.Core.Database;
 using PricingValidationFramework.DataLoader;
 
-const string Usage = "Usage: DataLoader <validate|import> --requests <csv-or-folder> [--batch-size <1-1000>] [--settings <json>] [--report <json>]";
+const string Usage = "Usage: DataLoader <validate|import> --requests <csv-or-folder> [--batch-size <1-1000>] [--settings <json>] [--report <json>] [--request-time <now|yyyy-MM-ddZHH:mm:ss>]";
 if (args.Length == 0 || args[0] is "--help" or "-h")
 {
     Console.WriteLine(Usage);
@@ -28,7 +28,7 @@ try
     var values = new Dictionary<string, string>(StringComparer.Ordinal);
     for (var index = 1; index < args.Length; index += 2)
     {
-        if (args[index] is not ("--requests" or "--batch-size" or "--settings" or "--report") ||
+        if (args[index] is not ("--requests" or "--batch-size" or "--settings" or "--report" or "--request-time") ||
             !values.TryAdd(args[index], args[index + 1]))
         {
             throw new ArgumentException("An unknown or duplicate command option was supplied.");
@@ -40,20 +40,24 @@ try
     if (args[0] == "import")
     {
         var connectionString = Environment.GetEnvironmentVariable("DatabaseSettings__ConnectionString");
-        if (connectionString is null && values.TryGetValue("--settings", out var settingsPath))
+        var auditUser = Environment.GetEnvironmentVariable("DatabaseSettings__AuditUser");
+        if ((connectionString is null || auditUser is null) && values.TryGetValue("--settings", out var settingsPath))
         {
             using var settings = JsonDocument.Parse(await File.ReadAllTextAsync(settingsPath, cancellation.Token));
-            connectionString = settings.RootElement.GetProperty("DatabaseSettings").GetProperty("ConnectionString").GetString();
+            var databaseSettings = settings.RootElement.GetProperty("DatabaseSettings");
+            connectionString ??= databaseSettings.GetProperty("ConnectionString").GetString();
+            // Optional: who to record in row_createdby / row_modifiedby (the SQL login when absent).
+            auditUser ??= databaseSettings.TryGetProperty("AuditUser", out var auditUserSetting) ? auditUserSetting.GetString() : null;
         }
         if (string.IsNullOrWhiteSpace(connectionString))
         {
             throw new InvalidOperationException("Import requires a database connection string.");
         }
-        repository = new ScenarioImportRepository(new SqlConnectionFactory(new DatabaseSettings { ConnectionString = connectionString }));
+        repository = new ScenarioImportRepository(new SqlConnectionFactory(new DatabaseSettings { ConnectionString = connectionString, AuditUser = auditUser ?? string.Empty }));
     }
     summary = await new ScenarioDataLoader(repository).RunAsync(new ImportOptions(
         values.GetValueOrDefault("--requests") ?? throw new ArgumentException("--requests is required."),
-        args[0] == "validate", batchSize), cancellation.Token);
+        args[0] == "validate", batchSize, values.GetValueOrDefault("--request-time")), cancellation.Token);
 }
 catch (Exception exception)
 {
@@ -64,6 +68,6 @@ catch (Exception exception)
 
 Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(reportPath))!);
 await File.WriteAllTextAsync(reportPath, JsonSerializer.Serialize(summary, new JsonSerializerOptions { WriteIndented = true }));
-Console.WriteLine($"{summary.Mode}: file={summary.RequestFile}, success={summary.Succeeded}, requests={summary.InputRequests}, " +
+Console.WriteLine($"{summary.Mode}: file={summary.RequestFile}, requestTime={summary.RequestTime}, success={summary.Succeeded}, requests={summary.InputRequests}, " +
     $"insertedRequests={summary.InsertedRequests}, updatedRequests={summary.UpdatedRequests}, skippedRequests={summary.SkippedRequests}, issues={summary.Issues.Count}.");
 return summary.Cancelled ? 130 : summary.Succeeded ? 0 : 1;

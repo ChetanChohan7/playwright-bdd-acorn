@@ -8,51 +8,18 @@ public sealed class PricingProfileConfiguration
 {
 	public List<PricingProfile> Profiles { get; set; } = [];
 
+	/// Full load for comparison and ICE: mappings plus every referenced XPath paths file, all checked.
 	public static PricingProfileConfiguration Load(string mappingPath)
 	{
-		ArgumentException.ThrowIfNullOrWhiteSpace(mappingPath);
-		var fullPath = Path.GetFullPath(mappingPath);
-		var options = new JsonSerializerOptions
-		{
-			PropertyNameCaseInsensitive = true,
-			AllowDuplicateProperties = false,
-			UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow
-		};
-		var configuration = JsonSerializer.Deserialize<PricingProfileConfiguration>(File.ReadAllText(fullPath), options)
-			?? throw new InvalidDataException("Pricing mappings must contain an object.");
-		if (configuration.Profiles is null || configuration.Profiles.Count == 0)
-		{
-			throw new InvalidDataException("At least one pricing profile must be mapped.");
-		}
-
-		var ids = new HashSet<string>(StringComparer.Ordinal);
-		var selections = new HashSet<(string Product, string Scheme)>();
+		var (configuration, fullPath) = ReadMappings(mappingPath, requireExtractionFields: true);
 		var files = new Dictionary<string, Dictionary<string, string>>(StringComparer.Ordinal);
 		foreach (var profile in configuration.Profiles)
 		{
-			if (profile is null || string.IsNullOrWhiteSpace(profile.ProfileId) ||
-				string.IsNullOrWhiteSpace(profile.ProductCode) || profile.SchemeCodes is null ||
-				profile.SchemeCodes.Count == 0 || profile.SchemeCodes.Any(string.IsNullOrWhiteSpace) ||
-				string.IsNullOrWhiteSpace(profile.PathsFile) || string.IsNullOrWhiteSpace(profile.IceField) ||
-				profile.Radar is null || string.IsNullOrWhiteSpace(profile.Radar.EndpointName) ||
-				string.IsNullOrWhiteSpace(profile.Radar.RouteKey))
-			{
-				throw new InvalidDataException("Each pricing mapping requires a profile ID, product, schemes, Radar route, paths file and Ice field.");
-			}
-			profile.ProfileId = profile.ProfileId.Trim();
-			profile.ProductCode = profile.ProductCode.Trim();
-			profile.SchemeCodes = profile.SchemeCodes.Select(scheme => scheme.Trim()).ToList();
-			if (!ids.Add(profile.ProfileId) ||
-				profile.SchemeCodes.Any(scheme => !selections.Add((profile.ProductCode, scheme))))
-			{
-				throw new InvalidDataException($"Duplicate profile ID or product/scheme mapping for '{profile.ProfileId}'.");
-			}
-
 			var pathsFile = Path.GetFullPath(Path.Combine(Path.GetDirectoryName(fullPath)!, profile.PathsFile
 				.Replace('\\', Path.DirectorySeparatorChar).Replace('/', Path.DirectorySeparatorChar)));
 			if (!files.TryGetValue(pathsFile, out var fields))
 			{
-				var paths = JsonSerializer.Deserialize<PricingPaths>(File.ReadAllText(pathsFile), options)
+				var paths = JsonSerializer.Deserialize<PricingPaths>(File.ReadAllText(pathsFile), JsonOptions)
 					?? throw new InvalidDataException($"Paths file for '{profile.ProfileId}' must contain an object.");
 				fields = paths.Fields;
 				if (fields is null || fields.Count == 0 || fields.Any(field =>
@@ -81,6 +48,71 @@ public sealed class PricingProfileConfiguration
 		}
 		return configuration;
 	}
+
+	/// Turns the PricingProfiles:MappingFile setting into a full path. A relative value is resolved
+	/// against baseDirectory: the test output folder for the tests, the program folder for the loader.
+	public static string ResolveMappingPath(string? mappingFile, string baseDirectory)
+	{
+		if (string.IsNullOrWhiteSpace(mappingFile))
+		{
+			throw new InvalidOperationException("PricingProfiles:MappingFile is required.");
+		}
+		ArgumentException.ThrowIfNullOrWhiteSpace(baseDirectory);
+
+		var normalized = mappingFile.Trim().Replace('\\', Path.DirectorySeparatorChar).Replace('/', Path.DirectorySeparatorChar);
+		return Path.GetFullPath(Path.Combine(baseDirectory, normalized));
+	}
+
+	/// Reads mappings.json and checks what every caller needs: at least one profile, the routing fields,
+	/// and unique profile IDs and product/scheme pairs. Paths files are never opened here.
+	internal static (PricingProfileConfiguration Configuration, string FullPath) ReadMappings(string mappingPath, bool requireExtractionFields)
+	{
+		ArgumentException.ThrowIfNullOrWhiteSpace(mappingPath);
+		var fullPath = Path.GetFullPath(mappingPath);
+		var configuration = JsonSerializer.Deserialize<PricingProfileConfiguration>(File.ReadAllText(fullPath), JsonOptions)
+			?? throw new InvalidDataException("Pricing mappings must contain an object.");
+		if (configuration.Profiles is null || configuration.Profiles.Count == 0)
+		{
+			throw new InvalidDataException("At least one pricing profile must be mapped.");
+		}
+
+		var ids = new HashSet<string>(StringComparer.Ordinal);
+		var selections = new HashSet<(string Product, string Scheme)>();
+		foreach (var profile in configuration.Profiles)
+		{
+			if (profile is null || string.IsNullOrWhiteSpace(profile.ProfileId) ||
+				string.IsNullOrWhiteSpace(profile.ProductCode) || profile.SchemeCodes is null ||
+				profile.SchemeCodes.Count == 0 || profile.SchemeCodes.Any(string.IsNullOrWhiteSpace) ||
+				profile.Radar is null || string.IsNullOrWhiteSpace(profile.Radar.EndpointName) ||
+				string.IsNullOrWhiteSpace(profile.Radar.RouteKey))
+			{
+				throw new InvalidDataException(requireExtractionFields
+					? "Each pricing mapping requires a profile ID, product, schemes, Radar route, paths file and Ice field."
+					: "Each pricing mapping requires a profile ID, product, schemes and Radar route.");
+			}
+			if (requireExtractionFields &&
+				(string.IsNullOrWhiteSpace(profile.PathsFile) || string.IsNullOrWhiteSpace(profile.IceField)))
+			{
+				throw new InvalidDataException("Each pricing mapping requires a profile ID, product, schemes, Radar route, paths file and Ice field.");
+			}
+			profile.ProfileId = profile.ProfileId.Trim();
+			profile.ProductCode = profile.ProductCode.Trim();
+			profile.SchemeCodes = profile.SchemeCodes.Select(scheme => scheme.Trim()).ToList();
+			if (!ids.Add(profile.ProfileId) ||
+				profile.SchemeCodes.Any(scheme => !selections.Add((profile.ProductCode, scheme))))
+			{
+				throw new InvalidDataException($"Duplicate profile ID or product/scheme mapping for '{profile.ProfileId}'.");
+			}
+		}
+		return (configuration, fullPath);
+	}
+
+	private static readonly JsonSerializerOptions JsonOptions = new()
+	{
+		PropertyNameCaseInsensitive = true,
+		AllowDuplicateProperties = false,
+		UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow
+	};
 
 	public Dictionary<string, RadarRouteSettings> CreateRadarRoutes()
 	{

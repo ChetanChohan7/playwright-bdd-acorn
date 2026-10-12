@@ -53,6 +53,7 @@ public sealed class RadarTestSetup : IDisposable
     public string RequestTime => settings.RequestTime;
     public decimal MinThreshold => settings.MinThreshold;
     public decimal MaxThreshold => settings.MaxThreshold;
+    public bool BaselineOnly => settings.BaselineOnly;
 
     public static RadarTestSetup Create()
     {
@@ -126,7 +127,8 @@ public sealed class RadarTestSetup : IDisposable
             MaxThreshold = ReadRequiredDecimal(configuration, "RADAR_MAX_THRESHOLD", "MaxThreshold"),
             RequestTime = RequestTimeFormatter.Resolve(
                 Environment.GetEnvironmentVariable("RADAR_REQUEST_DATETIME") ?? configuration["PipelineSettings:RequestTime"]),
-            TestTag = Environment.GetEnvironmentVariable("TEST_TAG") ?? configuration["PipelineSettings:TestTag"] ?? string.Empty
+            TestTag = Environment.GetEnvironmentVariable("TEST_TAG") ?? configuration["PipelineSettings:TestTag"] ?? string.Empty,
+            BaselineOnly = ReadFlag(configuration, "RADAR_BASELINE_ONLY", "BaselineOnly")
         };
         new PipelineInputValidator().Validate(pipelineSettings);
 
@@ -166,6 +168,22 @@ public sealed class RadarTestSetup : IDisposable
         }
 
         throw new InvalidOperationException("BUILD_BUILDID is required outside local development.");
+    }
+
+    internal static bool ReadFlag(IConfiguration configuration, string variableName, string settingName)
+    {
+        var value = Environment.GetEnvironmentVariable(variableName) ?? configuration[$"PipelineSettings:{settingName}"];
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return false;
+        }
+
+        return value.Trim().ToLowerInvariant() switch
+        {
+            "true" or "1" or "yes" => true,
+            "false" or "0" or "no" => false,
+            _ => throw new InvalidOperationException($"{variableName} must be true or false.")
+        };
     }
 
     private static decimal ReadRequiredDecimal(IConfiguration configuration, string variableName, string settingName)

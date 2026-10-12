@@ -151,6 +151,57 @@ public class DataLoaderTests
     }
 
     [Test]
+    public async Task Request_time_now_should_resolve_to_the_current_utc_hour()
+    {
+        var before = DateTime.UtcNow;
+        var summary = await new ScenarioDataLoader(new FakeRepository()).RunAsync(new ImportOptions(RequestFile(), true, RequestTime: "NOW"));
+        var after = DateTime.UtcNow;
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(summary.Succeeded, Is.True);
+            Assert.That(summary.RequestTime, Is.AnyOf(
+                before.ToString("yyyy-MM-dd'Z'HH:00:00", CultureInfo.InvariantCulture),
+                after.ToString("yyyy-MM-dd'Z'HH:00:00", CultureInfo.InvariantCulture)));
+        });
+    }
+
+    [Test]
+    public async Task An_explicit_request_time_should_be_kept_at_the_start_of_its_hour()
+    {
+        var summary = await new ScenarioDataLoader(new FakeRepository()).RunAsync(
+            new ImportOptions(RequestFile(), true, RequestTime: " 2026-10-12Z09:45:30 "));
+
+        Assert.That(summary.RequestTime, Is.EqualTo("2026-10-12Z09:00:00"));
+    }
+
+    [TestCase("12/10/2026 09:00")]
+    [TestCase("2026-10-12T09:00:00")]
+    [TestCase("tomorrow")]
+    public async Task An_invalid_request_time_should_stop_before_reading_files_or_the_database(string requestTime)
+    {
+        var repository = new FakeRepository();
+        var summary = await new ScenarioDataLoader(repository).RunAsync(
+            new ImportOptions(Path.Combine(directory, "missing"), false, RequestTime: requestTime));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(summary.Succeeded, Is.False);
+            Assert.That(summary.Issues.Single().Reason, Does.Contain("yyyy-MM-ddZHH:mm:ss"));
+            Assert.That(summary.RequestFile, Is.Empty);
+            Assert.That(repository.ReadCount, Is.Zero);
+        });
+    }
+
+    [Test]
+    public async Task No_request_time_option_should_leave_it_empty()
+    {
+        var summary = await new ScenarioDataLoader(new FakeRepository()).RunAsync(new ImportOptions(RequestFile(), true));
+
+        Assert.That(summary.RequestTime, Is.Empty);
+    }
+
+    [Test]
     public async Task Validate_should_not_read_or_write_the_database()
     {
         var repository = new FakeRepository();
@@ -199,7 +250,7 @@ public class DataLoaderTests
             Assert.That(summary.CommittedBatches, Is.EqualTo(1));
             Assert.That(repository.Batches, Is.Empty);
             Assert.That(repository.Requests.Single().XmlRequest, Does.Contain("<Label>tom</Label>"));
-            Assert.That(repository.Requests.Single().QuoteRef, Is.EqualTo("Q2"));
+            Assert.That(repository.Requests.Single().QuoteRef, Is.EqualTo("Q1"), "only the XML is updated");
             Assert.That(repository.Requests.Single().TestTags, Is.EqualTo("smoke"));
         });
 
@@ -276,18 +327,55 @@ public class DataLoaderTests
     [TestCase("MOTOR", "ABC")]
     [TestCase("HOME", "XYZ")]
     [TestCase("home", "ABC")]
-    public async Task Product_or_scheme_changes_should_reject_the_import(string productCode, string schemeCode)
+    public async Task Product_or_scheme_changes_should_update_the_xml_only(string productCode, string schemeCode)
     {
         var requests = WriteCsv("requests.csv", RequestHeaders, [["S1", PolicyXml("Q1", productCode, schemeCode)]]);
         var repository = new FakeRepository { Requests = [new("S1", "Q1", "HOME", "ABC", PolicyXml("Q1", "HOME", "ABC"), "")] };
 
         var summary = await new ScenarioDataLoader(repository).RunAsync(new ImportOptions(requests, false));
+        var stored = repository.Requests.Single();
 
         Assert.Multiple(() =>
         {
-            Assert.That(summary.Succeeded, Is.False);
-            Assert.That(summary.Issues.Single().Reason, Does.Contain("product or scheme"));
+            Assert.That(summary.Succeeded, Is.True);
+            Assert.That(summary.UpdatedRequests, Is.EqualTo(1));
+            Assert.That(stored.XmlRequest, Does.Contain($"<ProductCode>{productCode}</ProductCode>"));
+            Assert.That(stored.ProductCode, Is.EqualTo("HOME"), "only XML_request is updated");
+            Assert.That(stored.SchemeCode, Is.EqualTo("ABC"));
+        });
+    }
+
+    [Test]
+    public async Task Identical_xml_should_be_skipped_even_when_the_stored_columns_differ()
+    {
+        var xml = PolicyXml("Q1", "HOME", "ABC");
+        var requests = WriteCsv("requests.csv", RequestHeaders, [["S1", xml]]);
+        var repository = new FakeRepository { Requests = [new("S1", "OTHER-QUOTE", "OTHER", "XYZ", xml, "smoke")] };
+
+        var summary = await new ScenarioDataLoader(repository).RunAsync(new ImportOptions(requests, false));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(summary.Succeeded, Is.True);
+            Assert.That(summary.SkippedRequests, Is.EqualTo(1));
+            Assert.That(summary.UpdatedRequests, Is.Zero);
             Assert.That(repository.WriteCount, Is.Zero);
+        });
+    }
+
+    [Test]
+    public async Task Unreadable_stored_xml_should_be_replaced_by_the_csv_xml()
+    {
+        var requests = WriteCsv("requests.csv", RequestHeaders, [["S1", PolicyXml("Q1", "HOME", "ABC")]]);
+        var repository = new FakeRepository { Requests = [new("S1", "Q1", "HOME", "ABC", "<Message><Policy><Vehicle></Policy></Message>", "")] };
+
+        var summary = await new ScenarioDataLoader(repository).RunAsync(new ImportOptions(requests, false));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(summary.Succeeded, Is.True);
+            Assert.That(summary.UpdatedRequests, Is.EqualTo(1));
+            Assert.That(repository.Requests.Single().XmlRequest, Is.EqualTo(PolicyXml("Q1", "HOME", "ABC")));
         });
     }
 
@@ -324,19 +412,19 @@ public class DataLoaderTests
     }
 
     [Test]
-    public async Task A_conflict_in_a_later_batch_should_prevent_all_database_writes()
+    public async Task An_invalid_row_later_in_the_file_should_prevent_all_database_writes()
     {
         var requests = WriteCsv("requests.csv", RequestHeaders,
-            [["S0", PolicyXml("Q0", "HOME", "ABC")], ["S1", PolicyXml("Q1", "HOME", "ABC")]]);
-        var repository = new FakeRepository { Requests = [new("S1", "Q1", "MOTOR", "ABC", PolicyXml("Q1", "MOTOR", "ABC"), "")] };
+            [["S0", PolicyXml("Q0", "HOME", "ABC")], ["S1", "<Message><Policy><Vehicle></Policy></Message>"]]);
+        var repository = new FakeRepository();
         var summary = await new ScenarioDataLoader(repository).RunAsync(new ImportOptions(requests, false, 1));
 
         Assert.Multiple(() =>
         {
             Assert.That(summary.Succeeded, Is.False);
-            Assert.That(summary.Issues.Single().Reason, Does.Contain("conflicts"));
-            Assert.That(repository.ReadCount, Is.EqualTo(2));
-            Assert.That(repository.Batches, Is.Empty);
+            Assert.That(summary.Issues.Single().ScenarioId, Is.EqualTo("S1"));
+            Assert.That(repository.ReadCount, Is.Zero);
+            Assert.That(repository.WriteCount, Is.Zero);
         });
     }
 
@@ -465,7 +553,7 @@ public class DataLoaderTests
             foreach (var update in updates)
             {
                 var index = storedRequests.FindIndex(row => string.Equals(row.ScenarioId, update.ScenarioId, StringComparison.OrdinalIgnoreCase));
-                storedRequests[index] = storedRequests[index] with { XmlRequest = update.XmlRequest, QuoteRef = update.QuoteRef };
+                storedRequests[index] = storedRequests[index] with { XmlRequest = update.XmlRequest };
             }
             if (inserts.Count > 0)
             {

@@ -3,12 +3,14 @@ namespace PricingValidationFramework.DataLoader;
 using System.Xml;
 using System.Xml.Linq;
 using PricingValidationFramework.Core.Database;
+using PricingValidationFramework.Core.ExternalAPIAccess.UrlBuilders;
 using PricingValidationFramework.Core.Models.Database;
 
 public sealed record ImportOptions(
     string RequestCsv,
     bool ValidateOnly,
-    int BatchSize = 100);
+    int BatchSize = 100,
+    string? RequestTime = null);
 
 public sealed record ImportIssue(string Source, int RecordNumber, string ScenarioId, string Reason);
 
@@ -16,6 +18,10 @@ public sealed class ImportSummary
 {
     public string Mode { get; init; } = string.Empty;
     public string RequestFile { get; set; } = string.Empty;
+
+    /// The Radar request time for the baselines created after this load, resolved the same way
+    /// Radar does (UTC, start of the hour). Empty when no --request-time was given.
+    public string RequestTime { get; set; } = string.Empty;
     public int InputRequests { get; set; }
     public int InsertedRequests { get; set; }
     public int UpdatedRequests { get; set; }
@@ -26,8 +32,8 @@ public sealed class ImportSummary
     public bool Succeeded => !Cancelled && Issues.Count == 0;
 }
 
-/// Loads xml_request only. Baselines in xml_response are created by the Radar run: a scenario
-/// with no xml_response row gets Radar's first response stored as its PASS baseline.
+/// Loads [Xml].[Request] only. Baselines in [Xml].[Response] are created by the Radar run: a scenario
+/// with no [Xml].[Response] row gets Radar's first response stored as its PASS baseline.
 public sealed class ScenarioDataLoader(IScenarioImportRepository? repository = null)
 {
     public async Task<ImportSummary> RunAsync(ImportOptions options, CancellationToken cancellationToken = default)
@@ -43,6 +49,22 @@ public sealed class ScenarioDataLoader(IScenarioImportRepository? repository = n
         }
 
         var summary = new ImportSummary { Mode = options.ValidateOnly ? "validate" : "import" };
+        if (options.RequestTime is not null)
+        {
+            try
+            {
+                // "now" (any case) means the current UTC hour, exactly as an empty value does for Radar.
+                summary.RequestTime = RequestTimeFormatter.Resolve(
+                    string.Equals(options.RequestTime.Trim(), "now", StringComparison.OrdinalIgnoreCase) ? null : options.RequestTime);
+            }
+            catch (ArgumentException)
+            {
+                summary.Issues.Add(new ImportIssue("input", 0, string.Empty,
+                    $"Request time '{options.RequestTime}' must be 'now' or use the yyyy-MM-ddZHH:mm:ss format, e.g. 2026-10-12Z09:00:00."));
+                return summary;
+            }
+        }
+
         try
         {
             summary.RequestFile = RequestFileResolver.Resolve(options.RequestCsv);
@@ -146,23 +168,15 @@ public sealed class ScenarioDataLoader(IScenarioImportRepository? repository = n
             {
                 requestInserts.Add(row.ScenarioId);
             }
+            // An existing scenario is compared on its XML only: identical (after normalising) is
+            // skipped, anything else updates XML_request. No other column is compared or changed.
+            else if (string.Equals(TryNormalizeXml(storedRequest.XmlRequest), row.XmlRequest, StringComparison.Ordinal))
+            {
+                summary.SkippedRequests++;
+            }
             else
             {
-                var normalized = NormalizeRequest(storedRequest) with { TestTags = string.Empty, ScenarioId = row.ScenarioId };
-                if (!string.Equals(normalized.ProductCode, row.ProductCode, StringComparison.Ordinal) ||
-                    !string.Equals(normalized.SchemeCode, row.SchemeCode, StringComparison.Ordinal))
-                {
-                    summary.Issues.Add(new ImportIssue("database", 0, row.ScenarioId,
-                        "Request product or scheme conflicts with an existing scenario; use a new Scenario_id."));
-                }
-                else if (normalized == row)
-                {
-                    summary.SkippedRequests++;
-                }
-                else
-                {
-                    requestUpdates.Add(row.ScenarioId);
-                }
+                requestUpdates.Add(row.ScenarioId);
             }
         }
     }
@@ -191,11 +205,17 @@ public sealed class ScenarioDataLoader(IScenarioImportRepository? repository = n
                 : $"Request XML has more than one {path} element.");
     }
 
-    private static ScenarioRequestImport NormalizeRequest(ScenarioRequestImport row)
+    // Stored XML that can't be parsed simply counts as different, so a corrected CSV replaces it.
+    private static string? TryNormalizeXml(string? value)
     {
-        return new ScenarioRequestImport(Required(row.ScenarioId, "Scenario_id"), Required(row.QuoteRef, "Quote_ref"),
-            Required(row.ProductCode, "Product_code"), Required(row.SchemeCode, "Scheme_code"),
-            NormalizeXml(row.XmlRequest), row.TestTags?.Trim() ?? string.Empty);
+        try
+        {
+            return NormalizeXml(value ?? string.Empty);
+        }
+        catch (Exception exception) when (exception is XmlException or InvalidDataException)
+        {
+            return null;
+        }
     }
 
     private static string Required(string? value, string field)

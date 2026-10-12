@@ -34,6 +34,8 @@
     <None Update="TestAssets\Ice\cert.p12" CopyToOutputDirectory="PreserveNewest" />
     <None Update="TestAssets\Json\**\*" CopyToOutputDirectory="PreserveNewest" />
     <None Update="TestAssets\Radar\**\*.json" CopyToOutputDirectory="PreserveNewest" />
+    <!-- Shared Radar routing: config/radar/mappings.json and its XPathProfiles, copied to Radar/ in the output. -->
+    <None Include="..\config\radar\**\*.json" LinkBase="Radar" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

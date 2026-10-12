@@ -26,6 +26,14 @@ parameters:
   - name: batchSize
     type: number
     default: 100
+  - name: requestDateTime
+    displayName: Radar request date/time for new baselines (UTC, yyyy-MM-ddZHH:mm:ss, or now)
+    type: string
+    default: now
+  - name: createBaselines
+    displayName: Create Radar baselines for newly loaded scenarios after the import
+    type: boolean
+    default: true
 
 pool:
   name: ${{ parameters.agentPool }}
@@ -75,9 +83,14 @@ stages:
           - pwsh: |
               $reportDirectory = '$(Build.ArtifactStagingDirectory)/DataLoaderValidation'
               New-Item -ItemType Directory -Force -Path $reportDirectory | Out-Null
-              $importArguments = @('--requests', "$(Pipeline.Workspace)/scenario-data", '--batch-size', '${{ parameters.batchSize }}', '--report', "$reportDirectory/validation-summary.json")
+              $importArguments = @('--requests', "$(Pipeline.Workspace)/scenario-data", '--batch-size', '${{ parameters.batchSize }}', '--request-time', '${{ parameters.requestDateTime }}', '--report', "$reportDirectory/validation-summary.json")
               dotnet run --project PricingValidationFramework/PricingValidationFramework.DataLoader --configuration Release --no-build -- validate @importArguments
               if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+              # Resolved once here ("now" = this moment's UTC hour) so the baseline stage uses the same time.
+              $requestTime = (Get-Content "$reportDirectory/validation-summary.json" -Raw | ConvertFrom-Json).RequestTime
+              Write-Host "Radar request time for new baselines: $requestTime"
+              Write-Host "##vso[task.setvariable variable=requestTime;isOutput=true]$requestTime"
+            name: validateDataset
             displayName: Validate CSV and XML without database writes
           - task: PublishTestResults@2
             condition: succeededOrFailed()
@@ -100,7 +113,7 @@ stages:
               artifact: DataLoaderValidation
 
   - stage: Import
-    displayName: Import approved dataset
+    displayName: Import validated dataset
     dependsOn: Validate
     lockBehavior: sequential
     jobs:
@@ -138,3 +151,77 @@ stages:
                   inputs:
                     targetPath: '$(Build.ArtifactStagingDirectory)/DataLoaderImport'
                     artifact: DataLoaderImport
+
+  - ${{ if eq(parameters.createBaselines, true) }}:
+      - stage: CreateBaselines
+        displayName: Create Radar baselines for new scenarios
+        dependsOn:
+          - Validate
+          - Import
+        variables:
+          requestTime: $[ stageDependencies.Validate.ValidateDataset.outputs['validateDataset.requestTime'] ]
+        jobs:
+          - job: RadarBaselines
+            timeoutInMinutes: 360
+            workspace:
+              clean: all
+            steps:
+              - checkout: self
+              - task: UseDotNet@2
+                displayName: Use .NET 10
+                inputs:
+                  packageType: sdk
+                  version: 10.0.x
+              - pwsh: |
+                  Write-Host "Creating baselines with Radar request time $(requestTime)"
+                  dotnet test PricingValidationFramework/PricingValidationFramework.Tests/PricingValidationFramework.Tests.csproj --configuration Release --filter "FullyQualifiedName~PricingValidationFramework.Tests.Integration.Radar.RadarValidationTests" --logger "trx;LogFileName=RadarBaselines.trx" --results-directory "$(Agent.TempDirectory)/RadarBaselineResults" -- NUnit.ExplicitMode=Relaxed
+                  if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+                  [xml]$results = Get-Content '$(Agent.TempDirectory)/RadarBaselineResults/RadarBaselines.trx'
+                  if ([int]$results.TestRun.ResultSummary.Counters.executed -eq 0) { throw 'No Radar scenarios executed.' }
+                displayName: Create baselines for scenarios without one
+                env:
+                  DOTNET_ENVIRONMENT: Uat
+                  DatabaseSettings__ConnectionString: $(RadarDatabaseConnectionString)
+                  RadarSettings__Endpoints__Endpoint1__BaseUrl: $(RadarEndpoint1Url)
+                  RadarSettings__Endpoints__Endpoint1__ApiKeyHeaderName: $(RadarEndpoint1KeyHeader)
+                  RadarSettings__Endpoints__Endpoint1__ApiKeyValue: $(RadarEndpoint1ApiKey)
+                  RadarSettings__Endpoints__Endpoint2__BaseUrl: $(RadarEndpoint2Url)
+                  RadarSettings__Endpoints__Endpoint2__ApiKeyHeaderName: $(RadarEndpoint2KeyHeader)
+                  RadarSettings__Endpoints__Endpoint2__ApiKeyValue: $(RadarEndpoint2ApiKey)
+                  RadarSettings__Endpoints__Endpoint3__BaseUrl: $(RadarEndpoint3Url)
+                  RadarSettings__Endpoints__Endpoint3__ApiKeyHeaderName: $(RadarEndpoint3KeyHeader)
+                  RadarSettings__Endpoints__Endpoint3__ApiKeyValue: $(RadarEndpoint3ApiKey)
+                  RADAR_MIN_THRESHOLD: $(RadarMinThreshold)
+                  RADAR_MAX_THRESHOLD: $(RadarMaxThreshold)
+                  RADAR_REQUEST_DATETIME: $(requestTime)
+                  RADAR_BASELINE_ONLY: 'true'
+                  TEST_TAG: ''
+
+              - task: PublishTestResults@2
+                condition: always()
+                displayName: Publish baseline test results
+                inputs:
+                  testResultsFormat: VSTest
+                  testResultsFiles: '$(Agent.TempDirectory)/RadarBaselineResults/RadarBaselines.trx'
+                  testRunTitle: Radar baselines
+                  failTaskOnMissingResultsFile: true
+
+              - pwsh: |
+                  # No report just means no new scenario needed a baseline, so missing files are not an error here.
+                  $resultDirectory = '$(Build.SourcesDirectory)/PricingValidationFramework/PricingValidationFramework.Tests/bin/Release/net10.0/TestResults'
+                  $artifactDirectory = '$(Build.ArtifactStagingDirectory)/RadarBaselineReports'
+                  foreach ($output in @(@{ Folder = 'Reports'; Pattern = 'Radar_*.csv' }, @{ Folder = 'Logs'; Pattern = 'Radar_*.log' })) {
+                    $source = Join-Path $resultDirectory $output.Folder
+                    $target = Join-Path $artifactDirectory $output.Folder
+                    New-Item -ItemType Directory -Force -Path $target | Out-Null
+                    if (Test-Path $source) { Get-ChildItem $source -Filter $output.Pattern -File | Copy-Item -Destination $target }
+                  }
+                condition: always()
+                displayName: Stage baseline reports and logs
+
+              - task: PublishPipelineArtifact@1
+                condition: always()
+                displayName: Publish baseline reports and logs
+                inputs:
+                  targetPath: '$(Build.ArtifactStagingDirectory)/RadarBaselineReports'
+                  artifact: RadarBaselineReports

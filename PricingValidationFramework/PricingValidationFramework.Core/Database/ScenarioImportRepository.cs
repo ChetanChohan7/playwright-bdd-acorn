@@ -11,13 +11,7 @@ public sealed class ScenarioImportRepository(SqlConnectionFactory connectionFact
 		SELECT Scenario_id AS ScenarioId, Quote_ref AS QuoteRef,
 		       Product_code AS ProductCode, Scheme_code AS SchemeCode,
 		       XML_request AS XmlRequest, Test_tags AS TestTags
-		FROM xml_request WHERE Scenario_id IN @ScenarioIds;
-		""";
-
-	private const string ReadUpdateIdentitiesSql = """
-		SELECT Scenario_id AS ScenarioId, Product_code AS ProductCode, Scheme_code AS SchemeCode
-		FROM xml_request WITH (UPDLOCK, HOLDLOCK)
-		WHERE Scenario_id IN @ScenarioIds;
+		FROM [Xml].[Request] WHERE Scenario_id IN @ScenarioIds;
 		""";
 
 	internal const int ParametersPerRow = 6;
@@ -71,30 +65,21 @@ public sealed class ScenarioImportRepository(SqlConnectionFactory connectionFact
 		await connection.ExecuteAsync(new CommandDefinition(
 			"SET XACT_ABORT ON;", transaction: transaction, cancellationToken: cancellationToken));
 
-		if (updates.Count > 0)
-		{
-			var identities = await connection.QueryAsync<(string ScenarioId, string ProductCode, string SchemeCode)>(new CommandDefinition(
-				ReadUpdateIdentitiesSql,
-				new { ScenarioIds = updates.Select(row => row.ScenarioId).ToArray() },
-				transaction, commandTimeout: 120, cancellationToken: cancellationToken));
-			ValidateUpdateIdentities(updates, identities);
-		}
-
 		foreach (var chunk in updates.Chunk(MaxRowsPerStatement))
 		{
 			var updated = await connection.ExecuteAsync(new CommandDefinition(
-				BuildUpdateSql(chunk.Length), BuildParameters(chunk), transaction,
+				BuildUpdateSql(chunk.Length), BuildParameters(chunk, connectionFactory.AuditUser), transaction,
 				commandTimeout: 120, cancellationToken: cancellationToken));
 			if (updated != chunk.Length)
 			{
-				throw new InvalidOperationException("An imported request is missing or its product or scheme changed.");
+				throw new InvalidOperationException("An imported request to update no longer exists.");
 			}
 		}
 
 		foreach (var chunk in inserts.Chunk(MaxRowsPerStatement))
 		{
 			var inserted = await connection.ExecuteAsync(new CommandDefinition(
-				BuildInsertSql(chunk.Length), BuildParameters(chunk), transaction,
+				BuildInsertSql(chunk.Length), BuildParameters(chunk, connectionFactory.AuditUser), transaction,
 				commandTimeout: 120, cancellationToken: cancellationToken));
 
 			if (inserted != chunk.Length)
@@ -107,23 +92,8 @@ public sealed class ScenarioImportRepository(SqlConnectionFactory connectionFact
 		return new ScenarioImportBatchResult(inserts.Count, updates.Count);
 	}
 
-	internal static void ValidateUpdateIdentities(
-		IReadOnlyCollection<ScenarioRequestImport> updates,
-		IEnumerable<(string ScenarioId, string ProductCode, string SchemeCode)> identities)
-	{
-		var existing = identities.ToDictionary(row => row.ScenarioId.Trim(), StringComparer.OrdinalIgnoreCase);
-		foreach (var update in updates)
-		{
-			if (!existing.TryGetValue(update.ScenarioId, out var stored) ||
-				!string.Equals(stored.ProductCode?.Trim(), update.ProductCode, StringComparison.Ordinal) ||
-				!string.Equals(stored.SchemeCode?.Trim(), update.SchemeCode, StringComparison.Ordinal))
-			{
-				throw new InvalidOperationException("An imported request is missing or its product or scheme changed.");
-			}
-		}
-	}
-
-	internal static DynamicParameters BuildParameters(IReadOnlyList<ScenarioRequestImport> requests)
+	// Six parameters per row plus one @AuditUser per statement: 333 rows = 1,999, under SQL Server's 2,100.
+	internal static DynamicParameters BuildParameters(IReadOnlyList<ScenarioRequestImport> requests, string? auditUser = null)
 	{
 		var parameters = new DynamicParameters();
 		for (var row = 0; row < requests.Count; row++)
@@ -136,6 +106,7 @@ public sealed class ScenarioImportRepository(SqlConnectionFactory connectionFact
 			parameters.Add($"x{row}", request.XmlRequest, DbType.AnsiString, size: -1);
 			parameters.Add($"t{row}", request.TestTags);
 		}
+		parameters.Add("AuditUser", auditUser, DbType.String, size: 256);
 		return parameters;
 	}
 
@@ -144,25 +115,24 @@ public sealed class ScenarioImportRepository(SqlConnectionFactory connectionFact
 		return $"""
 			UPDATE target
 			SET XML_request = v.XML_request,
-			    Quote_ref = v.Quote_ref
-			FROM xml_request AS target WITH (UPDLOCK, HOLDLOCK)
+			    row_modifieddate = SYSUTCDATETIME(),
+			    row_modifiedby = COALESCE(@AuditUser, SUSER_SNAME())
+			FROM [Xml].[Request] AS target WITH (UPDLOCK, HOLDLOCK)
 			INNER JOIN (VALUES
 				{BuildValuesRows(rowCount)}) AS v ({InsertColumns})
-			    ON target.Scenario_id = v.Scenario_id
-			WHERE target.Product_code = v.Product_code
-			  AND target.Scheme_code = v.Scheme_code;
+			    ON target.Scenario_id = v.Scenario_id;
 			""";
 	}
 
 	internal static string BuildInsertSql(int rowCount)
 	{
 		return $"""
-			INSERT INTO xml_request ({InsertColumns}, Create_date)
-			SELECT {InsertColumns}, SYSUTCDATETIME()
+			INSERT INTO [Xml].[Request] ({InsertColumns}, row_creationdate, row_createdby, row_modifieddate, row_modifiedby)
+			SELECT {InsertColumns}, SYSUTCDATETIME(), COALESCE(@AuditUser, SUSER_SNAME()), SYSUTCDATETIME(), COALESCE(@AuditUser, SUSER_SNAME())
 			FROM (VALUES
 				{BuildValuesRows(rowCount)}) AS v ({InsertColumns})
 			WHERE NOT EXISTS (
-			    SELECT 1 FROM xml_request AS target WITH (UPDLOCK, HOLDLOCK)
+			    SELECT 1 FROM [Xml].[Request] AS target WITH (UPDLOCK, HOLDLOCK)
 			    WHERE target.Scenario_id = v.Scenario_id);
 			""";
 	}

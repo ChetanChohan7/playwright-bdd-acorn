@@ -17,11 +17,11 @@ public class RequestDataReader
 		Product_code AS ProductCode,
 		XML_request AS XmlRequest,
 		Test_tags AS TestTags,
-		Create_date AS CreatedDate
+		row_creationdate AS CreatedDate
 		""";
-	private const string AllScenariosSql = $"SELECT {ScenarioColumns} FROM xml_request ORDER BY Create_date, Scenario_id;";
-	private const string ProductScenariosSql = $"SELECT {ScenarioColumns} FROM xml_request WHERE Product_code = @ProductCode ORDER BY Create_date, Scenario_id;";
-	private const string ScenarioByIdSql = $"SELECT {ScenarioColumns} FROM xml_request WHERE Scenario_id = @ScenarioId;";
+	private const string AllScenariosSql = $"SELECT {ScenarioColumns} FROM [Xml].[Request] ORDER BY row_creationdate, Scenario_id;";
+	private const string ProductScenariosSql = $"SELECT {ScenarioColumns} FROM [Xml].[Request] WHERE Product_code = @ProductCode ORDER BY row_creationdate, Scenario_id;";
+	private const string ScenarioByIdSql = $"SELECT {ScenarioColumns} FROM [Xml].[Request] WHERE Scenario_id = @ScenarioId;";
 
 	public RequestDataReader(SqlConnectionFactory connectionFactory, RetrySettings? retrySettings = null)
 	{

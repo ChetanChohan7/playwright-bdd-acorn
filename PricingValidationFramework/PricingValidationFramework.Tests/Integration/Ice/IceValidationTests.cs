@@ -8,7 +8,7 @@ using PricingValidationFramework.Tests.Helpers.Setup;
 namespace PricingValidationFramework.Tests.Integration.Ice;
 
 [TestFixture]
-[Explicit("Requires configured xml_request/xml_response database tables, ICE endpoint, credentials, and client certificate.")]
+[Explicit("Requires configured [Xml].[Request]/[Xml].[Response] database tables, ICE endpoint, credentials, and client certificate.")]
 [NonParallelizable]
 public class IceValidationTests
 {

@@ -94,13 +94,23 @@ public class RadarValidationTests
             cancellationToken.ThrowIfCancellationRequested();
             baseline = await setup.BaselineReader
                 .GetBaselineByScenarioIdAsync(scenario.ScenarioId, cancellationToken);
+
+            // Baseline-only runs (after a data load) create baselines for new scenarios and leave
+            // every scenario that already has an [Xml].[Response] row untouched, whatever its status.
+            if (setup.BaselineOnly && baseline is not null)
+            {
+                TestContext.Progress.WriteLine(
+                    $"[{scenario.ScenarioId}] Baseline already exists (Status {baseline.Status}); skipped in baseline-only mode.");
+                return;
+            }
+
             if (baseline is not null && !string.Equals(baseline.Status, "PASS", StringComparison.Ordinal))
             {
                 throw new InvalidDataException(
                     $"No passing baseline was found for ScenarioId '{scenario.ScenarioId}' (Status is '{baseline.Status}').");
             }
 
-            // A new scenario has no xml_response row yet: Radar's response becomes its baseline
+            // A new scenario has no [Xml].[Response] row yet: Radar's response becomes its baseline
             // and is passed without the fuzzy comparison. Otherwise compare against the baseline.
 			var run = baseline is null
                 ? await setup.PricingService.CreateBaselineAsync(scenario, setup.RequestTime, cancellationToken)

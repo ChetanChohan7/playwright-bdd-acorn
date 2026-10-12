@@ -12,27 +12,35 @@ public class ResultUpdater
 
 	// PASS: the Radar response becomes the new baseline.
 	private const string UpdatePassingResultSql = """
-		UPDATE xml_response
+		UPDATE [Xml].[Response]
 		SET Status = @Status,
 		    Last_updated = SYSUTCDATETIME(),
-		    XML_Response = @XmlResponse
+		    XML_Response = @XmlResponse,
+		    row_modifieddate = SYSUTCDATETIME(),
+		    row_modifiedby = COALESCE(@AuditUser, SUSER_SNAME())
 		WHERE Scenario_id = @ScenarioId;
 		""";
 
-	// FAIL: only the status changes, so the existing baseline XML is never overwritten.
+	// FAIL: only the status (and audit columns) change, so the existing baseline XML is never
+	// overwritten. Last_updated is left alone because ICE picks its baseline by it.
 	private const string UpdateFailedStatusSql = """
-		UPDATE xml_response
-		SET Status = @Status
+		UPDATE [Xml].[Response]
+		SET Status = @Status,
+		    row_modifieddate = SYSUTCDATETIME(),
+		    row_modifiedby = COALESCE(@AuditUser, SUSER_SNAME())
 		WHERE Scenario_id = @ScenarioId;
 		""";
 
 	// New scenario: the first Radar response becomes its baseline. The NOT EXISTS guard (with
 	// UPDLOCK/HOLDLOCK) means an existing baseline is never replaced, even by a concurrent run.
 	private const string InsertBaselineSql = """
-		INSERT INTO xml_response (Scenario_id, XML_Response, Status, Create_date, Last_updated)
-		SELECT @ScenarioId, @XmlResponse, @Status, SYSUTCDATETIME(), SYSUTCDATETIME()
+		INSERT INTO [Xml].[Response]
+		    (Scenario_id, XML_Response, Status, Last_updated,
+		     row_creationdate, row_createdby, row_modifieddate, row_modifiedby)
+		SELECT @ScenarioId, @XmlResponse, @Status, SYSUTCDATETIME(),
+		       SYSUTCDATETIME(), COALESCE(@AuditUser, SUSER_SNAME()), SYSUTCDATETIME(), COALESCE(@AuditUser, SUSER_SNAME())
 		WHERE NOT EXISTS (
-		    SELECT 1 FROM xml_response WITH (UPDLOCK, HOLDLOCK)
+		    SELECT 1 FROM [Xml].[Response] WITH (UPDLOCK, HOLDLOCK)
 		    WHERE Scenario_id = @ScenarioId);
 		""";
 
@@ -50,12 +58,14 @@ public class ResultUpdater
 			{
 				response.Status,
 				response.XmlResponse,
-				response.ScenarioId
+				response.ScenarioId,
+				connectionFactory.AuditUser
 			}, cancellationToken)
 			: await ExecuteAsync(UpdateFailedStatusSql, new
 			{
 				response.Status,
-				response.ScenarioId
+				response.ScenarioId,
+				connectionFactory.AuditUser
 			}, cancellationToken);
 		EnsureSingleRowUpdated(response.ScenarioId, affectedRows);
 	}
@@ -66,12 +76,13 @@ public class ResultUpdater
 		{
 			response.ScenarioId,
 			response.XmlResponse,
-			response.Status
+			response.Status,
+			connectionFactory.AuditUser
 		}, cancellationToken);
 		if (affectedRows != 1)
 		{
 			throw new InvalidOperationException(
-				$"A baseline already exists in xml_response for ScenarioId '{response.ScenarioId}'; it was not replaced.");
+				$"A baseline already exists in [Xml].[Response] for ScenarioId '{response.ScenarioId}'; it was not replaced.");
 		}
 	}
 
@@ -98,7 +109,7 @@ public class ResultUpdater
 		if (affectedRows != 1)
 		{
 			throw new InvalidOperationException(
-				$"Expected exactly one xml_response row to be updated for ScenarioId '{scenarioId}', but {affectedRows} rows were updated.");
+				$"Expected exactly one [Xml].[Response] row to be updated for ScenarioId '{scenarioId}', but {affectedRows} rows were updated.");
 		}
 	}
 } 

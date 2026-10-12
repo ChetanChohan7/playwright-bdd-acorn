@@ -16,14 +16,8 @@ internal static class TestConfigurationLoader
         {
             throw new InvalidOperationException("Move RadarSettings routes and schema mappings to PricingProfiles:MappingFile.");
         }
-        var mappingFile = configuration["PricingProfiles:MappingFile"];
-        if (string.IsNullOrWhiteSpace(mappingFile))
-        {
-            throw new InvalidOperationException("PricingProfiles:MappingFile is required.");
-        }
-        return PricingProfileConfiguration.Load(Path.GetFullPath(Path.Combine(
-            TestContext.CurrentContext.TestDirectory,
-            mappingFile.Replace('\\', Path.DirectorySeparatorChar).Replace('/', Path.DirectorySeparatorChar))));
+        return PricingProfileConfiguration.Load(PricingProfileConfiguration.ResolveMappingPath(
+            configuration["PricingProfiles:MappingFile"], TestContext.CurrentContext.TestDirectory));
     }
 
     public static IConfiguration Load()

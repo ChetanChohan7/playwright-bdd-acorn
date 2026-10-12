@@ -26,8 +26,8 @@ public class BaselineDataReader : IBaselineDataReader
 					PARTITION BY request.Product_code, request.Scheme_code
 					ORDER BY response.Last_updated DESC, response.Scenario_id DESC
 				) AS RowNumber
-			FROM xml_response AS response
-			INNER JOIN xml_request AS request ON request.Scenario_id = response.Scenario_id
+			FROM [Xml].[Response] AS response
+			INNER JOIN [Xml].[Request] AS request ON request.Scenario_id = response.Scenario_id
 			WHERE response.Status = 'PASS'
 		)
 		SELECT ScenarioId, QuoteRef, ProductCode, SchemeCode, XmlResponse, Status, LastUpdated
@@ -42,11 +42,11 @@ public class BaselineDataReader : IBaselineDataReader
 			response.Scenario_id AS ScenarioId,
 			request.Quote_ref AS QuoteRef,
 			response.XML_Response AS XmlResponse,
-			response.Create_date AS CreatedDate,
+			response.row_creationdate AS CreatedDate,
 			response.Last_updated AS LastUpdated,
 			response.Status AS Status
-		FROM xml_response AS response
-		INNER JOIN xml_request AS request ON request.Scenario_id = response.Scenario_id
+		FROM [Xml].[Response] AS response
+		INNER JOIN [Xml].[Request] AS request ON request.Scenario_id = response.Scenario_id
 		WHERE response.Scenario_id = @ScenarioId;
 		""";
 

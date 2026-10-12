@@ -90,7 +90,7 @@ NUnit owns scenario discovery and scenario-level concurrency. The Radar fixture 
 
 - `DatabaseSettings`: owns `ConnectionString`.
 - `RadarSettings`: owns endpoint settings and in-memory routes derived from the central mapping file. Appsettings contains endpoints, not product/scheme routes.
-- `PricingProfileConfiguration`: loads `PricingProfiles:MappingFile` and referenced XPath files once, validates unique product/scheme mappings and Ice field references, and derives Radar routes. All product-specific configuration lives under `TestAssets/Radar`.
+- `PricingProfileConfiguration`: loads `PricingProfiles:MappingFile` and referenced XPath files once, validates unique product/scheme mappings and Ice field references, and derives Radar routes. All product-specific configuration lives under `config/radar`. `PricingRouteConfiguration.LoadRoutes` reads only the routing part of the same file (product/scheme to endpoint and route key) without opening XPath files, for callers that never compare.
 - `RadarEndpointSettings`: owns one physical endpoint's `BaseUrl`, `ApiKeyHeaderName`, and `ApiKeyValue`.
 - `RadarRouteSettings`: owns one explicitly keyed route's `ProductCode`, `SchemeCodes`, `EndpointName`, and `RouteKey`.
 - `IceSettings`: owns the ICE endpoint, API authentication, and mandatory client-certificate configuration, including local PFX or Key Vault PFX material.
@@ -101,9 +101,9 @@ NUnit owns scenario discovery and scenario-level concurrency. The Radar fixture 
 ### Models
 
 - `Models/Common/PipelineSettings`: owns runtime values `BuildId`, `TestTag`, `RequestTime`, `MinThreshold`, and `MaxThreshold`.
-- `Models/Database/ScenarioRequest`: represents a scenario read from `xml_request`.
-- `Models/Database/IceBaselineScenario`: represents one passing `xml_response` baseline selected for ICE processing, joined to `xml_request` by `Scenario_id` for quote and product/scheme identifiers. It contains `ScenarioId`, `QuoteRef`, `SchemeCode`, `ProductCode`, `XmlResponse`, `Status`, and `LastUpdated`.
-- `Models/Database/ScenarioResponse`: represents baseline/result data associated with `xml_response`.
+- `Models/Database/ScenarioRequest`: represents a scenario read from `[Xml].[Request]`.
+- `Models/Database/IceBaselineScenario`: represents one passing `[Xml].[Response]` baseline selected for ICE processing, joined to `[Xml].[Request]` by `Scenario_id` for quote and product/scheme identifiers. It contains `ScenarioId`, `QuoteRef`, `SchemeCode`, `ProductCode`, `XmlResponse`, `Status`, and `LastUpdated`.
+- `Models/Database/ScenarioResponse`: represents baseline/result data associated with `[Xml].[Response]`.
 - `Models/External/RadarJsonResponse`: represents the JSON envelope's top-level `response` XML string. `RadarApiClient` deserializes the envelope and normalizes its XML; raw XML responses are also supported.
 - `Models/Reporting/RadarValidationReportRow`: represents one Radar scenario summary with its dynamic decimal field results.
 - `Models/Reporting/DecimalFieldComparison`: represents a named configured field comparison, retaining its XPath and decimal values.
@@ -142,7 +142,7 @@ GetScenariosByProductCodeAsync(string productCode)
 GetScenarioByIdAsync(string scenarioId)
 ```
 
-The user-facing `TestTag` input is a product-code selector. If supplied, pass it to `GetScenariosByProductCodeAsync`, which filters `xml_request.Product_code = @ProductCode` across all schemes. Otherwise use `GetAllScenariosAsync`. A specific scenario uses `GetScenarioByIdAsync`. Stored `Test_tags` remains scenario metadata and NUnit categories, not a workload filter.
+The user-facing `TestTag` input is a product-code selector. If supplied, pass it to `GetScenariosByProductCodeAsync`, which filters `[Xml].[Request].Product_code = @ProductCode` across all schemes. Otherwise use `GetAllScenariosAsync`. A specific scenario uses `GetScenarioByIdAsync`. Stored `Test_tags` remains scenario metadata and NUnit categories, not a workload filter.
 
 All queries must explicitly select:
 
@@ -153,22 +153,24 @@ Scheme_code
 Product_code
 Xml_request
 Test_tags
-Create_date
+row_creationdate
 ```
 
 `SELECT *` is prohibited.
 
-`BaselineDataReader` reads baseline XML from `xml_response` and joins `xml_request` on unique `Scenario_id` for quote and product/scheme identifiers. It owns baseline retrieval separately from `RequestDataReader`, which reads only `xml_request`.
+`BaselineDataReader` reads baseline XML from `[Xml].[Response]` and joins `[Xml].[Request]` on unique `Scenario_id` for quote and product/scheme identifiers. It owns baseline retrieval separately from `RequestDataReader`, which reads only `[Xml].[Request]`.
 
-`IBaselineDataReader` is the database boundary for baseline retrieval and supports isolated tests with a fake reader. `BaselineDataReader.GetPassingBaselineScenariosAsync()` reads `xml_response`, filters `Status = 'PASS'`, and returns the latest `IceBaselineScenario` per `ProductCode` and `SchemeCode`, ordered by `Last_updated DESC` and `Scenario_id`. Filtering, grouping, and ranking are performed in SQL.
+`IBaselineDataReader` is the database boundary for baseline retrieval and supports isolated tests with a fake reader. `BaselineDataReader.GetPassingBaselineScenariosAsync()` reads `[Xml].[Response]`, filters `Status = 'PASS'`, and returns the latest `IceBaselineScenario` per `ProductCode` and `SchemeCode`, ordered by `Last_updated DESC` and `Scenario_id`. Filtering, grouping, and ranking are performed in SQL.
 
-`ResultUpdater.InsertBaselineAsync()` inserts a new scenario's first Radar response as its `PASS` baseline, guarded so it never replaces an existing row. `ResultUpdater.UpdateResultAsync()` updates `xml_response` by unique `Scenario_id`, preserving `Create_date` and requiring exactly one affected row. On PASS it updates `Status`, `Last_updated` and `XML_Response`, so the Radar response becomes the new baseline. On FAIL it updates `Status` only, so the existing baseline XML is never overwritten. `BuildId` is supplied at runtime for reporting and logging; `xml_response` does not require a build-ID column.
+`ResultUpdater.InsertBaselineAsync()` inserts a new scenario's first Radar response as its `PASS` baseline, guarded so it never replaces an existing row. `ResultUpdater.UpdateResultAsync()` updates `[Xml].[Response]` by unique `Scenario_id`, preserving `row_creationdate`/`row_createdby` and requiring exactly one affected row. On PASS it updates `Status`, `Last_updated` and `XML_Response`, so the Radar response becomes the new baseline. On FAIL it updates `Status` only, so the existing baseline XML is never overwritten. Both also set `row_modifieddate` and `row_modifiedby`.
+
+Audit columns: both tables have `row_creationdate`, `row_createdby`, `row_modifieddate` and `row_modifiedby` (there is no `Create_date`). Inserts set all four; updates set the two `row_modified*` columns. Dates are `SYSUTCDATETIME()`. The user is `DatabaseSettings:AuditUser` when configured (e.g. `testuser`), otherwise SQL Server's `SUSER_SNAME()`, the login running the statement. Reads expose `row_creationdate` as `CreatedDate`, and Radar's scenario list is ordered by it. `BuildId` is supplied at runtime for reporting and logging; `[Xml].[Response]` does not require a build-ID column.
 
 ### External API access
 
 - `ExternalAPIAccess/ApiClients/RadarApiClient`: Radar HTTP boundary that sends XML POST requests with endpoint-specific authentication, retries transient failures, honors `Retry-After`, and preserves cancellation.
 - `ExternalAPIAccess/ApiClients/IceApiClient`: sends requests to ICE using a fully built URL, ICE authentication, and a client certificate. It does not construct URLs, append `QuoteRef`, or perform URL composition.
-- `ExternalAPIAccess/UrlBuilders/RadarUrlBuilder`: URL-composition component that receives `BaseUrl`, `RouteKey`, and formatted request time. It does not resolve configuration, query `xml_request`, or apply auth.
+- `ExternalAPIAccess/UrlBuilders/RadarUrlBuilder`: URL-composition component that receives `BaseUrl`, `RouteKey`, and formatted request time. It does not resolve configuration, query `[Xml].[Request]`, or apply auth.
 - `ExternalAPIAccess/UrlBuilders/IceUrlBuilder`: owns ICE URL composition.
 - `ExternalAPIAccess/UrlBuilders/RequestTimeFormatter`: owns Radar request-time validation and formatting.
 - `ExternalAPIAccess/Throttling/RadarRequestRateLimiter`: owns one independent sliding-window limiter per logical Radar endpoint for every outbound HTTP attempt, including retries.
@@ -197,14 +199,14 @@ Only configured fields are extracted. Missing, ambiguous or non-numeric values p
 
 ## 3. Data-Driven Execution Model
 
-Radar execution is driven by `xml_request`. ICE execution is driven by passing baseline records from `xml_response`, joined to `xml_request` for identifiers; ICE does not load request XML or execute Radar requests. Neither flow uses hardcoded test cases or static scenario definitions.
+Radar execution is driven by `[Xml].[Request]`. ICE execution is driven by passing baseline records from `[Xml].[Response]`, joined to `[Xml].[Request]` for identifiers; ICE does not load request XML or execute Radar requests. Neither flow uses hardcoded test cases or static scenario definitions.
 
 Each selected database record represents one scenario execution unit. `RequestDataReader` is the Radar scenario source, and `BaselineDataReader` is the ICE scenario source. Radar uses NUnit `TestCaseSource` so each selected scenario appears as a separate test case. Each Radar case receives an independent NUnit result; one consolidated report is written after the fixture completes. ICE remains separate and is not changed by Radar parallel execution.
 
 ### Radar flow
 
 ```text
-xml_request
+[Xml].[Request]
   -> ScenarioRequest
   -> Trim ProductCode and SchemeCode
   -> NUnit test loads baseline XML and calls RadarPricingService
@@ -219,7 +221,7 @@ xml_request
   -> Teardown streams one flat CSV with XML only on the first row per scenario
 ```
 
-`TestAssets/Radar/mappings.json` owns each profile's ID, product, schemes, endpoint reference, route key, paths filename and Ice field. Referenced files under `XPathProfiles` contain only named XPath expressions. Setup loads them once and rejects missing/invalid mappings before HTTP resources are created. The 16 shipped files are editable templates, not production contracts. Multiple mappings may share a paths file.
+`config/radar/mappings.json` owns each profile's ID, product, schemes, endpoint reference, route key, paths filename and Ice field. Referenced files under `XPathProfiles` contain only named XPath expressions. Setup loads them once and rejects missing/invalid mappings before HTTP resources are created. The 16 shipped files are editable templates, not production contracts. Multiple mappings may share a paths file.
 
 Radar writes one row per configured field, repeating scenario identifiers and overall result. Request, baseline and API XML appear only on the first row of each scenario. A scenario with no comparisons still gets an outcome row. Completed results are held in a disk spool with only IDs and offsets indexed in memory. Teardown streams scenario-sorted results; disposal deletes the spool. A 20,000-scenario regression workload covers this path. NUnit retains request test cases separately.
 
@@ -228,7 +230,7 @@ Scenario discovery preserves the existing test-tag filter and rejects duplicate 
 ### ICE flow
 
 ```text
-xml_response with Status = PASS, joined to xml_request by Scenario_id
+[Xml].[Response] with Status = PASS, joined to [Xml].[Request] by Scenario_id
   -> Newest IceBaselineScenario per product/scheme
   -> Database-only discovery creates TestCaseSource entries
   -> OneTimeSetUp initializes shared ICE client and certificate
@@ -237,7 +239,7 @@ xml_response with Status = PASS, joined to xml_request by Scenario_id
   -> OneTimeTearDown writes one consolidated report and disposes resources
 ```
 
-Adding or changing Radar scenarios is a data and configuration concern, not a code change. ICE scenario units are selected from passing `xml_response` data by `BaselineDataReader`.
+Adding or changing Radar scenarios is a data and configuration concern, not a code change. ICE scenario units are selected from passing `[Xml].[Response]` data by `BaselineDataReader`.
 
 ## 4. Configuration Models
 
@@ -309,10 +311,11 @@ MaxThreshold
 Sources:
 
 - `BuildId`: Azure DevOps.
-- `TestTag`: `PipelineSettings:TestTag` or the `TEST_TAG` pipeline override; the value identifies `xml_request.Product_code`.
+- `TestTag`: `PipelineSettings:TestTag` or the `TEST_TAG` pipeline override; the value identifies `[Xml].[Request].Product_code`.
 - `RequestTime`: `PipelineSettings:RequestTime` or the `RADAR_REQUEST_DATETIME` pipeline override.
 - `MinThreshold`: `PipelineSettings:MinThreshold` or the `RADAR_MIN_THRESHOLD` pipeline override.
 - `MaxThreshold`: `PipelineSettings:MaxThreshold` or the `RADAR_MAX_THRESHOLD` pipeline override.
+- `BaselineOnly`: `PipelineSettings:BaselineOnly` or the `RADAR_BASELINE_ONLY` pipeline override (`true`/`false`, default false). When true, scenarios with an existing `[Xml].[Response]` row are skipped and only missing baselines are created.
 
 Environment overrides take precedence over appsettings. Thresholds must be supplied for live runs; empty tag and request time select all scenarios and generate UTC request time respectively.
 
@@ -439,7 +442,7 @@ Shared structure and non-secret defaults only:
     "Endpoints": {}
   },
   "PricingProfiles": {
-    "MappingFile": "TestAssets/Radar/mappings.json"
+    "MappingFile": "Radar/mappings.json"
   },
   "IceSettings": {
     "IceEndpoint": "",
@@ -624,7 +627,7 @@ NUnit test
   -> PipelineInputValidator
   -> PipelineSettings
     -> RequestDataReader
-    -> xml_request scenarios
+    -> [Xml].[Request] scenarios
     -> Trim ProductCode and SchemeCode
     -> Match exactly one configured route by fields
     -> Resolve selected route EndpointName
@@ -634,7 +637,7 @@ NUnit test
     -> Radar XML response
     -> RadarPricingService
     -> Resolve API route + pricing profile independently
-    -> BaselineDataReader provides xml_response baseline XML
+    -> BaselineDataReader provides [Xml].[Response] baseline XML
     -> Extract baseline and Radar decimals using the shared XPath file
     -> Match baseline/response decimal values by full XML path
     -> Compare each Actual - Expected against inclusive delta range
@@ -650,7 +653,7 @@ Adding a product and scheme endpoint combination requires only a new `RadarSetti
 ```text
 NUnit test
   -> BaselineDataReader
-  -> xml_response passing baseline scenarios joined to xml_request for identifiers
+  -> [Xml].[Response] passing baseline scenarios joined to [Xml].[Request] for identifiers
   -> IceBaselineScenario
   -> QuoteRef
   -> IceUrlBuilder
@@ -675,10 +678,10 @@ ICE must not:
 - Use Radar endpoint settings or Radar authentication.
 - Perform pricing extraction or comparison.
 - Call `ResultUpdater`.
-- Update `xml_response`.
+- Update `[Xml].[Response]`.
 - Store results in the database.
 
-ICE obtains baseline XML from `xml_response` and identifiers from the linked `xml_request`; it does not load request XML or write database results.
+ICE obtains baseline XML from `[Xml].[Response]` and identifiers from the linked `[Xml].[Request]`; it does not load request XML or write database results.
 
 ## 11. Reporting and Logging
 
@@ -726,7 +729,7 @@ The `Result` field serializes to `PASS`, `FAIL`, or `ERROR`. Ice also reports `P
 
 ICE report field ownership:
 
-- From `xml_request` linked by `Scenario_id`: `ScenarioId`, `QuoteRef`, `SchemeCode`, `ProductCode`.
+- From `[Xml].[Request]` linked by `Scenario_id`: `ScenarioId`, `QuoteRef`, `SchemeCode`, `ProductCode`.
 - From ICE: `IceValue`.
 - From baseline XML: `BaselineValue`.
 - Calculated in `IceValidationTests`: `Result`.
@@ -904,7 +907,7 @@ NLog keeps separate ICE and Radar targets. Build identifiers may remain in `Glob
 
 ```text
 RequestDataReader
-  -> Selected xml_request scenarios and optional test-tag filter
+  -> Selected [Xml].[Request] scenarios and optional test-tag filter
   -> Reject duplicate ScenarioIds
   -> NUnit TestCaseSource: one Radar test case per scenario
   -> Up to four NUnit child cases execute concurrently
@@ -927,7 +930,7 @@ Each case asserts its own outcome without preventing unrelated cases from comple
 IceTestSetup
   -> Load configuration and shared ICE dependencies
   -> BaselineDataReader
-  -> xml_response PASS scenarios joined to xml_request for identifiers
+  -> [Xml].[Response] PASS scenarios joined to [Xml].[Request] for identifiers
   -> Latest PASS per ProductCode + SchemeCode
   -> One explicit IceValidationTests workload
   -> QuoteRef
@@ -946,16 +949,16 @@ IceTestSetup
   -> ICE log
 ```
 
-Ice reads the shared product/scheme mappings but does not use Radar credentials or throttling, call `ResultUpdater`, or update `xml_response`. Its API JSON extraction and exact comparison are unchanged.
+Ice reads the shared product/scheme mappings but does not use Radar credentials or throttling, call `ResultUpdater`, or update `[Xml].[Response]`. Its API JSON extraction and exact comparison are unchanged.
 
-ICE uses `BaselineDataReader` as its only database reader, obtains identifiers through the `xml_request` join without loading request XML, and performs comparison/assertion logic directly in the NUnit test.
+ICE uses `BaselineDataReader` as its only database reader, obtains identifiers through the `[Xml].[Request]` join without loading request XML, and performs comparison/assertion logic directly in the NUnit test.
 
 ICE uses one named `TestCaseSource` case per selected baseline and remains explicitly `[NonParallelizable]`. Discovery loads only database/retry configuration and passing baseline data, without creating the API client or loading its certificate. Empty discovery, duplicate IDs, and discovery exceptions produce a failing discovery case. One-time setup creates the shared execution resources; each scenario records PASS/FAIL/ERROR before its independent assertion, and subsequent cases continue after a failed case. Teardown uses a non-cancelled reporting token to write one combined report, including completed rows after cancellation, and disposes resources in `finally`. Baseline selection, exact comparison, authentication, and retries are unchanged; ICE tag filtering remains pending.
 
 ## 20. Final Design Decisions
 
 - `BuildId` is the required ICE report identifier.
-- `TestTag` and `RequestTime` are optional pipeline inputs for Radar only; `TestTag` retains its user-facing name but filters `xml_request.Product_code`.
+- `TestTag` and `RequestTime` are optional pipeline inputs for Radar only; `TestTag` retains its user-facing name but filters `[Xml].[Request].Product_code`.
 - `RequestTime` uses the literal-`Z` format `yyyy-MM-ddZHH:mm:ss`; missing values use current UTC time.
 - ICE validation is exact equality: `IceValue == BaselineValue`.
 - ICE does not use Radar thresholds, `MinThreshold`, `MaxThreshold`, or `FuzzyPricingMatcher`.
@@ -964,11 +967,11 @@ ICE uses one named `TestCaseSource` case per selected baseline and remains expli
 - ICE reads `BUILD_BUILDID` at execution time for `BuildId` and report naming.
 - ICE passes only when `IceValue` exactly equals `BaselineValue`.
 - Equality comparison, assertion, and report-row construction remain owned by the NUnit ICE test.
-- Radar is driven by `xml_request`; ICE is driven by passing `xml_response` baseline records selected by `BaselineDataReader`.
-- ICE uses `IceBaselineScenario` records with identifiers joined from `xml_request`; it does not load request XML.
+- Radar is driven by `[Xml].[Request]`; ICE is driven by passing `[Xml].[Response]` baseline records selected by `BaselineDataReader`.
+- ICE uses `IceBaselineScenario` records with identifiers joined from `[Xml].[Request]`; it does not load request XML.
 - `IceUrlBuilder` owns ICE URL composition; `IceApiClient` receives a fully built URL and never appends `QuoteRef`.
-- `RequestDataReader` reads only `xml_request`; `BaselineDataReader` reads baseline XML from `xml_response` joined to `xml_request`; `ResultUpdater` updates `xml_response` by unique `Scenario_id`.
-- ICE does not call `ResultUpdater` or update `xml_response`.
+- `RequestDataReader` reads only `[Xml].[Request]`; `BaselineDataReader` reads baseline XML from `[Xml].[Response]` joined to `[Xml].[Request]`; `ResultUpdater` updates `[Xml].[Response]` by unique `Scenario_id`.
+- ICE does not call `ResultUpdater` or update `[Xml].[Response]`.
 - `IceValidationTests` is the ICE pipeline orchestrator; no separate ICE application orchestrator is required.
 - ICE runs one named, sequential NUnit case per selected baseline through `TestCaseSource`, with independent assertions and one combined report in fixture teardown.
 - Database and API retries are transient-only, configurable, exponentially backed off, jittered, cancellation-aware, and logged by flow.
@@ -984,7 +987,7 @@ ICE uses one named `TestCaseSource` case per selected baseline and remains expli
 - UAT certificate material is loaded in memory and attached to an ICE-specific `HttpClientHandler`; agent certificate-store installation is not required.
 - Radar and ICE produce separate reports and log files.
 - Report and log names are fixed as `Radar_<BuildId>.csv`, `Ice_<BuildId>.csv`, `Radar_<BuildId>.log`, and `Ice_<BuildId>.log`.
-- Pricing mappings and XPath files are resolved from `TestAssets/Radar` by default and copied into test output.
+- Pricing mappings and XPath files live in `config/radar` and are copied to `Radar/` in the Tests and DataLoader outputs; test fixtures stay under `Tests/TestAssets/Radar/Fixtures`.
 - Baseline/response extraction failures are technical ERRORs. Log and report them without updating the baseline; continue with other scenarios.
 
 NUnit owns scenario execution, schemes select Radar endpoint groups, endpoint groups own Radar credentials, and ICE remains an independent validation path.
@@ -995,7 +998,7 @@ The architecture reflects the current implementation:
 
 - Folder structure and ownership boundaries are defined.
 - Business naming is finalized for Radar, ICE, baseline data, validation, matching, reporting, and logging.
-- Radar and ICE execution are data-driven with no hardcoded test cases or static scenario definitions; Radar uses `xml_request`, while ICE uses passing `xml_response` baselines.
+- Radar and ICE execution are data-driven with no hardcoded test cases or static scenario definitions; Radar uses `[Xml].[Request]`, while ICE uses passing `[Xml].[Response]` baselines.
 - `IceUrlBuilder` centralizes ICE URL construction and `IceApiClient` owns only HTTP execution.
 - `ExternalAPIAccess/ApiClients/` contains `RadarApiClient` and `IceApiClient`.
 - `ExternalAPIAccess/UrlBuilders/` contains `RadarUrlBuilder`, `IceUrlBuilder`, and `RequestTimeFormatter`; API clients never build URLs.
@@ -1008,7 +1011,7 @@ The architecture reflects the current implementation:
 - NUnit tests orchestrate execution; no application-level orchestrator is required.
 - Pipeline input validation occurs before database access, API calls, or output generation.
 - Database responsibilities are separated between request reads, baseline reads, and result updates.
-- ICE uses `BaselineDataReader.GetPassingBaselineScenariosAsync()` and `IceBaselineScenario`, with identifiers joined from `xml_request` without loading request XML.
+- ICE uses `BaselineDataReader.GetPassingBaselineScenariosAsync()` and `IceBaselineScenario`, with identifiers joined from `[Xml].[Request]` without loading request XML.
 - Radar extraction failures are isolated to the current scenario and do not stop the run.
 - Radar and ICE have separate reports, logs, output names, and flow-specific responsibilities.
 - Mapping-file location is configurable; paths-file locations are relative to that file.

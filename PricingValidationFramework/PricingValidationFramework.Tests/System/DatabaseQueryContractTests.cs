@@ -36,9 +36,10 @@ public class DatabaseQueryContractTests
 
         Assert.Multiple(() =>
         {
-            Assert.That(sql, Does.Contain("FROM xml_request"));
+            Assert.That(sql, Does.Contain("FROM [Xml].[Request]"));
             Assert.That(sql, Does.Contain("Scheme_code AS SchemeCode"));
-            Assert.That(sql, Does.Contain("Create_date AS CreatedDate"));
+            Assert.That(sql, Does.Contain("row_creationdate AS CreatedDate"));
+            Assert.That(sql, Does.Not.Contain("Create_date"));
             Assert.That(sql, Does.Not.Contain("Schem_code"));
             Assert.That(sql, Does.Not.Contain("Created_date"));
         });
@@ -62,15 +63,15 @@ public class DatabaseQueryContractTests
 
         Assert.Multiple(() =>
         {
-            Assert.That(productSql, Does.Contain("WHERE Product_code = @ProductCode ORDER BY Create_date, Scenario_id;"));
+            Assert.That(productSql, Does.Contain("WHERE Product_code = @ProductCode ORDER BY row_creationdate, Scenario_id;"));
             Assert.That(productSql, Does.Contain("Test_tags AS TestTags"));
             Assert.That(productSql, Does.Not.Contain("Test_tags ="));
             Assert.That(productSql, Does.Not.Contain("@TestTag"));
             Assert.That(productSql, Does.Not.Contain("Scheme_code ="));
             Assert.That(productSql, Does.Not.Contain("ROW_NUMBER"));
-            Assert.That(productSql, Does.Not.Contain("xml_response"));
+            Assert.That(productSql, Does.Not.Contain("[Xml].[Response]"));
             Assert.That(allSql, Does.Not.Contain("WHERE"));
-            Assert.That(allSql, Does.Contain("ORDER BY Create_date, Scenario_id;"));
+            Assert.That(allSql, Does.Contain("ORDER BY row_creationdate, Scenario_id;"));
         });
     }
 
@@ -82,8 +83,8 @@ public class DatabaseQueryContractTests
 
         Assert.Multiple(() =>
         {
-            Assert.That(sql, Does.Contain("FROM xml_response AS response"));
-            Assert.That(sql, Does.Contain("INNER JOIN xml_request AS request ON request.Scenario_id = response.Scenario_id"));
+            Assert.That(sql, Does.Contain("FROM [Xml].[Response] AS response"));
+            Assert.That(sql, Does.Contain("INNER JOIN [Xml].[Request] AS request ON request.Scenario_id = response.Scenario_id"));
             Assert.That(sql, Does.Contain("request.Quote_ref AS QuoteRef"));
             Assert.That(sql, Does.Contain("response.XML_Response AS XmlResponse"));
             Assert.That(sql, Does.Not.Contain("response.Quote_ref"));
@@ -119,7 +120,8 @@ public class DatabaseQueryContractTests
         {
             Assert.That(sql, Does.Contain("response.Status AS Status"));
             Assert.That(sql, Does.Not.Contain("Status = 'PASS'"));
-            Assert.That(sql, Does.Contain("response.Create_date AS CreatedDate"));
+            Assert.That(sql, Does.Contain("response.row_creationdate AS CreatedDate"));
+            Assert.That(sql, Does.Not.Contain("Create_date"));
             Assert.That(sql, Does.Contain("response.Last_updated AS LastUpdated"));
             Assert.That(sql, Does.Not.Contain("Build_id"));
             Assert.That(sql, Does.Contain("response.Scenario_id = @ScenarioId"));
@@ -133,12 +135,16 @@ public class DatabaseQueryContractTests
 
         Assert.Multiple(() =>
         {
-            Assert.That(sql, Does.Contain("UPDATE xml_response"));
+            Assert.That(sql, Does.Contain("UPDATE [Xml].[Response]"));
             Assert.That(sql, Does.Contain("Status = @Status"));
             Assert.That(sql, Does.Not.Contain("Build_id"));
             Assert.That(sql, Does.Not.Contain("@BuildId"));
             Assert.That(sql, Does.Contain("XML_Response = @XmlResponse"));
             Assert.That(sql, Does.Contain("Last_updated = SYSUTCDATETIME()"));
+            Assert.That(sql, Does.Contain("row_modifieddate = SYSUTCDATETIME()"));
+            Assert.That(sql, Does.Contain("row_modifiedby = COALESCE(@AuditUser, SUSER_SNAME())"));
+            Assert.That(sql, Does.Not.Contain("row_creationdate"), "an update never changes who or when the row was created");
+            Assert.That(sql, Does.Not.Contain("row_createdby"));
             Assert.That(sql, Does.Contain("Scenario_id = @ScenarioId"));
             Assert.That(sql, Does.Not.Contain("Create_date"));
             Assert.That(sql, Does.Not.Contain("Quote_ref"));
@@ -154,13 +160,16 @@ public class DatabaseQueryContractTests
 
         Assert.Multiple(() =>
         {
-            Assert.That(sql, Does.Contain("UPDATE xml_response"));
+            Assert.That(sql, Does.Contain("UPDATE [Xml].[Response]"));
             Assert.That(sql, Does.Contain("SET Status = @Status"));
             Assert.That(sql, Does.Not.Contain("Build_id"));
             Assert.That(sql, Does.Not.Contain("@BuildId"));
             Assert.That(sql, Does.Contain("Scenario_id = @ScenarioId"));
             Assert.That(sql, Does.Not.Contain("XML_Response"));
             Assert.That(sql, Does.Not.Contain("Last_updated"));
+            Assert.That(sql, Does.Contain("row_modifieddate = SYSUTCDATETIME()"));
+            Assert.That(sql, Does.Contain("row_modifiedby = COALESCE(@AuditUser, SUSER_SNAME())"));
+            Assert.That(sql, Does.Not.Contain("row_creationdate"));
         });
     }
 
@@ -171,10 +180,13 @@ public class DatabaseQueryContractTests
 
         Assert.Multiple(() =>
         {
-            Assert.That(sql, Does.Contain("INSERT INTO xml_response (Scenario_id, XML_Response, Status, Create_date, Last_updated)"));
+            Assert.That(sql, Does.Contain("(Scenario_id, XML_Response, Status, Last_updated,"));
+            Assert.That(sql, Does.Contain("row_creationdate, row_createdby, row_modifieddate, row_modifiedby)"));
+            Assert.That(sql, Does.Contain("COALESCE(@AuditUser, SUSER_SNAME())"));
+            Assert.That(sql, Does.Not.Contain("Create_date"));
             Assert.That(sql, Does.Not.Contain("Build_id"));
             Assert.That(sql, Does.Not.Contain("@BuildId"));
-            Assert.That(sql, Does.Contain("SELECT @ScenarioId, @XmlResponse, @Status, SYSUTCDATETIME(), SYSUTCDATETIME()"));
+            Assert.That(sql, Does.Contain("SELECT @ScenarioId, @XmlResponse, @Status, SYSUTCDATETIME(),"));
             Assert.That(sql, Does.Contain("WHERE NOT EXISTS"));
             Assert.That(sql, Does.Contain("WITH (UPDLOCK, HOLDLOCK)"));
             Assert.That(sql, Does.Not.Contain("UPDATE"));
@@ -188,13 +200,15 @@ public class DatabaseQueryContractTests
 
         Assert.Multiple(() =>
         {
-            Assert.That(sql, Does.Contain("INSERT INTO xml_request (Scenario_id, Quote_ref, Product_code, Scheme_code, XML_request, Test_tags, Create_date)"));
+            Assert.That(sql, Does.Contain("INSERT INTO [Xml].[Request] (Scenario_id, Quote_ref, Product_code, Scheme_code, XML_request, Test_tags, row_creationdate, row_createdby, row_modifieddate, row_modifiedby)"));
+            Assert.That(sql, Does.Contain("SYSUTCDATETIME(), COALESCE(@AuditUser, SUSER_SNAME()), SYSUTCDATETIME(), COALESCE(@AuditUser, SUSER_SNAME())"));
+            Assert.That(sql, Does.Not.Contain("Create_date"));
             Assert.That(sql, Does.Contain("SYSUTCDATETIME()"));
             Assert.That(sql, Does.Contain("(@s0, @q0, @p0, @c0, @x0, @t0)"));
             Assert.That(sql, Does.Contain("(@s1, @q1, @p1, @c1, @x1, @t1)"));
             Assert.That(sql, Does.Contain("AS v (Scenario_id, Quote_ref, Product_code, Scheme_code, XML_request, Test_tags)"));
             Assert.That(sql, Does.Contain("WHERE NOT EXISTS"));
-            Assert.That(sql, Does.Contain("xml_request AS target WITH (UPDLOCK, HOLDLOCK)"));
+            Assert.That(sql, Does.Contain("[Xml].[Request] AS target WITH (UPDLOCK, HOLDLOCK)"));
             Assert.That(sql, Does.Contain("WHERE target.Scenario_id = v.Scenario_id"));
         });
     }
@@ -210,7 +224,7 @@ public class DatabaseQueryContractTests
             Assert.That(sql, Does.Not.Match(@"\bCREATE\s").IgnoreCase, "creates nothing (Create_date is only a column)");
             Assert.That(sql, Does.Not.Contain("MERGE").IgnoreCase);
             Assert.That(sql, Does.Not.Contain("OPENJSON").IgnoreCase);
-            Assert.That(sql, Does.Not.Contain("xml_response"));
+            Assert.That(sql, Does.Not.Contain("[Xml].[Response]"));
             Assert.That(sql, Does.Not.Contain("UPDATE").IgnoreCase);
         });
     }
@@ -247,18 +261,23 @@ public class DatabaseQueryContractTests
 
         Assert.Multiple(() =>
         {
-            Assert.That(sql, Does.Contain("FROM xml_request AS target WITH (UPDLOCK, HOLDLOCK)"));
+            Assert.That(sql, Does.Contain("FROM [Xml].[Request] AS target WITH (UPDLOCK, HOLDLOCK)"));
             Assert.That(sql, Does.Contain("(@s1, @q1, @p1, @c1, @x1, @t1)"));
             Assert.That(sql, Does.Contain("ON target.Scenario_id = v.Scenario_id"));
-            Assert.That(sql, Does.Contain("target.Product_code = v.Product_code"));
-            Assert.That(sql, Does.Contain("target.Scheme_code = v.Scheme_code"));
+            Assert.That(sql, Does.Not.Contain("target.Product_code"), "no product/scheme condition: the XML alone decides");
+            Assert.That(sql, Does.Not.Contain("target.Scheme_code"));
+            Assert.That(sql, Does.Not.Contain("target.Quote_ref"));
             Assert.That(assignments, Does.Contain("XML_request = v.XML_request"));
-            Assert.That(assignments, Does.Contain("Quote_ref = v.Quote_ref"));
+            Assert.That(assignments, Does.Contain("row_modifieddate = SYSUTCDATETIME()"));
+            Assert.That(assignments, Does.Contain("row_modifiedby = COALESCE(@AuditUser, SUSER_SNAME())"));
+            Assert.That(assignments, Does.Not.Contain("row_creationdate"));
+            Assert.That(assignments, Does.Not.Contain("row_createdby"));
+            Assert.That(assignments, Does.Not.Contain("Quote_ref"), "the update changes the XML only");
             Assert.That(assignments, Does.Not.Contain("Test_tags"));
             Assert.That(assignments, Does.Not.Contain("Product_code"));
             Assert.That(assignments, Does.Not.Contain("Scheme_code"));
             Assert.That(sql, Does.Not.Contain("Create_date"));
-            Assert.That(sql, Does.Not.Contain("xml_response"));
+            Assert.That(sql, Does.Not.Contain("[Xml].[Response]"));
             Assert.That(sql, Does.Not.Contain("#"));
             Assert.That(sql, Does.Not.Match(@"\bCREATE\s").IgnoreCase);
             Assert.That(sql, Does.Not.Contain("MERGE").IgnoreCase);
@@ -266,24 +285,22 @@ public class DatabaseQueryContractTests
         });
     }
 
-    [TestCase("MOTOR", "ABC")]
-    [TestCase("HOME", "XYZ")]
-    [TestCase("home", "ABC")]
-    public void Import_updates_should_reject_product_or_scheme_changes_after_preflight(string productCode, string schemeCode)
+    [TestCase("testuser", "testuser")]
+    [TestCase("  testuser  ", "testuser")]
+    [TestCase("", null)]
+    [TestCase("   ", null)]
+    public void Audit_user_should_be_trimmed_or_left_null_for_the_sql_login(string configured, string? expected)
     {
-        ScenarioRequestImport[] updates = [new("S1", "Q1", "HOME", "ABC", "<Message />", "")];
-        (string ScenarioId, string ProductCode, string SchemeCode)[] identities = [("S1", productCode, schemeCode)];
+        var factory = new SqlConnectionFactory(new DatabaseSettings { AuditUser = configured });
+        ScenarioRequestImport[] rows = [new("S1", "Q1", "HOME", "ABC", "<Message />", "")];
+        var parameters = ScenarioImportRepository.BuildParameters(rows, factory.AuditUser);
 
-        Assert.Throws<InvalidOperationException>(() => ScenarioImportRepository.ValidateUpdateIdentities(updates, identities));
-        Assert.That(ReadQuery<ScenarioImportRepository>("ReadUpdateIdentitiesSql"), Does.Contain("WITH (UPDLOCK, HOLDLOCK)"));
-    }
-
-    [Test]
-    public void Import_updates_should_reject_a_row_removed_after_preflight()
-    {
-        ScenarioRequestImport[] updates = [new("S1", "Q1", "HOME", "ABC", "<Message />", "")];
-
-        Assert.Throws<InvalidOperationException>(() => ScenarioImportRepository.ValidateUpdateIdentities(updates, []));
+        Assert.Multiple(() =>
+        {
+            Assert.That(factory.AuditUser, Is.EqualTo(expected));
+            Assert.That(parameters.ParameterNames, Does.Contain("AuditUser"));
+            Assert.That(parameters.Get<string?>("AuditUser"), Is.EqualTo(expected));
+        });
     }
 
     [Test]
