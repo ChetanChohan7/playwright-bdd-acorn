@@ -110,14 +110,8 @@ public static class SeedCommand
         }
 
         var radar = configuration.GetSection("RadarSettings").Get<RadarSettings>() ?? new RadarSettings();
-        // An endpoint left completely blank (like the placeholders in a copied settings file) is
-        // ignored, so a local run only needs the endpoint its scenarios use. A partly filled one is
-        // still rejected by the validator.
-        radar.Endpoints = (radar.Endpoints ?? []).Where(endpoint => endpoint.Value is not null &&
-                !(string.IsNullOrWhiteSpace(endpoint.Value.BaseUrl) &&
-                  string.IsNullOrWhiteSpace(endpoint.Value.ApiKeyHeaderName) &&
-                  string.IsNullOrWhiteSpace(endpoint.Value.ApiKeyValue)))
-            .ToDictionary(endpoint => endpoint.Key, endpoint => endpoint.Value, StringComparer.Ordinal);
+        // A local run only needs the endpoint its scenarios use; completely blank ones are ignored.
+        RadarSettingsValidator.RemoveBlankEndpoints(radar);
 
         var mappingFile = PricingProfileConfiguration.ResolveMappingPath(
             configuration["PricingProfiles:MappingFile"] ?? DefaultMappingFile, baseDirectory);
@@ -130,9 +124,9 @@ public static class SeedCommand
         retry.ValidateRadarPipelineSettings();
 
         // --request-time, then RADAR_REQUEST_DATETIME (as Radar reads it), then the settings file, then now.
+        // "now" (any case) means the current UTC hour.
         var requestTime = new[] { requestTimeOption, configuration["RADAR_REQUEST_DATETIME"], configuration["PipelineSettings:RequestTime"] }
             .FirstOrDefault(value => !string.IsNullOrWhiteSpace(value))?.Trim();
-        // "now" (any case) means the current UTC hour, as it does for validate and import.
         if (string.Equals(requestTime, "now", StringComparison.OrdinalIgnoreCase))
         {
             requestTime = null;

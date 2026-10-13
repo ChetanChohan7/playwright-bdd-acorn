@@ -28,7 +28,7 @@ public class RadarValidationTests
             try
             {
                 var scenarios = RadarTestSetup.DiscoverScenariosAsync(
-                    TestContext.CurrentContext.CancellationToken).GetAwaiter().GetResult();
+                    includeLocalSettings: true, TestContext.CurrentContext.CancellationToken).GetAwaiter().GetResult();
                 return RadarScenarioTestCases.Create(scenarios);
             }
             catch (OperationCanceledException)
@@ -50,7 +50,7 @@ public class RadarValidationTests
         diagnostics.Info("Radar setup starting.");
         try
         {
-            setup = RadarTestSetup.Create();
+            setup = RadarTestSetup.Create(includeLocalSettings: true);
             setup.Logger.ExecutionStarted(setup.BuildId);
         }
         catch (Exception exception)

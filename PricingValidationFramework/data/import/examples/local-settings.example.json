@@ -23,6 +23,11 @@
     }
   },
   "PipelineSettings": {
-    "RequestTime": "now"
+    "RequestTime": "now",
+    "MinThreshold": "0",
+    "MaxThreshold": "0",
+    "TestTag": "",
+    "ScenarioTag": "",
+    "IceRadarReport": ""
   }
 }

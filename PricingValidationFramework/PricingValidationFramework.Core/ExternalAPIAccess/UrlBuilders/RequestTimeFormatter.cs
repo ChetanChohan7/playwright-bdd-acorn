@@ -16,7 +16,9 @@ public static class RequestTimeFormatter
 
 	public static string Resolve(string? suppliedValue)
 	{
-		if (string.IsNullOrWhiteSpace(suppliedValue))
+		// Empty or "now" (any case) means the current UTC hour.
+		if (string.IsNullOrWhiteSpace(suppliedValue) ||
+			string.Equals(suppliedValue.Trim(), "now", StringComparison.OrdinalIgnoreCase))
 		{
 			return FormatUtcNow();
 		}

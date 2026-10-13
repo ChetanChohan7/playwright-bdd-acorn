@@ -5,6 +5,7 @@ using System.Xml.Linq;
 using PricingValidationFramework.Core.Database;
 using PricingValidationFramework.Core.ExternalAPIAccess.UrlBuilders;
 using PricingValidationFramework.Core.Models.Database;
+using PricingValidationFramework.Core.Validation;
 
 public sealed record ImportOptions(
     string RequestCsv,
@@ -169,7 +170,8 @@ public sealed class ScenarioDataLoader(IScenarioImportRepository? repository = n
                 requestInserts.Add(row.ScenarioId);
             }
             // An existing scenario is compared on its XML only: identical (after normalising) is
-            // skipped, anything else updates XML_request. No other column is compared or changed.
+            // skipped, anything else updates XML_request. No other column is compared or changed, so
+            // test_tags from the CSV are stored only when a scenario is first inserted.
             else if (string.Equals(TryNormalizeXml(storedRequest.XmlRequest), row.XmlRequest, StringComparison.Ordinal))
             {
                 summary.SkippedRequests++;
@@ -192,7 +194,7 @@ public sealed class ScenarioDataLoader(IScenarioImportRepository? repository = n
             Required(SingleChild(policy, "PolicyReference", "/Message/Policy/PolicyReference").Value, "PolicyReference (Quote_ref)"),
             Required(SingleChild(policy, "ProductCode", "/Message/Policy/ProductCode").Value, "ProductCode (Product_code)"),
             Required(SingleChild(policy, "SchemeCode", "/Message/Policy/SchemeCode").Value, "SchemeCode (Scheme_code)"),
-            xml, string.Empty);
+            xml, ScenarioTags.Normalize(row.TestTags));
     }
 
     private static XElement SingleChild(XElement parent, string name, string path)

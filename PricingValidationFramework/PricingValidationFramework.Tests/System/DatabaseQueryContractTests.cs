@@ -31,6 +31,7 @@ public class DatabaseQueryContractTests
     [TestCase("ProductScenariosSql")]
     [TestCase("ScenarioByIdSql")]
     [TestCase("ScenariosWithoutBaselineSql")]
+    [TestCase("FilteredScenariosSql")]
     public void Request_queries_should_use_the_current_table_columns(string queryName)
     {
         var sql = ReadQuery<RequestDataReader>(queryName);
@@ -91,7 +92,8 @@ public class DatabaseQueryContractTests
     }
 
     [TestCase("PassingBaselinesSql")]
-    [TestCase("ProductPassingBaselinesSql")]
+    [TestCase("FilteredPassingBaselinesSql")]
+    [TestCase("PassingBaselinesByIdSql")]
     [TestCase("BaselineByIdSql")]
     public void Baseline_queries_should_join_request_identifiers(string queryName)
     {
@@ -128,18 +130,47 @@ public class DatabaseQueryContractTests
     }
 
     [Test]
-    public void Ice_product_selection_should_be_the_same_query_with_a_parameterized_product_filter_inside_the_ranking()
+    public void Ice_filtered_selection_should_be_the_same_query_with_optional_filters_inside_the_ranking()
     {
         var all = ReadQuery<BaselineDataReader>("PassingBaselinesSql");
-        var product = ReadQuery<BaselineDataReader>("ProductPassingBaselinesSql");
-        var filter = "AND request.Product_code = @ProductCode";
+        var filtered = ReadQuery<BaselineDataReader>("FilteredPassingBaselinesSql");
+        var filters = "\n\t\t\tAND (@ProductCode IS NULL OR request.Product_code = @ProductCode)" +
+            "\n\t\t\tAND (@ScenarioTag IS NULL OR CHARINDEX(',' + @ScenarioTag + ',', ',' + REPLACE(REPLACE(ISNULL(request.Test_tags, ''), ';', ','), ' ', '') + ',') > 0)";
 
         Assert.Multiple(() =>
         {
-            Assert.That(product, Does.Contain("WHERE response.Status = 'PASS'\n\t\t\t" + filter));
-            Assert.That(product.IndexOf(filter, StringComparison.Ordinal), Is.LessThan(product.IndexOf("WHERE RowNumber = 1", StringComparison.Ordinal)));
-            Assert.That(product.Replace("\n\t\t\t" + filter, string.Empty, StringComparison.Ordinal), Is.EqualTo(all));
+            Assert.That(filtered, Does.Contain("WHERE response.Status = 'PASS'" + filters));
+            Assert.That(filtered.IndexOf("@ScenarioTag", StringComparison.Ordinal), Is.LessThan(filtered.IndexOf("WHERE RowNumber = 1", StringComparison.Ordinal)));
+            Assert.That(filtered.Replace(filters, string.Empty, StringComparison.Ordinal), Is.EqualTo(all));
             Assert.That(all, Does.Not.Contain("@ProductCode"));
+        });
+    }
+
+    [Test]
+    public void Ice_selection_by_scenario_id_should_take_exactly_those_passing_baselines_without_ranking()
+    {
+        var sql = ReadQuery<BaselineDataReader>("PassingBaselinesByIdSql");
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(sql, Does.Contain("WHERE response.Status = 'PASS' AND response.Scenario_id IN @ScenarioIds;"));
+            Assert.That(sql, Does.Not.Contain("ROW_NUMBER"));
+            Assert.That(BaselineDataReader.MaxScenarioIdsPerQuery, Is.LessThanOrEqualTo(2000), "IN expands to one parameter per ID");
+        });
+    }
+
+    [Test]
+    public void Radar_filters_should_be_optional_parameterized_and_match_one_whole_tag()
+    {
+        var sql = ReadQuery<RequestDataReader>("FilteredScenariosSql");
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(sql, Does.Contain("WHERE (@ProductCode IS NULL OR Product_code = @ProductCode)"));
+            Assert.That(sql, Does.Contain("AND (@ScenarioTag IS NULL OR " + RequestDataReader.ScenarioTagMatch + ")"));
+            Assert.That(RequestDataReader.ScenarioTagMatch, Does.Contain("CHARINDEX(',' + @ScenarioTag + ','"), "comma-delimited, so 'smoke' never matches 'smoke2'");
+            Assert.That(sql, Does.Not.Contain("LIKE"), "'_' in a tag must not be a wildcard");
+            Assert.That(sql, Does.Contain("ORDER BY row_creationdate, Scenario_id;"));
         });
     }
 

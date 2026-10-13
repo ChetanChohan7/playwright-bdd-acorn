@@ -1,0 +1,302 @@
+@echo off
+setlocal
+
+rem ===========================================================================
+rem apply-seed-changes.bat
+rem
+rem Updates an EXISTING PricingValidationFramework folder to the current
+rem loader-values-batches-update code. The folder can be at commit 2dd63e1
+rem (made by the original create-pricing-validation-framework.bat), already
+rem have the seed changes (from the earlier version of this script or the
+rem manual-update document), or be partly updated by hand.
+rem
+rem It applies:
+rem   - seed: DataLoader "seed" command, Radar compares only (a missing
+rem     baseline is an ERROR), data-loader pipeline Seed baselines stage and
+rem     seedOnly parameter
+rem   - follow-up: ICE as a Radar pipeline stage checking the scenarios that
+rem     passed in that run's Radar report, scenario tags (test_tags CSV column,
+rem     SCENARIO_TAG filter), local-settings.json for the Radar/ICE tests,
+rem     VS Code debugging, "now" request times, blank endpoints ignored
+rem   - .gitignore (one folder up, if present): local settings files ignored
+rem
+rem Safe to run:
+rem   - checks every file is one of those known versions before changing
+rem     anything (line endings ignored, so a git checkout with CRLF is fine)
+rem   - backs up every file it replaces or deletes to _backup-before-update
+rem   - keeps your own .vscode\launch.json / tasks.json (any version this
+rem     script didn't ship), writing the new ones beside them as
+rem     launch.update.json / tasks.update.json; they never block the update
+rem   - needs no admin rights; writes only to the folder and %%TEMP%%
+rem
+rem Usage:  apply-seed-changes.bat [project-folder] [/force]
+rem         project-folder: the one holding PricingValidationFramework.slnx
+rem                         (default: the folder this script is in)
+rem         /force: apply even if some files are none of the known versions
+rem                 (they are still backed up first)
+rem ===========================================================================
+
+set "scriptname=%~nx0"
+cd /d "%~dp0"
+
+set "targetdir="
+set "force="
+:parseargs
+if "%~1"=="" goto :argsdone
+if /i "%~1"=="/force" (set "force=1") else (set "targetdir=%~1")
+shift
+goto :parseargs
+:argsdone
+if not defined targetdir set "targetdir=%CD%"
+for %%I in ("%targetdir%") do set "targetdir=%%~fI"
+if "%targetdir:~-1%"=="\" set "targetdir=%targetdir:~0,-1%"
+
+if not exist "%targetdir%\PricingValidationFramework.slnx" (
+    echo "%targetdir%" does not contain PricingValidationFramework.slnx.
+    echo Put this script in your PricingValidationFramework folder, or pass that folder:
+    echo   apply-seed-changes.bat C:\path\to\PricingValidationFramework
+    goto :fail
+)
+echo Project folder: "%targetdir%"
+
+set "work=%TEMP%\pvf-update-%RANDOM%%RANDOM%"
+mkdir "%work%"
+set "b64file=%work%\payload.b64"
+set "zipfile=%work%\payload.zip"
+set "stage=%work%\files"
+set "manifest=%work%\manifest.txt"
+set "checkfile=%work%\check.txt"
+set "listfile=%work%\files.txt"
+
+rem 1. Check every file is a known version: 2dd63e1, seed changes, or already updated.
+(
+echo - 65095623F285F4C16C48C9B18E109973847616EB1D52FBBECA1ED6FABF7113DA E36304F6202A970C7A6F6D8F09FDFF158A9DA654CCB78540F10B23BA72A73EE5 .vscode\launch.json
+echo - 41021A413AFE40431227C98041165A854C2A67C787EBA4E7D2E032241E86A2DE 52F07FD1B667F37018360E8761F651491F7A38EAB40D22C2423FFC5F53DD17E9 .vscode\tasks.json
+echo EA64FD9552AFFDE14B885C5CFA38D9DDB10893B549407EFD313BED85C8E478AB 9229DCF7ED4A6E07D93DE48A060F8EB865F918BBD710FA04029E3938FCB2C5D5 9EE569283001515749B6DCF86D01ED801AA0E56804E15744CDAF7D732F015CFC ARCHITECTURE.md
+echo - 5C96E6EF9FB25A4109F58D99AE83A5A7CE78C5D6AE950CF721A16B4A86DA7E6E E382ED192F629EB1DE680D1C8B1A2AEF97AFEBA4873C401312D3589CEB358E3D PricingValidationFramework.Core\Configuration\RadarSettingsValidator.cs
+echo EA6D98F3CA38486B8BF8AF2310454B331B5C4B255BFB356C7725FCAD72FB0636 4924E2DE3C83EA3D1370544FC202D135F4E8079276100161F89D77B88F656100 4C870B06751C23747983BD7E7BEBEEEBAB65FEF789EF475DBEB7C909069CAE82 PricingValidationFramework.Core\Database\BaselineDataReader.cs
+echo 0417DCF0E80DC2CC54D5444F684227871FB879AFCB7D6030DAEF9897B87CC6DE 0417DCF0E80DC2CC54D5444F684227871FB879AFCB7D6030DAEF9897B87CC6DE CB905ACD3DCD15DFB055C59E758DCFD4DBD61751402B7C0178DF90B5EC61E1CE PricingValidationFramework.Core\Database\IBaselineDataReader.cs
+echo 3D6E0777483E536D47B5EA85787FC8E2CD4A06B96D17567EDF15DBD08B1267D4 4F2B191F9C5B002F5DFDDDCC54C8CAF9E821EB9AFA695B1FD6F0202094EE7795 48BEB346368EF913A9CC19ACD8D15BD4F12ED2ABF67C29C18B5A91DA0F6AAC71 PricingValidationFramework.Core\Database\RequestDataReader.cs
+echo 22BD9FCA20D34F15B1890F923399DE906F4419FE1E7A29E833014490A90AC5CE 72BDC4044D9D445CF76B054B686117F2A3F18BEAAAFEBA58F2CAB305DC21D305 72BDC4044D9D445CF76B054B686117F2A3F18BEAAAFEBA58F2CAB305DC21D305 PricingValidationFramework.Core\Database\ResultUpdater.cs
+echo 745513B7802267AF14F394F9E5C7E2BD1085462D51AEA25BB0F55C64085B8F0C 745513B7802267AF14F394F9E5C7E2BD1085462D51AEA25BB0F55C64085B8F0C E4219D18791D54F4F33A4D53E3757D02BA3E978469C3A0F71D6FB9FAEE35705C PricingValidationFramework.Core\ExternalAPIAccess\UrlBuilders\RequestTimeFormatter.cs
+echo 55270EB2F7D021F4B600AC0C9EAE5FF4738ED7384F3D1F582AE1BEA03DFB991C 7498E10675FF7EE97501A5618603837733BCAF990EC9F8C356DFF267B32D17A5 1BAA043E5289A2E64616CA5C61DC8BEFD273CAAF40777F1AAEF0FDCB23501247 PricingValidationFramework.Core\Models\Common\PipelineSettings.cs
+echo - BF5E1A18E808A8A544DC46011B93C3A791D8FF29FC8CB60B949251E2F629D85F BF5E1A18E808A8A544DC46011B93C3A791D8FF29FC8CB60B949251E2F629D85F PricingValidationFramework.Core\Seeding\BaselineSeeder.cs
+echo - - A334E0568E40A20AD97A2FBD1ECC38A75497344EBCE21CE70E630CAC7BA737B2 PricingValidationFramework.Core\Validation\ScenarioTags.cs
+echo D800E8F742F256FB5FC43C8BC8861910C8117239C2E8455C65F7C4F860E25E58 D800E8F742F256FB5FC43C8BC8861910C8117239C2E8455C65F7C4F860E25E58 650A32CD527A5F66A05DFA2543553DD9795D16FF468FED66AF8D3486360944DF PricingValidationFramework.DataLoader\CsvScenarioReader.cs
+echo 3B573C769D67DF3E320B0C828C731282FCE2F41A061B52B565DA800FB3ADAA57 45BCCCDF030CB50C4159DC99E2A5629597FAE791A79CBBA67C30FCE09D3BD667 45BCCCDF030CB50C4159DC99E2A5629597FAE791A79CBBA67C30FCE09D3BD667 PricingValidationFramework.DataLoader\PricingValidationFramework.DataLoader.csproj
+echo 2DB9110370170FCCCF70782595C2D2A305B696D81A15F58DFBEC7A3741AEC2CB 17E6B8C160DD0133E05DBF82798852E2995CB963530FE0F9C26B2C6198FE6C4C 17E6B8C160DD0133E05DBF82798852E2995CB963530FE0F9C26B2C6198FE6C4C PricingValidationFramework.DataLoader\Program.cs
+echo 3D268A1CD9851805E0C9687B59E817890C410D9F664B37BF5C70D7D1C71A7CE7 7CB84AD51AFB4A78063920632F301C87B40FF233750234CD34464514580485C4 3FFEB1F09CBB8AE82779CCC87D9CD8210FB00B7A23D862FE8BDDC39B01948C96 PricingValidationFramework.DataLoader\README.md
+echo 0D242646EC54580A6DC969000DDC3C8B183A6B902F6BCE5F458001696088BF81 0D242646EC54580A6DC969000DDC3C8B183A6B902F6BCE5F458001696088BF81 BFEEAC16B02AFE310CC9DC62D57C393B6C6D8AC6EDF27C9954955798D33097DC PricingValidationFramework.DataLoader\ScenarioDataLoader.cs
+echo - 0C2F06695EDCCC541268D22C81DA5DA2FE0DFB8A72C9F459DB1689DFAC474031 264D7D173805F04AFE472EE32BECA71E49D19B175B69ABB6D5EF72CE1872B529 PricingValidationFramework.DataLoader\SeedCommand.cs
+echo - - 3BC3A748895E53284F509C37296850FFD9750E23894CE11A24843D6FC274AB7D PricingValidationFramework.Tests\Helpers\Reporting\RadarReportScenarios.cs
+echo F8F6EED3CA99861B8C1038699305F8EC59B0A0674500CBDC08F28C61A1B7FE8C F8F6EED3CA99861B8C1038699305F8EC59B0A0674500CBDC08F28C61A1B7FE8C EFB90098EECA6B30BDE6868470EEA0F79036050D1CEC3C69300E5B19662C8FB7 PricingValidationFramework.Tests\Helpers\Setup\IceTestSetup.cs
+echo 2ED1223C36252B065DE878E25F199E766A41DAA05E2AA1C2A16C4BF10C75F14F B8D321503E28AC18D3967D9750533B68D3C1B6C5615BCE287E9E4A41CBD58741 FA36F753E63B021820ABF64833B07A1D3B0A0042A85252E000A9FD509BF46D1B PricingValidationFramework.Tests\Helpers\Setup\RadarTestSetup.cs
+echo E41AF11166E0D3A5167F511A9487BDB6CC85C3F71448A1903FD0C8A790BEB924 E41AF11166E0D3A5167F511A9487BDB6CC85C3F71448A1903FD0C8A790BEB924 3A72F23FB2240E66D1DCFCAB57659E6BFA18FA1199474E0B1F04E915CA9C8740 PricingValidationFramework.Tests\Helpers\Setup\TestConfigurationLoader.cs
+echo 1FDBF8D49A6E0B5D8B8A598BCF2408E55AD28A580EE08E45B63E1E0E5905F70E 1FDBF8D49A6E0B5D8B8A598BCF2408E55AD28A580EE08E45B63E1E0E5905F70E 24A83F00C9A7A74BD4C9B5502C2858E33E61FDA1943BB4DC11A65643E6200F5C PricingValidationFramework.Tests\Integration\Ice\IceValidationTests.cs
+echo 582B45D5ECF3CDAB6B6A1CBC704A693A650F107B7ADB81041E75F694AAA3D528 56AF3BFD5C6C42F15233C707510A1E38011439242218F3E504875768774E47D0 5C66918CD714B8E0D6E317ABA0034F06815959741CD666D3AA236424AAEBA5A0 PricingValidationFramework.Tests\Integration\Radar\RadarValidationTests.cs
+echo 6FD70CD767604F344F4B63441014F3EBE7CE3511A170E955F1C48B7280FD7BF3 6FD70CD767604F344F4B63441014F3EBE7CE3511A170E955F1C48B7280FD7BF3 51CF1D42F618184C62C83528BBB105427E07282233380F3F42F2FDE5B069F736 PricingValidationFramework.Tests\System\DataLoaderTests.cs
+echo 272466EED8A7842AA3B48CCAE66EBAE5F01BE9171000A456AE44F24A893A4379 C097A46B17BA01FC4EEE4CD77F6716740E38D62CDE2BAB861BD3D9F3D36B1C14 F990F6C6865B88363F6B18F74F952875BF3F98FA2C483F821FA9876B784DBCE8 PricingValidationFramework.Tests\System\DatabaseQueryContractTests.cs
+echo - - 5D19C0C4CBDB6F2E872D4041FBFF7189EA7B0FA06B87B4D548F924F33ACB2E4D PricingValidationFramework.Tests\System\Ice\IceDiscoveryFilterTests.cs
+echo - - 7C066FAD5F6F2FA0885581D5BC1FB69CCCA9596DDAFCA11416784E551D6AE7AE PricingValidationFramework.Tests\System\LocalRunSettingsTests.cs
+echo - ABF9BA21BD045997072FD534D964051EBEC78130EF9F50E5ACAFFFECFC9607AB ABF9BA21BD045997072FD534D964051EBEC78130EF9F50E5ACAFFFECFC9607AB PricingValidationFramework.Tests\System\Radar\BaselineSeederTests.cs
+echo 872CC153111068B45E207928EF92EF99662B39B74F71348159D1CCAB50315D60 - - PricingValidationFramework.Tests\System\Radar\RadarBaselineOnlySettingTests.cs
+echo 8E9A7463DBFF685077A1AE1A71B329091B4604DC8675C651D401F1636706A9C9 0462CC6B314B6626B7A640A335B2820CEEDF5862A94DDD07C459C395C3BCAE1A 432BBB94EB5F921505A92F23D6824ADB2EE52FED8B51A59680687E5E25DD39AA PricingValidationFramework.Tests\System\Radar\RadarExecutionInfrastructureTests.cs
+echo - A402EC60EB1C44B426B94BF9A96A36837216CD2A007D3C60D08DEF7F304E2B08 A402EC60EB1C44B426B94BF9A96A36837216CD2A007D3C60D08DEF7F304E2B08 PricingValidationFramework.Tests\System\SeedCommandTests.cs
+echo 796CF63A360ECDAE6CC0EF3DBE5FA0E8CC506B3D9A7AA978499B936FC180179F 96500E2B5767159A03E16479371FBC443DF047F516F293476BB54DFA1AD41C03 18BE0ADF56DC6C4DC92CEDE89DFE437FE1A19C866F9E376CF80D389C95199EEF README.md
+echo E3E9C0B00E8997B3A6FE37D59F1247DB1B4D851E689364E731787775280863DD 9A74118C07EDEE369BFF1C67005631399C28C928CD9C9C47FEE468809304AE8E 9A74118C07EDEE369BFF1C67005631399C28C928CD9C9C47FEE468809304AE8E azure-pipelines-data-loader.yml
+echo E239BE3CD97B15DA0A30ABE9CCF158DBCDA69BFEDDB8FC5552AB956C3178061E E239BE3CD97B15DA0A30ABE9CCF158DBCDA69BFEDDB8FC5552AB956C3178061E 0CFFBB1610293161D5AF34DC1CBB3114431E9197FFCA7EAC59DD42DB95E821EF azure-pipelines-ice.yml
+echo 0590510E84367461AB548D3E36272959DA050504B2582B37C6304FEA46A6E977 0590510E84367461AB548D3E36272959DA050504B2582B37C6304FEA46A6E977 647941E573496EF6534F593F4D89E2835564DDCA0C2C42E6A65E33B0D4F3ED24 azure-pipelines-radar.yml
+echo - 3895E69AF83EE2B0C3179FC3B04523419EB05333D1DEFEC502991E051980D250 D2B83412E3A7E6253A34ED427BC1D37721AA13B109087F3F7A50CFFC683B2FA6 data\import\examples\local-settings.example.json
+) > "%manifest%"
+
+echo Checking the folder is a version this update knows...
+powershell -NoProfile -Command "$e=[Text.Encoding]::GetEncoding(28591); $sha=[Security.Cryptography.SHA256]::Create(); foreach($l in Get-Content -LiteralPath $env:manifest){ $p=$l.Trim() -split ' ',4; $f=Join-Path $env:targetdir $p[3]; if(Test-Path -LiteralPath $f){ $b=$e.GetBytes($e.GetString([IO.File]::ReadAllBytes($f)).Replace([string][char]13,'')); $h=[BitConverter]::ToString($sha.ComputeHash($b)).Replace('-','') } else { $h='-' }; if($h -eq $p[2]){ $s='DONE' } elseif($h -eq $p[0] -or $h -eq $p[1]){ $s='TODO' } elseif($h -eq '-'){ $s='MISSING' } else { $s='CHANGED' }; if($p[3] -like '.vscode\*'){ if($s -eq 'CHANGED'){ $s='OWN' } elseif($s -ne 'MISSING'){ 'OURS-'+(Split-Path $p[3] -Leaf) } }; $s+' '+$p[3] }; 'CHECK-COMPLETE'" > "%checkfile%" 2>nul
+
+findstr /x "CHECK-COMPLETE" "%checkfile%" >nul
+if errorlevel 1 (
+    echo Could not run the PowerShell check, so the folder's version can't be verified.
+    if not defined force (
+        echo Nothing was changed. Run again with /force to apply anyway ^(files are backed up first^).
+        goto :cleanupfail
+    )
+    echo /force given - continuing without the check.
+    goto :checked
+)
+
+findstr /b "TODO CHANGED MISSING" "%checkfile%" >nul
+if errorlevel 1 (
+    echo These changes are already applied to "%targetdir%". Nothing to do.
+    call :cleanup
+    call :pauseifdoubleclicked
+    exit /b 0
+)
+
+findstr /b "CHANGED MISSING" "%checkfile%" >nul
+if not errorlevel 1 (
+    echo.
+    echo These files are not a version this update was made from ^(2dd63e1, the seed changes, or current^):
+    for /f "tokens=1,*" %%A in ('findstr /b "CHANGED MISSING" "%checkfile%"') do echo   %%A  %%B
+    echo.
+    if not defined force (
+        echo Nothing was changed. If you edited them yourself, your edits would be replaced.
+        echo Run again with /force to apply anyway - every replaced file is backed up first.
+        goto :cleanupfail
+    )
+    echo /force given - applying anyway. Your versions go to the backup folder.
+)
+echo Folder check OK.
+:checked
+
+rem 2. Decode and verify the embedded files.
+echo Writing embedded archive...
+(
+echo UEsDBBQAAAAIAAAATV2uBybu/AIAABkKAAATAAAALnZzY29kZS9sYXVuY2guanNvbuVWTWsbMRC9
+echo 51cMSw8x2Fo76cmFQshHMYQ0uCYUgg/y7thWrZW2Gq0TE/LfO9Kus3ZI27SnQHywd6U3M29m3kh+
+echo OABIU/haogG/RLh2KlNmcSO1yqVX1lw4WeCddSuYW52jg8MAswZhye8MZTNFINaU2RwbUAeUgZtv
+echo cMpL3ToCWxkoVbYCCZk1c7WoXAwQoOPKgDQ5nOGsWggY9I5hVimdR0pn0stLK0PsuXLkmYGkFYkf
+echo ZE1H1N4DZiYJuzCWuXTRmWOnhN4zR+KQBZNztgBOS6aqKK3zqbaZ1L0tKHocMrTc1F53oXgvi1Ij
+echo Pbdp1qNtoOswBp8rrUF5Tk7AiH8I1MJYhznMNvBF+Yb3hPNrGY9Oz8EjeQKHsk6eZOCtOEA0aKws
+echo 5KFSEVGbW9daD2GCrlBGavgcSzvhevFjUkMbzJ1kenO2i64W6BI4tK4OkOz4EkIknZhEbAl1m1Y6
+echo ZZhocu1shkQwyodwxZ8uXDHlYbReWvJJzCwEIwHfvHS+CfFRwIn3MluCt3US6TYqtIZRMX4p/ZND
+echo jhwjfoIZV2lV2sgjclrWdU3W6IiVlQwh6Ysj0U+CBpM91RFv3vIqwEP85n3DvIPJQOxIbgjrehQQ
+echo Do2Nigg660SX0cxvymiWcXcz7doNhz8r5hz2tKxMtmy3SoeXcSl0JgBqtbdhd6F2wSMYQB8ewhxS
+echo KTO8iGP2mP5+XEXrLJ0pk8bRSg36QV/0X2cncq1bItItYtGSbUGSLiS9XpMlhbededlubp8njBkj
+echo VdpTusNs/USgR1VRSLeJg5RMn8Jmd/nLubfMuLFkdWwCawG5XB7z7Qi0MPK2PPHnxrsNQ+dSE8at
+echo x+7LOjja10GdFw80y/X2e6Gn4nZc5z59x2LY7/YfpLA9MJ9tvnQEv1I7tYO3p5vjfd0QhkOfzwyt
+echo DNIz/VDJHPA9CyiU5z8VUsj7Ximd1Bp1WBm8Ujgh5NuTzV/vw3/SiIyu9hofLs1Rkx3/HSr4eh2G
+echo 67W5wR+Tmh5/Tw8eD34BUEsDBBQAAAAIAAAATV0Lsk9vjwEAAJ0JAAASAAAALnZzY29kZS90YXNr
+echo cy5qc29u7VTLTsMwELz3K6yIYxseRyQu0BYq8SylF4SQE2+DqWNHtgNFUfh21i4k6QG1vKQi9RAr
+echo nh3PbmadLVqEBE+gDVcy2CfBXrgT7gRth1pqpgaxW9wQUvgVYUEjEI4a5Vww0qWWnirKQPtTnmJf
+echo MnCMTKsYjKkDsUpTKpmLMWUl2DpEdVIn84jXrwgIbBXPSk9NRmPoK4EZy+1LzWMukzEVnFGL39DX
+echo NAVHC+vCVmOFscF6H4P3fHdVZYhGAtIzauMH/EqsfSs1RyrNuIC6/kSrPKtsmauU7U+sG1JGNbFg
+echo rNknOpe/bZ1T/r5zI1fXUsKHX400nc6EC9u4CYj1cyFernJUmXBg5yjxulR5IC0k2odCb9V8rQ94
+echo 2mLm5u78RnIb9maZwET2TDE4GIKgM2A/7q539gvNfabckonShEGUJ8nv/yWbVq/capU5QedfUQuA
+echo fFoAEBpfj3rXo/uTC1y6vcObY9eJ3aCilO9v5R9eosFRbzMfVrk0gxjc809mQ6Otm8mwHk1ex6mA
+echo 612rbL0BUEsDBBQAAAAIAAAATV1fl6kSr0MAAO/bAAAPAAAAQVJDSElURUNUVVJFLm1k7X3bchvZ
+echo dfY9nqLLvrAUA6CkGU8SMeP6OSTlYSyNZJKKJ3G5hCbQINsC0HB3QxQm5apUnsGXeTo/yb++ddh7
+echo 7e4GpbF96VRqLDa693mv47fW+mn2pi7n5eY2+498VS7ytqw22Ys6Xxf3Vf0+O6nnd2VbzNtdXYxG
+echo P/1pdtXm7a4Zja7vyiZbVPPduti02aJo5nV5UzRZe1dk811d42nuPh5nm3xN3YyzebVZlre7Wrpq
+echo 2nqnL+SbRVYXzbbaNOVNuSrbsmim3OnTafaiWi2KmrrX10ej2WzWFh/bkY4/Dj+Mfnpa1cXR6C9/
+echo /r+//Pl/6P+zU981fvjfLMviz2d5m9/kTXFVtC212EznTe+di/mDP1/mi7y+zNviZbku20++eb5Z
+echo bKty8+kXL6td++mOP/sFXayq9m/+2d4s2nqfNtVdof7aXf1xRau7oc3GDuRzans/uH7f0OerclOg
+echo qcsip00dHG3xx13RtA+/9HBTcTrNbtW+3dJ87QVr4PwjPdrkq5M3FyfzedE0/XmdbMvTVUmn2f02
+echo sLDhNT+CdBx0cgbfsnbe1qtvdiVO+cNdxff6fblT+tBrf05X+bpcFy+qep237fASXt/VVdvSUt/a
+echo yLK0Ozmj0lo4/b6tLO33odfd5tT5fPim/ntTbegM7wp9afggf79eDb1kjbysbm/dlJLVu8bIdhu8
+echo IuMaffd2U7bZxel51tJvoyyb/DLDocu+eXvx8uwd//fiLMvbrN5tWlrR/kHErHsNx25f5S3RSz8g
+echo +/LF7ocf9krn+K3ep9WiWA2c3tNqvfbrlzb7ptzy/XmIbNgVOdQGTwrbcSmUuxhqpE82OsRjXmzy
+echo uqz0SDx4ru3S2zeHT3ds9fDILottVbfJog9cuchb5P3L6v7Be/6J9+3N881u3Xj+NDAae/e0+SC/
+echo /rbuX5WrolgMfhUWi16wj+y3OMijUXqd7VxcbLa7NmEVnffkRNIh29I60xm4KuoP5bzov2lbcZ3L
+echo KRsgB9qYa+Ihzo5rlCzdxaYtbg8xdtqSQ/urd52uwG77mXvKfQ9yGszDDwpvnjRN0Q5czWRM/9dt
+echo IW0Y96vbrrC1gYblmDT9Vojm8FP7O99uG735/zT9A3UBkcoIXXW/abJGty1blM28+lDUexbS7PFk
+echo VXwoVhDoROKb76fEKgqZRbYsP0JQy+Z1QSS+yapNwaQzm9OhzLYkzNHZJHmhiA1y67uGXs43WU4L
+echo t75Z7TNsOL29ApPIqmW2rHb1NJv5nZvpeO/ympoDkbbeG/x8zI+Kj8V8x0InurnZNXTEmya7Ke7y
+echo D2VVk+y5zkuSSAs6zTTibFlXa5kLT4saI5F3U2HdVuWcj4KuwCwejtck89KoatwYGlWdkXTHBFRX
+echo RSezraoVybYzv5MztJ8b+5jcFpsC41hkJPvRRcxWlXRKonRFwnXW0DrMi8mcaD+tCXP67KLN1jta
+echo 45uCpjtf7Rb0Oc9DXsZetTV1nc3smMx4NWZ8OGbyMZovPpb0r7yJy9FWW52udNZgXE1JnaezEJH9
+echo 2TQ7XdEWZpcdiR6//jSVxEejSTbrCt+z57KnsyhWkvBPv1AH9Hoiztq7hYrTmZ1rnlu5mayLNcmj
+echo WQ0pmtSWoi4/2MKwwkIiWU1btKathSq0LFfFlES/cD943ehwxC4a2YVtXS1IITlqaNfXhXbAA1Ti
+echo 9aau0FoyXxruqsoXTfel5vkrGcAL+mOm+tCywM2i0X7/Jm/veGi4S3NSmD7IqaO/d5uSOGd3NDod
+echo WQW6LvRxsXJtNqJzyXI0ekB1CtnJamXtTZptMS+X5byju634s90GitlMfjqq0chsGqbGiksy++lL
+echo mjs/bmY0FqxDtaFrjo1A59gAOnJ81fGsIZrP084edebXVnHHebHQaPa+2D/O7sv2jv7Kqm2xQYNu
+echo 8cZ0fmsiQqsVznB7RxLbho41PWI+VsTj1dXO7JiBkm3v9g0RgVUYwc9oO8FuSe6ejbMZifq/Lvbf
+echo slbyHc1gJmutz1ksdQc5Ue98N8VH0JqypfWheRU6x5/x0eG1OKXbj/6ueEnwV4M/bei+a+6EOpd+
+echo nSJrHWK1mVDqx+OMFKMs39FzIklGfNDWmv4DCrfP5qzPTOYFyS1LvFOkh2RM1w90CJsAArbK3rz4
+echo HnSRBkIiCJEMfrCGclbmK1kSr4Da4EKrN3QSFkoseDAYZI1P6B2inY0e6lW+D3TAjwKzXOcfy/WO
+echo qCJJG0U9oXP1oQSplCsgA5icLGlMM2nJbVVXuacB2tjU/hFXR6+UiLWZcBWae5HP72g1bpMDNDV1
+echo rJkQc5w0BbW64LnQU7rcwv+Mum+rhsjpBzmtwwIbDSxSiBzXWV+jxaD3wPloMH4xWQeWXcf9oH8y
+echo WwSjyJQd4QILCRedg2m3qh+qbXTVCttBZWwYFE2TbgvU04sFjisYCMmG+KfTSfHnq3JD2mfR3BHP
+echo sYP8Kv8Yn03dAIKe0VEoaAQ0C/qi4OMR5Q2QH2EDs9+Rtvj76e/0i98Ptzugf6RtM2kgtoeDFpsU
+echo /eP3s+xGP46iD44D7hwdQSw+W8j+QMeBfiLy1htVdrPHXZeu35WLGTfwx13Vyl3oUEg61BvcS6J0
+echo LBsENhbakPX/DRq4LJYpJcFfHTJDw7Hp8LtsDbR9eZk3amf55LZoE8na2eIc1SxK8LmEFFjNSxaD
+echo QNMHFtX3FLTVnlqadoVb+u9Xr7+jy0cCDTEJoqhRvpnV9lH2/auXMFHStkz1/gcbDihDw0Sr/EEv
+echo vrXGy7GBRUV+K6lLaumYKMA9N2kd0GGkC5ivmiprdlvcs2Lh5xMVwkN6aP/4Cc0JR7zZrdc5kSJe
+echo PQxksYcldk6jn5c0wCAUsPg23PmZvPoCb0Ztr3urqFnapUALF9ryPHwwBpmm44fLwUvCTFmotYxF
+echo SMPwIIb16v78cZuUZtWkd/vTwfq2O4Q0Y/petYawYsQmaczYTeIQuF5vTq6uxtmLk4uXctDPLy9f
+echo X9IVJjpPbLFReminPP0rE8MiqWzzu01FNH8P27kjuk0LblGTmNo8F2JazuuqqZbtFG1MYVjV84ax
+echo XP3mZXbFXAsrzYLxh7IV/nRG8h44Ft6jQ1ttbiFW7bc0OXxm0i2mQBMEl4o60VSGtQyW/0VVNCzi
+echo kj6WndNE2330C4x7TzLY2seZ6I7L7Lf8EvMMOmqvL19l9zWPTniK/YB9Ij5W1TD1Z+xTYB0IqzNZ
+echo QCzdQP6o1iJwbld5S5Nbg5OSQgbhjX7PTi/fnnmtTLTQ06v/YDGb3qPdL26ZDWIdRObE7Eno3zRi
+echo Y8xXY0idNBsIIg0t2ZpORzmhI0Tsku45qEbFt3xZzXd4ATN2hHTNJ9ImtJ/RuySs3RLJujj4zjGP
+echo kvptbGNKfoXYO01mbyop/T86ltnQTsks1qKQqITIX38oSdGC7iLmcNGnxfJNkho06ga8GK2VcpYW
+echo ZU1naEUHaPSGFQNcBTlIEJ6F4zOZktP5m11R70+a/Wb+b9e/fPR4Fp5d0QxWxeFfXtdnxRLyXueV
+echo cz6B8iEejaB4hNvhhrDjy5Kc6jXutZ1rv38/yJEfx9WZV6vdeqN8N8ixs9Oc9KDVSuw61ftiMzNC
+echo TPT+6vzl+el19k+smBNnvSMllgn0iBQ0dINOb2mTpXs6TO/5H2wjsY5IylpVIHgbXu97kqVZ29iy
+echo cZvELDmt7vhGJRwbnq3y+lboBQxJqitV0i/LZ9QtNnSNLkTRhbuMxYox90lriFvTGL/Ovs5+Bpr2
+echo sxk0IptIwuqPvBjg5uh5fHZ2fnU6S6e9wi1rJ2g9LsFUNKPUVQPdr93VG6f96RxZXi5rFY48hZr1
+echo 3EIz7HDFx5paeR69gr8qWjpIdvEaPV54HJ59s3czlheE1ZsUhefJJ9/sLxbJi02Qoh6L8QxbSQe1
+echo nixzdqoGyVZkbqFuplaz5UZWqYLtZslnj4j9YsxCJDFJFgIfHjRJX/d35fxO97LpCY1T/eId9/d1
+echo 9v/8RpPQT9xG9AMRGokQvwZ1vScqyJduNrSWpOKfZMEuEHgnG+9mQ0tGH1zRNGlXeU3etfkt6/9C
+echo xUIDdH9zEfzoNIkpEkrlLbMIs3yB4fDdkClPhWjQbPGSXB+nOMsKu7Ph5OcRS77viPKN5MDzIo38
+echo io1oNd+pCjcKQx8RY3jHpk06mrgOsv8P0IwDdwC8KKgFkA076kjQHbAg0Az6Gzyjw28moL9BOWAl
+echo LQwFGnVZkEAWLIC0lDK2/i20I+jMOQMK1Wg24P3lhWq9RHRDWvwCIitGPzAeJq9CpCEuVCsmRqA7
+echo jUi5ebbM3xc8GNhEBxZ+Sif0jahpXX3OSIXtTX8nxvGmdempgRiEsDHPZoLI5pae5shG8Fl6G8GU
+echo Eg2sqmm8ND8ofiC+73YJ9dUP4p4T7R9iTjwuodSscyhPKBbKmIS6ek/5db2/YMHHxh0W5hGLPxgQ
+echo VvSlyFhNQVrf4yArkTpQ3IdrTerVsqxpHcwgImsJ+zIUgRlWL2rHNO4dScRB5fvu9XV2/v3F1fVV
+echo Np1Os99eXH+bPXr75uzl69Nfj7NvX7/kf9HASI0qzZpHouUqn4srgY3ZmDld2mO8Yju0JNWrYJ4M
+echo wzuJevkKu76XLxp4GYaXQM8sRLx7thjTWk4HbsbU0+7filGy15gQKGmxf7epBz3Xm2qILmDYJHHn
+echo mz10CTqOPA6/k/K/8ix0Ksdo6HxjZ4eoCTEl6Fn1B2ZsXfpHIkN4VCxu9ma/BivHB8XHHHImq2j5
+echo cinWDyho2esNa1jYlzCoYFhIzrwed6KS75wVohGxvHO0bgoocbKoOIp2uLg/6HJD/THpCi2GY5PQ
+echo ZziB+ITBIXZfl21bkITzTQXCw4o8STC8FCSdgroueHVk5P7xDQyxo5PdIkinzXOifdRMCxtnk93l
+echo H4qBdR5nnYUef2532aPWubFmp9zCO37/MXEAvbkYP6QBuNmOwwrhKZ/4+yptlzidjn4KpVdNGrOr
+echo /7x6e316dnJ9fn3x6pwOnIi5kI3Qf8/d85wX4m0DhsD30dkRHhVTmF9ASPH97DFRxSChRIUYVvGr
+echo t1fnl++uvjvhPseqNt0Sjat3m42Zf3FPCgDXRFFqVIgcWGxQKF2oxZmsPlaWz9rPnNiygreM5uWo
+echo dQkVwmyc+M2EO4cRYRZXm4lDJGhBpRwPXcygk6uETETrBh1MLs50E9QWYXYwMeCzBWIkylYX8OTw
+echo TR3z1nO9Ud9eX7+JPJn9JU2xWbBFK3vz+ura7NtKpcyeHb1GXQ+CsPJG1G/0RXS4XMF8Ps7uqk0F
+echo zupN8GOVXpj40Hdzp7RNPzktj7uCtYfHHoZM8jUMRjtRwLPlbkU0CovaZm8vSYHEj0MekFw9H5nz
+echo fLAUFfaIDrCAG9EQXG2kU+NSOlsrbb7yYbzDljI26x+clseIdcBgNDVqY+LakPY2GCTvGin6BXvs
+echo vJ8qOIVkWkuFgS2C0wLHNJ0Y7UO1+tDz80D8HhD7eJbQbve8jp8xsQS8Zs4D7MNfsUYDADdrMfHN
+echo TMwzYRBYtxgw/g535XBxByBt3pdXbhYFjgA2pKGO6LMJCQ8L4t8reZsFQvMLyfiCg5N1YYZg0I7x
+echo dZSbiTmtt633cOn9YoHbH36TWgDYoHfEVJpcb6JYHaBR/yNYrBSR0AhYxyyoN+bwYn/z6fk0+67K
+echo 8sWiFAObQCFIMWYOlCr5JdvzGrYUwQa2YvJs7iZ2SMl1ZvMVjxkmTBJT1GYCxj1gos/n3Atr3UUN
+echo Bxq6M1czzP5dNxz1TlJxKfqOesjYXze47GJMVYRLvkn2ePZt2271SLyi45LfFjPtnm6jNiBsMdBM
+echo Owh1cUschTa7bNzqyv5DG1utilXH0n8swwzzuMt7I7rZLW4L6bIpInkQls26AvWj/vzeaZ9BpMph
+echo EKDl25sGRqxTWY0dhmRflB/pSOWTUfClppgvNuUzaZETx35d7NI4o3lD2HDGE1Nit4pe3wqEQgV3
+echo j41AU0GA0w3FMzlEtJJjcXbKIFlk2DiLsQo9E3C76MoA34D910M9ejg4P6GBgfOAYaJkdGojsp9B
+echo 6htlSQEBId4Vdpk0qZrJbhZ1XeE55FIIcOrHgHI/hzbMthmoW7ZWq6p6v9uKPs03byIem7BaRYDg
+echo 8jx7eFqaIGzXEA/ZtHNk/q0mX+L6iIdBp+cVAPP3FHLPmUW0RLRuAODYim8j8SIxKfn+6syTaLUd
+echo Rdd8gq2lsUE4N1xLlEbowpvLxhC3fCIHQLbs2mdQSONAb4xisE0/0/2amVv7Zt93gWHv1AEHIt2U
+echo EOy9Zzv7t6+zk3m7o4YnJLxtRTuih4mrW8g07ScfAnMO5B9IeGJURCJM0hRfww7THYxcdt2Vghb2
+echo Valu53x9Qy9WO0ixxOg3kw3NDF4anZkcYH8qxBNGx7GAo6YkJfSm4e3cyGEGOqwhHWJTF2KkUf2p
+echo vN3guMjBDAeEzUYlayDmHOfVwyl6XxRbPUIZUVQ6BPB58SaCiXnK0seG0zaGTgzj8oZWr9ytZW4G
+echo iDlwgOj9geOTfcEKTz45Ez/VeYAXsrtxNFIGHh4jYEZevRkyj3UwisnbBilw1rA5qRrNIWPhwxgC
+echo nBNn/BN0ZBDv2LBq0h82LBjhi1RmooP4nTLu5YqEGKYvxKsWsJouItaTzxNULm8oXhTLcsOCAVbz
+echo HJwrbHuwBMosuw7e0EZcLOI37ZD5JUgvXac4oyHVB/SATZLPVvrRVNvi2YqBmg3ap1Bm+Q22QxXJ
+echo jCLAlZQAophQK3MHrbSlmma8EtLDXJdAhPYOK5eexWt/zMsCfaMSprcwBzhNQy0UWQ5VSvyXBsyt
+echo IGcx2E985mqKt1GxO1J1mbt8c+slvCCDePdM5PQ4D9He3jmAEjvRgejIw+u6XGfOIMpjiOZQeUmm
+echo zmsmMMrEPMMCWeTnqYhhYRuiwHiOFIQNzNGP4Oe9/q94V0WIHIJnRlypSm7qoJSvlSp5uhzGL4RW
+echo 3jsFC7ejJrZLjM4D+2hspr6lbQcjmFLujighQgTE8cqBoZSxdfiaNDzAGyNnXCsXdcyusYWGhNJH
+echo VrByxS8vAAhZBdd6DK3BlYIk0ECcCyIN7IRHbLxjoQUoatNO5CyHkw+raMvA9ffWIFEmKA8kVhf5
+echo WkjJktgSKzTMnJnYbfhA6EWByRotMVpdZ6GOHo93PTKkLcPoFYzOFEBFLdIzLs7GJgKOzdM2jtJ6
+echo OEnjCGOFFxAbhRZYhEhwvLBdhdMnsGAV3Xl/DVM8M9CXTM2JkbB61cCcgQZnjKPXC8XeZGCMVc78
+echo A5un1yIoHJUbFsIivFiFahaoIfCCCIqYoUZKUXKefkUXotxuw3BZECHtkIUXaEPsLEmA1WLG2Ajz
+echo JlkFmAza6Nj3GijPO0ZRudWaGvdVDo69tn3sCkSwR21h8nP+XM8eE5laCG6Aao7j3TUkKtMgpvIH
+echo zlK1VOZgAUxwpFq/ZuePmgZk65J6vi0Y2RruEJvOT92xZ/wWr+kdbhYkQz7+ck2kZR7RxZnOablk
+echo RAHYykdxBBl8oHdZApFoGKNm3R2jh23VEN2AxmT6EveIeT17Mn7y5MnE4S1v9cRFHy4HluA7OExp
+echo B6eBtwlUMRiiojwRPZIAw/SDVKKpMDHjMzShzW/Vf5cc7sVO8BdFAo0MQr3aAQKzE/rEpE4NL4Us
+echo LtHTHHLND3Dis7xeLJImj904i7qGsVNcFXxIFcDDBlFIQuFVkQ760TXicP/dG+XH5Q+4TI/sz6t5
+echo tS2mp3flakGE4jEEQ0VRWnTN8+wlFMfXy9BCs3705WPIo6RxheAVF7bC0lyQiYiQLXarojaPWZTJ
+echo D8gAKqLKOIL/VCB2UWjtiAxgyt5rL3JAcY9NGPCs8j1P9W35xLwOE94rt7pqwUkFuQxhIaUxs9eb
+echo AnZEopNvtxnLrorudFFHahNmGSTahZU549JDrQqyk8EbmiJCdLiVcPmNjZoYbJxNzyM2UTwHbFJC
+echo S8lYcY3PcI0dGRwSExmCyRe5aCIFF0Z3smCbIkImIATi36kw7SB7Ci30MSIwG9IRMuQGQ1BEmpym
+echo 0jVEeCFfUf2DHPUAmpq7hC41IMGLivblNI00CqB1D9E0F1Q8rN2QI1mJIN5e+eiiwUgRONOTgHx7
+echo IbLjxk6XBnbAvGdgtV5wCa8bPEh0hOCRsuaeqqPP/n7GKIu0awu1AXmttjtRxAOtPxgERXw4DMwM
+echo Rhdn7AkozQ9g4HkXSYj+H4xqkmUwgW848oqvij2K4UpeZRIJZlEKeJPmwZiE/BYr24r1YYg1E1Vj
+echo AchMIRo1ZKgITCtwAuGhydR4YAeCg3g/92F7Hd5I3S2jbkzQyAUDyRFz7achQYcbd7rKyAUBjbyi
+echo MApqAveSRqWoTYYNN7uNanrx3hSLFCnesR/JARC3NXtWq0SjcUt/DLkG/rVJSBvCpDn3Nj0cUkOm
+echo QIhTN2lEU9KVWXfwQof1RWXfatMNNBZ0ckLzlQga1URMi6HT59RCkcUZUcYvTLP/KuoK1HAdRVHo
+echo Q0q6jJqJYax3Gd3tp8UQ++vYzV8CbvRAWmAqzCz3YAo35UaxsOb/7dBa3jsxpPFqN8RkIWmau5st
+echo Mb2gvps634QZiJdEEGvX5ibx94yIghEAvnJ0kXkFHKLdFkHR/Cy1BKIeAtiC59FbKZQszOg5h66x
+echo z088iwHdi1X1YXTCf5oC7ilc2bcn1xKkhl1jyYrP6MkPkJdC2JlJKvMB+k8P7focurTyQK7uaWT1
+echo 31akwL5ZfnSPQPb8K8CdkTi16LwGIvHVl3JBT3uuZdmcGFimYUPw16Wdc8xOr3+L0BkYxoxbDt64
+echo Ae69heZ1wesqgAoE7OEcm6iz1abkCgyhHAbWP8Hw8wsckJP0n0SaHQovc3RWwBYjxdyOnPd35K3t
+echo I29VlxUXgU8jMAy08VzHfFZ8eL0VP4PBeZ/HoLuAYAlQX/Uwzq7Pr67fXZ/8ahYj7yBu1qRcHvMb
+echo fEGirvkJ6K5EOrlUCoOj8L+HkVydnn93cnnx+uBoODifNKNHpMS1HKWxKG9LONJm73CkJvjPdPZY
+echo qd1CDJj3tICFsiaN1uXAkomx6UV/RhH8q7GeMdxvaDr+9zCdy5Ozk8t3l+e/eYsVNpDRwMQk+seH
+echo EA71kbzQ6eTVxXfvrr+9PL8CzPBgD95LM9hD4sbp9HDy/Sd6IF7+oayrjbjK9DExQYBctzAQLyAe
+echo 8S+JvJKFPpsQNxquJygIArhxSUmPhy96z0fAYHsG/lDSrQhxk/nxlmUoyN5en6afwADJoUmiol8a
+echo dRGOkN6yGNIqRv7+ng1EfYaPxBSlEkoz8K29uEIUFhMb+DPgQmLnSCeWdPR6q2AFP9Rwsw2pKaYg
+echo mXBcE1ZpWQqyRVZeK2oPw9oiwr8ubvN6wcOSu1PWahecprd83P1yuauZdDJYQK11beUGMs/reh/U
+echo QtrU3lVzIk0229P/TV69miwW//Xtt8/X6+dw9gN7TWd0U93P0v6Fn8/+S/nuCniFiBLnjBdizAkZ
+echo NgRHYyogDouYnqjJ5bL8yCrDcAQzH86g7W72h2OVx/04ZRamVtWtD10mPiYnRsIxlmx8dk43h/3g
+echo 3ZyvYMhzAupagByNi0ZJ0UU+5jpBreXxWIjTMfstlnVTGRto3BaXYSKdnHpYPb5iEaDEcSLQCof2
+echo 0dwyPqQ+ckxTgfnnU0TPp4/OEPt+xZHoDQQf9579NfgK4/boaiU/iu7hA/XXRS7W0c1ufQNE7TJg

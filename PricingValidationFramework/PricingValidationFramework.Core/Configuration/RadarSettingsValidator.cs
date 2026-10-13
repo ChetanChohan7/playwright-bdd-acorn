@@ -4,10 +4,23 @@ namespace PricingValidationFramework.Core.Configuration;
 /// endpoint and route settings before any scenario is read or Radar is called.
 public static class RadarSettingsValidator
 {
+	/// Drops endpoints whose BaseUrl, header name and key are all empty (unused pipeline variables, or
+	/// placeholders left blank in a local settings file), so only the endpoints in use need values.
+	/// A partly filled endpoint is kept, and Validate rejects it.
+	public static void RemoveBlankEndpoints(RadarSettings radarSettings)
+	{
+		ArgumentNullException.ThrowIfNull(radarSettings);
+		radarSettings.Endpoints = (radarSettings.Endpoints ?? []).Where(endpoint => endpoint.Value is not null &&
+				!(string.IsNullOrWhiteSpace(endpoint.Value.BaseUrl) &&
+				  string.IsNullOrWhiteSpace(endpoint.Value.ApiKeyHeaderName) &&
+				  string.IsNullOrWhiteSpace(endpoint.Value.ApiKeyValue)))
+			.ToDictionary(endpoint => endpoint.Key, endpoint => endpoint.Value, StringComparer.Ordinal);
+	}
+
 	/// <param name="requireEndpointForEveryRoute">
-	/// True (Radar runs) requires every route's endpoint to be configured. False (seeding) lets a
+	/// True requires every route's endpoint to be configured. False (Radar runs and seeding) lets a
 	/// route name an endpoint that isn't configured; its scenarios fail with EndpointResolution
-	/// instead, so a local run can configure only the endpoint it needs.
+	/// instead, so a run can configure only the endpoints it needs.
 	/// </param>
 	public static void Validate(
 		RadarSettings radarSettings,

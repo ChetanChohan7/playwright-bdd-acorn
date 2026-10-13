@@ -65,6 +65,7 @@ NUnit ICE test
 └── Validation/
     ├── PipelineInputValidator.cs
     ├── PricingComparisonService.cs
+    ├── ScenarioTags.cs
     └── RadarPricingService.cs
 
 PricingValidationFramework.Tests/
@@ -315,6 +316,7 @@ Sources:
 
 - `BuildId`: Azure DevOps.
 - `TestTag`: `PipelineSettings:TestTag` or the `TEST_TAG` pipeline override; the value identifies `[Xml].[Request].Product_code`.
+- `ScenarioTag`: `PipelineSettings:ScenarioTag` or the `SCENARIO_TAG` pipeline override; one tag (letters, digits, `_`, `-`, `.`) matched as a whole entry of the comma-separated `[Xml].[Request].Test_tags`.
 - `RequestTime`: `PipelineSettings:RequestTime` or the `RADAR_REQUEST_DATETIME` pipeline override.
 - `MinThreshold`: `PipelineSettings:MinThreshold` or the `RADAR_MIN_THRESHOLD` pipeline override.
 - `MaxThreshold`: `PipelineSettings:MaxThreshold` or the `RADAR_MAX_THRESHOLD` pipeline override.
@@ -329,8 +331,8 @@ Required values:
 
 Optional values:
 
-- `TestTag` selects all request scenarios with the supplied product code when supplied, regardless of their scheme or stored `Test_tags`.
-- `RequestTime` must match `yyyy-MM-ddZHH:mm:ss` when supplied. The `Z` is a literal separator in this business format, not a UTC offset suffix.
+- `TestTag` selects all request scenarios with the supplied product code when supplied, regardless of their scheme. `ScenarioTag`, when supplied, further limits them to scenarios carrying that tag.
+- `RequestTime` must match `yyyy-MM-ddZHH:mm:ss` or be `now` when supplied. The `Z` is a literal separator in this business format, not a UTC offset suffix.
 
 `PipelineInputValidator` runs before any database access, API call, report generation, or log generation. Invalid input fails execution immediately with clear validation messages.
 
@@ -955,12 +957,12 @@ Ice reads the shared product/scheme mappings but does not use Radar credentials 
 
 ICE uses `BaselineDataReader` as its only database reader, obtains identifiers through the `[Xml].[Request]` join without loading request XML, and performs comparison/assertion logic directly in the NUnit test.
 
-ICE uses one named `TestCaseSource` case per selected baseline and remains explicitly `[NonParallelizable]`. Discovery loads only database/retry configuration and passing baseline data, without creating the API client or loading its certificate. Empty discovery, duplicate IDs, and discovery exceptions produce a failing discovery case. One-time setup creates the shared execution resources; each scenario records PASS/FAIL/ERROR before its independent assertion, and subsequent cases continue after a failed case. Teardown uses a non-cancelled reporting token to write one combined report, including completed rows after cancellation, and disposes resources in `finally`. Baseline selection, exact comparison, authentication, and retries are unchanged. ICE shares Radar's `TEST_TAG` product filter (`TestConfigurationLoader.ReadTestTag`, `BaselineDataReader.GetPassingBaselineScenariosByProductCodeAsync`), so the Radar pipeline's ICE stage checks the products its Radar stage ran.
+ICE uses one named `TestCaseSource` case per selected baseline and remains explicitly `[NonParallelizable]`. Discovery loads only database/retry configuration and passing baseline data, without creating the API client or loading its certificate. Empty discovery, duplicate IDs, and discovery exceptions produce a failing discovery case. One-time setup creates the shared execution resources; each scenario records PASS/FAIL/ERROR before its independent assertion, and subsequent cases continue after a failed case. Teardown uses a non-cancelled reporting token to write one combined report, including completed rows after cancellation, and disposes resources in `finally`. Baseline selection, exact comparison, authentication, and retries are unchanged. ICE shares Radar's filters, the `TEST_TAG` product and the `SCENARIO_TAG` tag (`TestConfigurationLoader.ReadTestTag`/`ReadScenarioTag`, `BaselineDataReader.GetFilteredPassingBaselineScenariosAsync`; the tag rule is Core `ScenarioTags`, shared with the loader). With `ICE_RADAR_REPORT`, `IceTestSetup` instead reads the PASS scenario IDs from that `Radar_<BuildId>.csv` (`RadarReportScenarios`) and loads exactly those baselines (`GetPassingBaselinesByScenarioIdsAsync`, in chunks of 1,000 IDs), which the Radar pipeline's ICE stage does by default. The live Radar and ICE fixtures (only) also read `data/import/local-settings.json` in the Development/local environment (`TestConfigurationLoader.Load(includeLocalSettings: true)`).
 
 ## 20. Final Design Decisions
 
 - `BuildId` is the required ICE report identifier.
-- `TestTag` and `RequestTime` are optional pipeline inputs for Radar only; `TestTag` retains its user-facing name but filters `[Xml].[Request].Product_code`.
+- `TestTag`, `ScenarioTag` and `RequestTime` are optional pipeline inputs; `TestTag` retains its user-facing name but filters `[Xml].[Request].Product_code`, and `ScenarioTag` filters `Test_tags`. Radar and ICE share both filters.
 - `RequestTime` uses the literal-`Z` format `yyyy-MM-ddZHH:mm:ss`; missing values use current UTC time.
 - ICE validation is exact equality: `IceValue == BaselineValue`.
 - ICE does not use Radar thresholds, `MinThreshold`, `MaxThreshold`, or `FuzzyPricingMatcher`.

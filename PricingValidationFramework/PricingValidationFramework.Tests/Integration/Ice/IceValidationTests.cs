@@ -25,7 +25,7 @@ public class IceValidationTests
             try
             {
                 var scenarios = IceTestSetup.DiscoverScenariosAsync(
-                    TestContext.CurrentContext.CancellationToken).GetAwaiter().GetResult();
+                    includeLocalSettings: true, TestContext.CurrentContext.CancellationToken).GetAwaiter().GetResult();
                 return CreateScenarioCases(scenarios);
             }
             catch (OperationCanceledException)
@@ -34,7 +34,10 @@ public class IceValidationTests
             }
             catch (Exception exception)
             {
-                return [DiscoveryFailure($"ICE scenario discovery failed ({exception.GetType().Name}).")];
+                // A missing or unreadable Radar report names the file, which is safe to show.
+                return [DiscoveryFailure(exception is FileNotFoundException or InvalidDataException
+                    ? $"ICE scenario discovery failed: {exception.Message}"
+                    : $"ICE scenario discovery failed ({exception.GetType().Name}).")];
             }
         }
     }
@@ -80,7 +83,7 @@ public class IceValidationTests
         diagnostics.Info("ICE setup starting.");
         try
         {
-            setup = IceTestSetup.Create();
+            setup = IceTestSetup.Create(includeLocalSettings: true);
             setup.Logger.ExecutionStarted(setup.BuildId);
         }
         catch (Exception exception)

@@ -38,10 +38,30 @@ public class BaselineDataReader : IBaselineDataReader
 		""";
 	private const string PassingBaselinesSql = PassingBaselinesSelect + "\n" + PassingBaselinesResult;
 
-	// The same selection limited to one product, matching Radar's TEST_TAG filter
-	// (RequestDataReader.ProductScenariosSql), so ICE checks the products Radar just ran.
-	private const string ProductPassingBaselinesSql =
-		PassingBaselinesSelect + "\n\t\t\tAND request.Product_code = @ProductCode\n" + PassingBaselinesResult;
+	// The same selection limited by Radar's optional filters (TEST_TAG product, SCENARIO_TAG tag), applied
+	// before the ranking, so ICE checks the newest PASS baseline within the products/tags Radar ran.
+	private const string FilteredPassingBaselinesSql =
+		PassingBaselinesSelect + "\n\t\t\tAND (@ProductCode IS NULL OR request.Product_code = @ProductCode)" +
+		"\n\t\t\tAND (@ScenarioTag IS NULL OR CHARINDEX(',' + @ScenarioTag + ',', ',' + REPLACE(REPLACE(ISNULL(request.Test_tags, ''), ';', ','), ' ', '') + ',') > 0)\n" + PassingBaselinesResult;
+
+	// Exactly the given scenarios' PASS baselines, with no newest-per-product/scheme ranking: ICE
+	// after Radar checks the scenarios that passed in that Radar run.
+	private const string PassingBaselinesByIdSql = """
+		SELECT
+			response.Scenario_id AS ScenarioId,
+			request.Quote_ref AS QuoteRef,
+			request.Product_code AS ProductCode,
+			request.Scheme_code AS SchemeCode,
+			response.XML_Response AS XmlResponse,
+			response.Status AS Status,
+			response.Last_updated AS LastUpdated
+		FROM [Xml].[Response] AS response
+		INNER JOIN [Xml].[Request] AS request ON request.Scenario_id = response.Scenario_id
+		WHERE response.Status = 'PASS' AND response.Scenario_id IN @ScenarioIds;
+		""";
+
+	// IN @ScenarioIds becomes one parameter per ID; stay well under SQL Server's 2,100.
+	internal const int MaxScenarioIdsPerQuery = 1000;
 
 	// No Status filter: Radar reports "no baseline yet" (MissingBaseline: run DataLoader seed)
 	// and "baseline exists but isn't PASS" as different errors.
@@ -70,12 +90,32 @@ public class BaselineDataReader : IBaselineDataReader
 		return QueryPassingBaselinesAsync(PassingBaselinesSql, null, cancellationToken);
 	}
 
-	public Task<IReadOnlyList<IceBaselineScenario>> GetPassingBaselineScenariosByProductCodeAsync(
-		string productCode,
+	/// Newest PASS baseline per product/scheme within the product and/or tag; a null or empty filter is not applied.
+	public Task<IReadOnlyList<IceBaselineScenario>> GetFilteredPassingBaselineScenariosAsync(
+		string? productCode,
+		string? scenarioTag,
 		CancellationToken cancellationToken = default)
 	{
-		ArgumentException.ThrowIfNullOrWhiteSpace(productCode);
-		return QueryPassingBaselinesAsync(ProductPassingBaselinesSql, new { ProductCode = productCode }, cancellationToken);
+		return QueryPassingBaselinesAsync(FilteredPassingBaselinesSql, new
+		{
+			ProductCode = string.IsNullOrWhiteSpace(productCode) ? null : productCode,
+			ScenarioTag = string.IsNullOrWhiteSpace(scenarioTag) ? null : scenarioTag.Trim()
+		}, cancellationToken);
+	}
+
+	/// The PASS baselines of exactly these scenarios (any not PASS, or without a baseline, are left out).
+	public async Task<IReadOnlyList<IceBaselineScenario>> GetPassingBaselinesByScenarioIdsAsync(
+		IReadOnlyCollection<string> scenarioIds,
+		CancellationToken cancellationToken = default)
+	{
+		ArgumentNullException.ThrowIfNull(scenarioIds);
+		var baselines = new List<IceBaselineScenario>();
+		foreach (var chunk in scenarioIds.Distinct(StringComparer.OrdinalIgnoreCase).Chunk(MaxScenarioIdsPerQuery))
+		{
+			baselines.AddRange(await QueryPassingBaselinesAsync(PassingBaselinesByIdSql, new { ScenarioIds = chunk }, cancellationToken));
+		}
+
+		return baselines;
 	}
 
 	private async Task<IReadOnlyList<IceBaselineScenario>> QueryPassingBaselinesAsync(

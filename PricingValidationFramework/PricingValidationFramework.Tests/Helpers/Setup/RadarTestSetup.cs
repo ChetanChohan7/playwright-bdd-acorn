@@ -54,9 +54,10 @@ public sealed class RadarTestSetup : IDisposable
     public decimal MinThreshold => settings.MinThreshold;
     public decimal MaxThreshold => settings.MaxThreshold;
 
-    public static RadarTestSetup Create()
+    /// <param name="includeLocalSettings">True from the live fixture: also reads data/import/local-settings.json.</param>
+    public static RadarTestSetup Create(bool includeLocalSettings = false)
     {
-        var configuration = TestConfigurationLoader.Load();
+        var configuration = TestConfigurationLoader.Load(includeLocalSettings);
         var radarConfiguration = LoadAndValidateRadarConfiguration(configuration);
         var databaseSettings = configuration.GetSection("DatabaseSettings").Get<DatabaseSettings>()
             ?? throw new InvalidOperationException("DatabaseSettings is missing.");
@@ -98,18 +99,23 @@ public sealed class RadarTestSetup : IDisposable
             loggerFactory);
     }
 
-    public static async Task<IReadOnlyList<ScenarioRequest>> DiscoverScenariosAsync(CancellationToken cancellationToken = default)
+    public static Task<IReadOnlyList<ScenarioRequest>> DiscoverScenariosAsync(CancellationToken cancellationToken = default) =>
+        DiscoverScenariosAsync(includeLocalSettings: false, cancellationToken);
+
+    public static async Task<IReadOnlyList<ScenarioRequest>> DiscoverScenariosAsync(
+        bool includeLocalSettings,
+        CancellationToken cancellationToken = default)
     {
-        var configuration = TestConfigurationLoader.Load();
+        var configuration = TestConfigurationLoader.Load(includeLocalSettings);
         var radarConfiguration = LoadAndValidateRadarConfiguration(configuration);
         var (pipelineSettings, retrySettings) = LoadValidatedPipelineInputs(configuration);
         var databaseSettings = configuration.GetSection("DatabaseSettings").Get<DatabaseSettings>()
             ?? throw new InvalidOperationException("DatabaseSettings is missing.");
         var reader = new RequestDataReader(new SqlConnectionFactory(databaseSettings), retrySettings);
 
-        return string.IsNullOrWhiteSpace(pipelineSettings.TestTag)
+        return string.IsNullOrWhiteSpace(pipelineSettings.TestTag) && string.IsNullOrWhiteSpace(pipelineSettings.ScenarioTag)
             ? await reader.GetAllScenariosAsync(cancellationToken)
-            : await reader.GetScenariosByProductCodeAsync(pipelineSettings.TestTag, cancellationToken);
+            : await reader.GetFilteredScenariosAsync(pipelineSettings.TestTag, pipelineSettings.ScenarioTag, cancellationToken);
     }
 
     private static (PipelineSettings PipelineSettings, RetrySettings RetrySettings) LoadValidatedPipelineInputs(
@@ -126,7 +132,8 @@ public sealed class RadarTestSetup : IDisposable
             MaxThreshold = ReadRequiredDecimal(configuration, "RADAR_MAX_THRESHOLD", "MaxThreshold"),
             RequestTime = RequestTimeFormatter.Resolve(
                 Environment.GetEnvironmentVariable("RADAR_REQUEST_DATETIME") ?? configuration["PipelineSettings:RequestTime"]),
-            TestTag = TestConfigurationLoader.ReadTestTag(configuration)
+            TestTag = TestConfigurationLoader.ReadTestTag(configuration),
+            ScenarioTag = TestConfigurationLoader.ReadScenarioTag(configuration)
         };
         new PipelineInputValidator().Validate(pipelineSettings);
 
@@ -204,7 +211,10 @@ public sealed class RadarTestSetup : IDisposable
 
         var rateLimitSettings = rateLimitSection.Get<RadarRateLimitSettings>()
             ?? throw new InvalidOperationException("RadarRateLimitSettings is missing.");
-        RadarSettingsValidator.Validate(radarSettings, rateLimitSettings);
+        // Only the endpoints in use need values (blank ones are dropped); a scenario whose route names
+        // a missing endpoint is an EndpointResolution ERROR rather than failing the whole run.
+        RadarSettingsValidator.RemoveBlankEndpoints(radarSettings);
+        RadarSettingsValidator.Validate(radarSettings, rateLimitSettings, requireEndpointForEveryRoute: false);
 
         return new RadarRunConfiguration(radarSettings, rateLimitSettings, profiles);
     }

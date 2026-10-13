@@ -20,10 +20,10 @@ Radar compares only. A scenario with no baseline is a Radar ERROR (`MissingBasel
 
 Local datasets belong under `PricingValidationFramework/data/import/`. Real CSVs there are ignored by Git; only synthetic files under `examples/` are tracked. Do not store customer XML in C# source folders or commit real datasets.
 
-Request headers (the same shape as the `scenarios.csv` the CSV loader UI produces):
+Request headers (the same shape as the `scenarios.csv` the CSV loader UI produces), plus an optional `test_tags`:
 
 ```csv
-scenario_id,xml
+scenario_id,xml[,test_tags]
 ```
 
 `Quote_ref`, `Product_code` and `Scheme_code` are read from each request's XML:
@@ -34,7 +34,9 @@ scenario_id,xml
 | `Product_code` | `/Message/Policy/ProductCode` |
 | `Scheme_code` | `/Message/Policy/SchemeCode` |
 
-Each element must appear exactly once and be non-empty; otherwise the row is reported and nothing is imported. `Test_tags` is stored empty and is ignored when deciding whether an existing request is identical.
+Each element must appear exactly once and be non-empty; otherwise the row is reported and nothing is imported.
+
+An optional third column, `test_tags`, gives each scenario's tags, separated by commas or semicolons, e.g. `smoke,regression`. Tags may use letters, digits, `_`, `-` and `.` (at most 64 characters each); duplicates are removed and they are stored comma-separated in `Test_tags`. An invalid tag is reported and nothing is imported. Tags are set only when a scenario is first inserted: like every column except the XML, they are not compared or changed for an existing scenario, so change an existing scenario's tags in the database. Without the column, `Test_tags` is stored empty. Radar and ICE can then select by one tag with `SCENARIO_TAG`.
 
 `--requests` takes a CSV file or a folder. A file is loaded as given. For a folder, the loader picks the newest `scenarios-{yyyyMMdd-HHmmss-fff}.csv` (the versioned files the CSV loader UI saves) by the timestamp in its **filename**, not the file's modified time, which changes when files are copied or checked out. Other CSVs in the folder, including an unversioned `scenarios.csv`, are ignored. If the folder has no versioned file, it falls back to `requests.csv`; if there's neither, the run fails with an issue. The chosen file is printed and recorded as `RequestFile` in the JSON summary.
 
@@ -92,7 +94,7 @@ The database identity needs SELECT on `[Xml].[Request]` and `[Xml].[Response]` a
 dotnet run --project PricingValidationFramework.DataLoader -- seed --settings data/import/local-settings.json --max-parallel 1
 ```
 
-To debug in VS Code, open the `PricingValidationFramework` folder and choose **3. DataLoader: seed baselines into [Xml].[Response]** in Run and Debug. The `.vscode` folder also has **1. validate** and **2. import** configurations using the same settings file, so a full local run is 1, 2, 3 and then the Radar tests. Breakpoints that are useful: `BaselineSeeder.RunAsync` (the scenarios found), `RadarPricingService.CreateBaselineAsync` (route and URL), and `ResultUpdater.TryInsertBaselineAsync` (the insert).
+To debug in VS Code, open the `PricingValidationFramework` folder and choose **3. DataLoader: seed baselines into [Xml].[Response]** in Run and Debug. The `.vscode` folder also has **1. validate** and **2. import** configurations using the same settings file, so a full local run is 1, 2, 3 and then the Radar tests, which read the same `local-settings.json` (its `PipelineSettings` section holds Radar's thresholds and filters). To debug Radar or ICE, run the task **Radar tests: wait for debugger** (or **ICE tests: ...**), then start **4. Attach to Radar/ICE test host** and pick the `testhost` process. Breakpoints that are useful: `BaselineSeeder.RunAsync` (the scenarios found), `RadarPricingService.CreateBaselineAsync` (route and URL), and `ResultUpdater.TryInsertBaselineAsync` (the insert).
 
 ## Database Behavior
 

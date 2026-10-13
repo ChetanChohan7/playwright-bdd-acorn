@@ -1,0 +1,272 @@
+echo Z1ZhbGlkYXRpb25GcmFtZXdvcmsuRGF0YUxvYWRlci9Dc3ZTY2VuYXJpb1JlYWRlci5jc1BLAQIU
+echo AxQAAAAIAAAATV10AAkdHQMAANEHAAA0AAAAAAAAAAAAAACkAcrpAABQcmljaW5nVmFsaWRhdGlv
+echo bkZyYW1ld29yay5EYXRhTG9hZGVyL0ltcG9ydFNwb29sLmNzUEsBAhQDFAAAAAgAAABNXSKOEXug
+echo AQAA1gMAAFIAAAAAAAAAAAAAAKQBOe0AAFByaWNpbmdWYWxpZGF0aW9uRnJhbWV3b3JrLkRhdGFM
+echo b2FkZXIvUHJpY2luZ1ZhbGlkYXRpb25GcmFtZXdvcmsuRGF0YUxvYWRlci5jc3Byb2pQSwECFAMU
+echo AAAACAAAAE1dFP4KtaoGAACHEQAAMAAAAAAAAAAAAAAApAFJ7wAAUHJpY2luZ1ZhbGlkYXRpb25G
+echo cmFtZXdvcmsuRGF0YUxvYWRlci9Qcm9ncmFtLmNzUEsBAhQDFAAAAAgAAABNXduF7dPEGAAApj4A
+echo AC8AAAAAAAAAAAAAAKQBQfYAAFByaWNpbmdWYWxpZGF0aW9uRnJhbWV3b3JrLkRhdGFMb2FkZXIv
+echo UkVBRE1FLm1kUEsBAhQDFAAAAAgAAABNXcOrjttXAwAAQAcAADwAAAAAAAAAAAAAAKQBUg8BAFBy
+echo aWNpbmdWYWxpZGF0aW9uRnJhbWV3b3JrLkRhdGFMb2FkZXIvUmVxdWVzdEZpbGVSZXNvbHZlci5j
+echo c1BLAQIUAxQAAAAIAAAATV1I7MKpwwsAANkoAAA7AAAAAAAAAAAAAACkAQMTAQBQcmljaW5nVmFs
+echo aWRhdGlvbkZyYW1ld29yay5EYXRhTG9hZGVyL1NjZW5hcmlvRGF0YUxvYWRlci5jc1BLAQIUAxQA
+echo AAAIAAAATV05WwukRAoAAFYgAAA0AAAAAAAAAAAAAACkAR8fAQBQcmljaW5nVmFsaWRhdGlvbkZy
+echo YW1ld29yay5EYXRhTG9hZGVyL1NlZWRDb21tYW5kLmNzUEsBAhQDFAAAAAgAAABNXVI8q2UjAAAA
+echo IQAAADAAAAAAAAAAAAAAAKQBtSkBAFByaWNpbmdWYWxpZGF0aW9uRnJhbWV3b3JrLlRlc3RzL0Fz
+echo c2VtYmx5SW5mby5jc1BLAQIUAxQAAAAIAAAATV1dNcIhugEAALQDAABIAAAAAAAAAAAAAACkASYq
+echo AQBQcmljaW5nVmFsaWRhdGlvbkZyYW1ld29yay5UZXN0cy9IZWxwZXJzL1JlcG9ydGluZy9BdG9t
+echo aWNSZXBvcnRXcml0ZXIuY3NQSwECFAMUAAAACAAAAE1dUf8cJfoBAADcBQAASAAAAAAAAAAAAAAA
+echo pAFGLAEAUHJpY2luZ1ZhbGlkYXRpb25GcmFtZXdvcmsuVGVzdHMvSGVscGVycy9SZXBvcnRpbmcv
+echo SWNlUmVwb3J0aW5nSGVscGVyLmNzUEsBAhQDFAAAAAgAAABNXZtr/FaLAwAAWAgAAEsAAAAAAAAA
+echo AAAAAKQBpi4BAFByaWNpbmdWYWxpZGF0aW9uRnJhbWV3b3JrLlRlc3RzL0hlbHBlcnMvUmVwb3J0
+echo aW5nL1JhZGFyUmVwb3J0Q29sbGVjdGlvbi5jc1BLAQIUAxQAAAAIAAAATV3pRe9UGQMAACsHAABK
+echo AAAAAAAAAAAAAACkAZoyAQBQcmljaW5nVmFsaWRhdGlvbkZyYW1ld29yay5UZXN0cy9IZWxwZXJz
+echo L1JlcG9ydGluZy9SYWRhclJlcG9ydFNjZW5hcmlvcy5jc1BLAQIUAxQAAAAIAAAATV37NA41FAQA
+echo AJQPAABKAAAAAAAAAAAAAACkARs2AQBQcmljaW5nVmFsaWRhdGlvbkZyYW1ld29yay5UZXN0cy9I
+echo ZWxwZXJzL1JlcG9ydGluZy9SYWRhclJlcG9ydGluZ0hlbHBlci5jc1BLAQIUAxQAAAAIAAAATV3u
+echo TRElbQYAAJoYAAA+AAAAAAAAAAAAAACkAZc6AQBQcmljaW5nVmFsaWRhdGlvbkZyYW1ld29yay5U
+echo ZXN0cy9IZWxwZXJzL1NldHVwL0ljZVRlc3RTZXR1cC5jc1BLAQIUAxQAAAAIAAAATV2z17PBLgkA
+echo AMQnAABAAAAAAAAAAAAAAACkAWBBAQBQcmljaW5nVmFsaWRhdGlvbkZyYW1ld29yay5UZXN0cy9I
+echo ZWxwZXJzL1NldHVwL1JhZGFyVGVzdFNldHVwLmNzUEsBAhQDFAAAAAgAAABNXZWekJC9BgAAthQA
+echo AEkAAAAAAAAAAAAAAKQB7EoBAFByaWNpbmdWYWxpZGF0aW9uRnJhbWV3b3JrLlRlc3RzL0hlbHBl
+echo cnMvU2V0dXAvVGVzdENvbmZpZ3VyYXRpb25Mb2FkZXIuY3NQSwECFAMUAAAACAAAAE1dqXMISjID
+echo AAAICAAATQAAAAAAAAAAAAAApAEQUgEAUHJpY2luZ1ZhbGlkYXRpb25GcmFtZXdvcmsuVGVzdHMv
+echo SGVscGVycy9WYWxpZGF0aW9uL1JhZGFyU2NlbmFyaW9UZXN0Q2FzZXMuY3NQSwECFAMUAAAACAAA
+echo AE1dAAAAAAIAAAAAAAAAOQAAAAAAAAAAAAAApAGtVQEAUHJpY2luZ1ZhbGlkYXRpb25GcmFtZXdv
+echo cmsuVGVzdHMvSW50ZWdyYXRpb24vSWNlLy5naXRrZWVwUEsBAhQDFAAAAAgAAABNXVt/HaEaCgAA
+echo qiQAAEYAAAAAAAAAAAAAAKQBBlYBAFByaWNpbmdWYWxpZGF0aW9uRnJhbWV3b3JrLlRlc3RzL0lu
+echo dGVncmF0aW9uL0ljZS9JY2VWYWxpZGF0aW9uVGVzdHMuY3NQSwECFAMUAAAACAAAAE1dAAAAAAIA
+echo AAAAAAAAOwAAAAAAAAAAAAAApAGEYAEAUHJpY2luZ1ZhbGlkYXRpb25GcmFtZXdvcmsuVGVzdHMv
+echo SW50ZWdyYXRpb24vUmFkYXIvLmdpdGtlZXBQSwECFAMUAAAACAAAAE1dZDYCMuILAAAlMgAASgAA
+echo AAAAAAAAAAAApAHfYAEAUHJpY2luZ1ZhbGlkYXRpb25GcmFtZXdvcmsuVGVzdHMvSW50ZWdyYXRp
+echo b24vUmFkYXIvUmFkYXJWYWxpZGF0aW9uVGVzdHMuY3NQSwECFAMUAAAACAAAAE1d6TQIyM0BAADI
+echo BQAALAAAAAAAAAAAAAAApAEpbQEAUHJpY2luZ1ZhbGlkYXRpb25GcmFtZXdvcmsuVGVzdHMvTkxv
+echo Zy5jb25maWdQSwECFAMUAAAACAAAAE1dHm6RMUsCAABvBwAASAAAAAAAAAAAAAAApAFAbwEAUHJp
+echo Y2luZ1ZhbGlkYXRpb25GcmFtZXdvcmsuVGVzdHMvUHJpY2luZ1ZhbGlkYXRpb25GcmFtZXdvcmsu
+echo VGVzdHMuY3Nwcm9qUEsBAhQDFAAAAAgAAABNXYQ/Y3D2AwAAcQ0AAD4AAAAAAAAAAAAAAKQB8XEB
+echo AFByaWNpbmdWYWxpZGF0aW9uRnJhbWV3b3JrLlRlc3RzL1N5c3RlbS9BcnRpZmFjdE91dHB1dFRl
+echo c3RzLmNzUEsBAhQDFAAAAAgAAABNXdPgmqRACAAA7SAAAD8AAAAAAAAAAAAAAKQBQ3YBAFByaWNp
+echo bmdWYWxpZGF0aW9uRnJhbWV3b3JrLlRlc3RzL1N5c3RlbS9Dc3ZSZXBvcnRXcml0ZXJUZXN0cy5j
+echo c1BLAQIUAxQAAAAIAAAATV3XKz+znhIAAGhtAAA6AAAAAAAAAAAAAACkAeB+AQBQcmljaW5nVmFs
+echo aWRhdGlvbkZyYW1ld29yay5UZXN0cy9TeXN0ZW0vRGF0YUxvYWRlclRlc3RzLmNzUEsBAhQDFAAA
+echo AAgAAABNXQsX0uNqDgAAjE4AAEUAAAAAAAAAAAAAAKQB1pEBAFByaWNpbmdWYWxpZGF0aW9uRnJh
+echo bWV3b3JrLlRlc3RzL1N5c3RlbS9EYXRhYmFzZVF1ZXJ5Q29udHJhY3RUZXN0cy5jc1BLAQIUAxQA
+echo AAAIAAAATV1wbwDwngYAAG8cAABAAAAAAAAAAAAAAACkAaOgAQBQcmljaW5nVmFsaWRhdGlvbkZy
+echo YW1ld29yay5UZXN0cy9TeXN0ZW0vSWNlL0ljZUFwaUNsaWVudFRlc3RzLmNzUEsBAhQDFAAAAAgA
+echo AABNXfbsXHJFBQAAWhIAAEQAAAAAAAAAAAAAAKQBn6cBAFByaWNpbmdWYWxpZGF0aW9uRnJhbWV3
+echo b3JrLlRlc3RzL1N5c3RlbS9JY2UvSWNlQ29uZmlndXJhdGlvblRlc3RzLmNzUEsBAhQDFAAAAAgA
+echo AABNXdkWa+MgBgAApBQAAEYAAAAAAAAAAAAAAKQBRq0BAFByaWNpbmdWYWxpZGF0aW9uRnJhbWV3
+echo b3JrLlRlc3RzL1N5c3RlbS9JY2UvSWNlRGlzY292ZXJ5RmlsdGVyVGVzdHMuY3NQSwECFAMUAAAA
+echo CAAAAE1dhfTVdjYNAADfNQAAQQAAAAAAAAAAAAAApAHKswEAUHJpY2luZ1ZhbGlkYXRpb25GcmFt
+echo ZXdvcmsuVGVzdHMvU3lzdGVtL0ljZS9JY2VTeXN0ZW1GbG93VGVzdHMuY3NQSwECFAMUAAAACAAA
+echo AE1dv42kBCoGAAAyFgAAQAAAAAAAAAAAAAAApAFfwQEAUHJpY2luZ1ZhbGlkYXRpb25GcmFtZXdv
+echo cmsuVGVzdHMvU3lzdGVtL0xvY2FsUnVuU2V0dGluZ3NUZXN0cy5jc1BLAQIUAxQAAAAIAAAATV2B
+echo fZo8CAsAAO0tAABEAAAAAAAAAAAAAACkAefHAQBQcmljaW5nVmFsaWRhdGlvbkZyYW1ld29yay5U
+echo ZXN0cy9TeXN0ZW0vUmFkYXIvQmFzZWxpbmVTZWVkZXJUZXN0cy5jc1BLAQIUAxQAAAAIAAAATV22
+echo G5g8ZwQAACgZAABJAAAAAAAAAAAAAACkAVHTAQBQcmljaW5nVmFsaWRhdGlvbkZyYW1ld29yay5U
+echo ZXN0cy9TeXN0ZW0vUmFkYXIvRnV6enlQcmljaW5nTWF0Y2hlclRlc3RzLmNzUEsBAhQDFAAAAAgA
+echo AABNXcExPX3KCQAAyyMAAE4AAAAAAAAAAAAAAKQBH9gBAFByaWNpbmdWYWxpZGF0aW9uRnJhbWV3
+echo b3JrLlRlc3RzL1N5c3RlbS9SYWRhci9QcmljaW5nQ29tcGFyaXNvblNlcnZpY2VUZXN0cy5jc1BL
+echo AQIUAxQAAAAIAAAATV1zfN9TCAcAAI8ZAABPAAAAAAAAAAAAAACkAVXiAQBQcmljaW5nVmFsaWRh
+echo dGlvbkZyYW1ld29yay5UZXN0cy9TeXN0ZW0vUmFkYXIvUHJpY2luZ1JvdXRlQ29uZmlndXJhdGlv
+echo blRlc3RzLmNzUEsBAhQDFAAAAAgAAABNXfeFShScEgAAJIAAAEQAAAAAAAAAAAAAAKQByukBAFBy
+echo aWNpbmdWYWxpZGF0aW9uRnJhbWV3b3JrLlRlc3RzL1N5c3RlbS9SYWRhci9SYWRhckFwaUNsaWVu
+echo dFRlc3RzLmNzUEsBAhQDFAAAAAgAAABNXbJ8OD2aEgAAmE4AAFIAAAAAAAAAAAAAAKQByPwBAFBy
+echo aWNpbmdWYWxpZGF0aW9uRnJhbWV3b3JrLlRlc3RzL1N5c3RlbS9SYWRhci9SYWRhckV4ZWN1dGlv
+echo bkluZnJhc3RydWN0dXJlVGVzdHMuY3NQSwECFAMUAAAACAAAAE1d42KtrVoFAACSHQAAUAAAAAAA
+echo AAAAAAAApAHSDwIAUHJpY2luZ1ZhbGlkYXRpb25GcmFtZXdvcmsuVGVzdHMvU3lzdGVtL1JhZGFy
+echo L1JhZGFyUGlwZWxpbmVJbnB1dENvbnRyYWN0VGVzdHMuY3NQSwECFAMUAAAACAAAAE1duN97ImcI
+echo AACaJQAASQAAAAAAAAAAAAAApAGaFQIAUHJpY2luZ1ZhbGlkYXRpb25GcmFtZXdvcmsuVGVzdHMv
+echo U3lzdGVtL1JhZGFyL1JhZGFyUHJpY2luZ1NlcnZpY2VUZXN0cy5jc1BLAQIUAxQAAAAIAAAATV1J
+echo YtDDqgIAADAJAABEAAAAAAAAAAAAAACkAWgeAgBQcmljaW5nVmFsaWRhdGlvbkZyYW1ld29yay5U
+echo ZXN0cy9TeXN0ZW0vUmFkYXIvWFBhdGhFeHRyYWN0b3JUZXN0cy5jc1BLAQIUAxQAAAAIAAAATV1K
+echo WeVD1QcAAO0bAAA7AAAAAAAAAAAAAACkAXQhAgBQcmljaW5nVmFsaWRhdGlvbkZyYW1ld29yay5U
+echo ZXN0cy9TeXN0ZW0vU2VlZENvbW1hbmRUZXN0cy5jc1BLAQIUAxQAAAAIAAAATV0AAAAAAgAAAAAA
+echo AAA4AAAAAAAAAAAAAACkAaIpAgBQcmljaW5nVmFsaWRhdGlvbkZyYW1ld29yay5UZXN0cy9UZXN0
+echo QXNzZXRzL0ljZS8uZ2l0a2VlcFBLAQIUAxQAAAAIAAAATV0AAAAAAgAAAAAAAAA5AAAAAAAAAAAA
+echo AACkAfopAgBQcmljaW5nVmFsaWRhdGlvbkZyYW1ld29yay5UZXN0cy9UZXN0QXNzZXRzL0pzb24v
+echo LmdpdGtlZXBQSwECFAMUAAAACAAAAE1dTmsfHbsBAABBAwAAOgAAAAAAAAAAAAAApAFTKgIAUHJp
+echo Y2luZ1ZhbGlkYXRpb25GcmFtZXdvcmsuVGVzdHMvVGVzdEFzc2V0cy9Kc29uL1JFQURNRS5tZFBL
+echo AQIUAxQAAAAIAAAATV0GsKHdBQAAAAMAAABKAAAAAAAAAAAAAACkAWYsAgBQcmljaW5nVmFsaWRh
+echo dGlvbkZyYW1ld29yay5UZXN0cy9UZXN0QXNzZXRzL0pzb24vcGxhY2Vob2xkZXItcmVzcG9uc2Uu
+echo anNvblBLAQIUAxQAAAAIAAAATV0AAAAAAgAAAAAAAAA6AAAAAAAAAAAAAACkAdMsAgBQcmljaW5n
+echo VmFsaWRhdGlvbkZyYW1ld29yay5UZXN0cy9UZXN0QXNzZXRzL1JhZGFyLy5naXRrZWVwUEsBAhQD
+echo FAAAAAgAAABNXXXA0sC/AAAALQEAAEgAAAAAAAAAAAAAAKQBLS0CAFByaWNpbmdWYWxpZGF0aW9u
+echo RnJhbWV3b3JrLlRlc3RzL1Rlc3RBc3NldHMvUmFkYXIvRml4dHVyZXMvbWFwcGluZ3MuanNvblBL
+echo AQIUAxQAAAAIAAAATV3p8e7+cQAAAPYAAABFAAAAAAAAAAAAAACkAVIuAgBQcmljaW5nVmFsaWRh
+echo dGlvbkZyYW1ld29yay5UZXN0cy9UZXN0QXNzZXRzL1JhZGFyL0ZpeHR1cmVzL3BhdGhzLmpzb25Q
+echo SwECFAMUAAAACAAAAE1dAAAAAAIAAAAAAAAAOgAAAAAAAAAAAAAApAEmLwIAUHJpY2luZ1ZhbGlk
+echo YXRpb25GcmFtZXdvcmsuVGVzdHMvVGVzdFJlc3VsdHMvTG9ncy8uZ2l0a2VlcFBLAQIUAxQAAAAI
+echo AAAATV0AAAAAAgAAAAAAAAA9AAAAAAAAAAAAAACkAYAvAgBQcmljaW5nVmFsaWRhdGlvbkZyYW1l
+echo d29yay5UZXN0cy9UZXN0UmVzdWx0cy9SZXBvcnRzLy5naXRrZWVwUEsBAhQDFAAAAAgAAABNXQmu
+echo x3IiAQAAAwIAAEQAAAAAAAAAAAAAAKQB3S8CAFByaWNpbmdWYWxpZGF0aW9uRnJhbWV3b3JrLlRl
+echo c3RzL2FwcHNldHRpbmdzLlByaWNpbmdQcm9maWxlVGVzdC5qc29uUEsBAhQDFAAAAAgAAABNXciX
+echo XkOrAQAARwUAADEAAAAAAAAAAAAAAKQBYTECAFByaWNpbmdWYWxpZGF0aW9uRnJhbWV3b3JrLlRl
+echo c3RzL2FwcHNldHRpbmdzLmpzb25QSwECFAMUAAAACAAAAE1dHESSY2oAAAA5AQAAHwAAAAAAAAAA
+echo AAAApAFbMwIAUHJpY2luZ1ZhbGlkYXRpb25GcmFtZXdvcmsuc2xueFBLAQIUAxQAAAAIAAAATV0t
+echo phptjiYAAGJnAAAJAAAAAAAAAAAAAACkAQI0AgBSRUFETUUubWRQSwECFAMUAAAACAAAAE1dbsuA
+echo oSkNAACVDgAAIgAAAAAAAAAAAAAApAG3WgIAUmFkYXJfRmllbGRfQ29tcGFyaXNvbl9Nb2NrdXAu
+echo eGxzeFBLAQIUAxQAAAAIAAAATV2pOa0LvQkAAM8qAAAfAAAAAAAAAAAAAACkASBoAgBhenVyZS1w
+echo aXBlbGluZXMtZGF0YS1sb2FkZXIueW1sUEsBAhQDFAAAAAgAAABNXfVScirYBAAAmQwAABcAAAAA
+echo AAAAAAAAAKQBGnICAGF6dXJlLXBpcGVsaW5lcy1pY2UueW1sUEsBAhQDFAAAAAgAAABNXQXf+M7N
+echo CAAAQCQAABkAAAAAAAAAAAAAAKQBJ3cCAGF6dXJlLXBpcGVsaW5lcy1yYWRhci55bWxQSwECFAMU
+echo AAAACAAAAE1dh1Mef2wAAADuAAAAKQAAAAAAAAAAAAAApAErgAIAY29uZmlnL3JhZGFyL1hQYXRo
+echo UHJvZmlsZXMvUHJvZmlsZTAxLmpzb25QSwECFAMUAAAACAAAAE1dMy6lBEgAAABtAAAAKQAAAAAA
+echo AAAAAAAApAHegAIAY29uZmlnL3JhZGFyL1hQYXRoUHJvZmlsZXMvUHJvZmlsZTAyLmpzb25QSwEC
+echo FAMUAAAACAAAAE1dK/zo7EgAAAB7AAAAKQAAAAAAAAAAAAAApAFtgQIAY29uZmlnL3JhZGFyL1hQ
+echo YXRoUHJvZmlsZXMvUHJvZmlsZTAzLmpzb25QSwECFAMUAAAACAAAAE1dikey8zkAAABCAAAAKQAA
+echo AAAAAAAAAAAApAH8gQIAY29uZmlnL3JhZGFyL1hQYXRoUHJvZmlsZXMvUHJvZmlsZTA0Lmpzb25Q
+echo SwECFAMUAAAACAAAAE1dikey8zkAAABCAAAAKQAAAAAAAAAAAAAApAF8ggIAY29uZmlnL3JhZGFy
+echo L1hQYXRoUHJvZmlsZXMvUHJvZmlsZTA1Lmpzb25QSwECFAMUAAAACAAAAE1dikey8zkAAABCAAAA
+echo KQAAAAAAAAAAAAAApAH8ggIAY29uZmlnL3JhZGFyL1hQYXRoUHJvZmlsZXMvUHJvZmlsZTA2Lmpz
+echo b25QSwECFAMUAAAACAAAAE1dikey8zkAAABCAAAAKQAAAAAAAAAAAAAApAF8gwIAY29uZmlnL3Jh
+echo ZGFyL1hQYXRoUHJvZmlsZXMvUHJvZmlsZTA3Lmpzb25QSwECFAMUAAAACAAAAE1dikey8zkAAABC
+echo AAAAKQAAAAAAAAAAAAAApAH8gwIAY29uZmlnL3JhZGFyL1hQYXRoUHJvZmlsZXMvUHJvZmlsZTA4
+echo Lmpzb25QSwECFAMUAAAACAAAAE1dikey8zkAAABCAAAAKQAAAAAAAAAAAAAApAF8hAIAY29uZmln
+echo L3JhZGFyL1hQYXRoUHJvZmlsZXMvUHJvZmlsZTA5Lmpzb25QSwECFAMUAAAACAAAAE1dikey8zkA
+echo AABCAAAAKQAAAAAAAAAAAAAApAH8hAIAY29uZmlnL3JhZGFyL1hQYXRoUHJvZmlsZXMvUHJvZmls
+echo ZTEwLmpzb25QSwECFAMUAAAACAAAAE1dikey8zkAAABCAAAAKQAAAAAAAAAAAAAApAF8hQIAY29u
+echo ZmlnL3JhZGFyL1hQYXRoUHJvZmlsZXMvUHJvZmlsZTExLmpzb25QSwECFAMUAAAACAAAAE1dikey
+echo 8zkAAABCAAAAKQAAAAAAAAAAAAAApAH8hQIAY29uZmlnL3JhZGFyL1hQYXRoUHJvZmlsZXMvUHJv
+echo ZmlsZTEyLmpzb25QSwECFAMUAAAACAAAAE1dikey8zkAAABCAAAAKQAAAAAAAAAAAAAApAF8hgIA
+echo Y29uZmlnL3JhZGFyL1hQYXRoUHJvZmlsZXMvUHJvZmlsZTEzLmpzb25QSwECFAMUAAAACAAAAE1d
+echo ikey8zkAAABCAAAAKQAAAAAAAAAAAAAApAH8hgIAY29uZmlnL3JhZGFyL1hQYXRoUHJvZmlsZXMv
+echo UHJvZmlsZTE0Lmpzb25QSwECFAMUAAAACAAAAE1dikey8zkAAABCAAAAKQAAAAAAAAAAAAAApAF8
+echo hwIAY29uZmlnL3JhZGFyL1hQYXRoUHJvZmlsZXMvUHJvZmlsZTE1Lmpzb25QSwECFAMUAAAACAAA
+echo AE1dikey8zkAAABCAAAAKQAAAAAAAAAAAAAApAH8hwIAY29uZmlnL3JhZGFyL1hQYXRoUHJvZmls
+echo ZXMvUHJvZmlsZTE2Lmpzb25QSwECFAMUAAAACAAAAE1dpjEcDcEBAAD3FAAAGgAAAAAAAAAAAAAA
+echo pAF8iAIAY29uZmlnL3JhZGFyL21hcHBpbmdzLmpzb25QSwECFAMUAAAACAAAAE1dxnwdQFsBAAAy
+echo AwAAMAAAAAAAAAAAAAAApAF1igIAZGF0YS9pbXBvcnQvZXhhbXBsZXMvbG9jYWwtc2V0dGluZ3Mu
+echo ZXhhbXBsZS5qc29uUEsBAhQDFAAAAAgAAABNXWtdfWNxAAAAqgAAACEAAAAAAAAAAAAAAKQBHowC
+echo AGRhdGEvaW1wb3J0L2V4YW1wbGVzL3JlcXVlc3RzLmNzdlBLBQYAAAAAgwCDAEM2AADOjAIAAAA=
+) > "%b64file%"
+
+echo Decoding archive...
+certutil -decode "%b64file%" "%zipfile%" >nul 2>nul
+if errorlevel 1 (
+    echo certutil is unavailable or blocked - trying PowerShell instead...
+    if exist "%zipfile%" del "%zipfile%" >nul 2>nul
+    powershell -NoProfile -Command "[IO.File]::WriteAllBytes($env:zipfile, [Convert]::FromBase64String([IO.File]::ReadAllText($env:b64file)))"
+)
+del "%b64file%" >nul 2>nul
+if not exist "%zipfile%" (
+    echo Could not decode the embedded archive with certutil or PowerShell.
+    goto :fail
+)
+
+rem Integrity check: the decoded archive must match the fingerprint recorded when this
+rem script was generated. A copy that lost or changed any line (e.g. through copy and
+rem paste) is stopped here, before anything is extracted.
+set "expectedhash=9240ED4B4329717B11B8DDC89B4CA2AE40BC5318DC6305083D20C08E610C216A"
+set "actualhash="
+for /f "skip=1 delims=" %%H in ('certutil -hashfile "%zipfile%" SHA256 2^>nul') do if not defined actualhash set "actualhash=%%H"
+rem certutil prints "CertUtil: ..." when it fails; ignore that so PowerShell is tried instead.
+if defined actualhash if not "%actualhash:CertUtil=%"=="%actualhash%" set "actualhash="
+if not defined actualhash for /f "delims=" %%H in ('powershell -NoProfile -Command "(Get-FileHash -Algorithm SHA256 -LiteralPath $env:zipfile).Hash"') do set "actualhash=%%H"
+if defined actualhash set "actualhash=%actualhash: =%"
+if /i not "%actualhash%"=="%expectedhash%" goto :damaged
+echo Archive checksum OK.
+
+echo Extracting to "%targetdir%"...
+mkdir "%targetdir%"
+tar -xf "%zipfile%" -C "%targetdir%" 2>nul
+if errorlevel 1 (
+    echo tar is unavailable or failed - trying PowerShell instead...
+    powershell -NoProfile -Command "Expand-Archive -LiteralPath $env:zipfile -DestinationPath $env:targetdir -Force"
+)
+del "%zipfile%" >nul 2>nul
+
+if not exist "%targetdir%\PricingValidationFramework.slnx" (
+    echo Extraction did not produce the expected files in "%targetdir%".
+    goto :fail
+)
+
+echo.
+echo Project extracted to "%fullpath%".
+echo.
+
+rem Find the .NET SDK: on PATH, or a per-user install that needed no admin.
+set "dotnetexe="
+for /f "delims=" %%D in ('where dotnet 2^>nul') do if not defined dotnetexe set "dotnetexe=%%D"
+if not defined dotnetexe if exist "%LOCALAPPDATA%\Microsoft\dotnet\dotnet.exe" set "dotnetexe=%LOCALAPPDATA%\Microsoft\dotnet\dotnet.exe"
+if not defined dotnetexe if exist "%USERPROFILE%\.dotnet\dotnet.exe" set "dotnetexe=%USERPROFILE%\.dotnet\dotnet.exe"
+
+if not defined dotnetexe goto :nosdk
+"%dotnetexe%" --list-sdks 2>nul | findstr /b "10." >nul
+if errorlevel 1 goto :nosdk
+
+echo Building with "%dotnetexe%"...
+echo NuGet packages are downloaded to your user profile on the first build,
+echo so this needs access to nuget.org or your company's package feed.
+echo.
+pushd "%targetdir%"
+"%dotnetexe%" build PricingValidationFramework.slnx
+set "buildresult=%errorlevel%"
+popd
+echo.
+if not "%buildresult%"=="0" (
+    echo The build failed - see the errors above. The source files are all in place.
+    echo Common causes on locked-down machines: no access to nuget.org - ask for
+    echo your company's NuGet feed - or the 260-character path limit.
+    echo.
+)
+goto :nextsteps
+
+:nosdk
+echo The .NET 10 SDK was not found, so nothing was built. The source files are all in place.
+echo.
+echo To get it without admin rights, ask IT for the SDK, or install it into your user profile:
+echo   1. Download dotnet-install.ps1 from https://dot.net/v1/dotnet-install.ps1
+echo   2. powershell -NoProfile -ExecutionPolicy Bypass -File dotnet-install.ps1 -Channel 10.0
+echo      This installs to %%LOCALAPPDATA%%\Microsoft\dotnet. Check your company's policy first.
+echo   3. Run this script again in a new folder, or build manually:
+echo      cd %targetdir%
+echo      "%%LOCALAPPDATA%%\Microsoft\dotnet\dotnet.exe" build PricingValidationFramework.slnx
+echo.
+
+:nextsteps
+echo Next steps, from the "%targetdir%" folder:
+echo.
+echo   Run the unit and system tests:
+echo     dotnet test PricingValidationFramework.Tests\PricingValidationFramework.Tests.csproj
+echo.
+echo   Data loader - check a CSV or a folder of scenarios-*.csv files:
+echo     dotnet run --project PricingValidationFramework.DataLoader -- validate --requests ^<csv-or-folder^> --request-time now
+echo.
+echo   Seed first baselines into [Xml].[Response] for scenarios without one. Copy
+echo   data\import\examples\local-settings.example.json to data\import\local-settings.json,
+echo   fill it in, then:
+echo     dotnet run --project PricingValidationFramework.DataLoader -- seed --settings data\import\local-settings.json --max-parallel 1
+echo.
+echo   VS Code: open the "%targetdir%" folder; Run and Debug lists
+echo   1. validate, 2. import and 3. seed, all using that settings file.
+echo.
+echo   Radar routing lives in config\radar\mappings.json and config\radar\XPathProfiles.
+echo   Radar compares only: run seed before Radar for newly loaded scenarios.
+echo.
+echo None of these need admin rights. See README.md for the Radar and ICE flows.
+echo Database: the code uses [Xml].[Request] and [Xml].[Response] with the row_* audit columns.
+echo Set DatabaseSettings__AuditUser to choose the name written to row_createdby/row_modifiedby.
+echo.
+call :pauseifdoubleclicked
+exit /b 0
+
+:damaged
+del "%zipfile%" >nul 2>nul
+echo.
+echo This copy of the script is damaged: the embedded archive does not match its checksum.
+echo Expected %expectedhash%
+echo Got      %actualhash%
+echo Nothing was extracted. Copy the script again - all parts, in order, each in full -
+echo or move the file itself rather than its text.
+goto :fail
+
+:fail
+call :pauseifdoubleclicked
+exit /b 1
+
+rem Keep the window open when the script was double-clicked from Explorer.
+:pauseifdoubleclicked
+echo %cmdcmdline% | findstr /i /c:"%scriptname%" >nul
+if not errorlevel 1 pause
+exit /b 0

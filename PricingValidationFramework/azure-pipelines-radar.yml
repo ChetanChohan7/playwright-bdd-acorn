@@ -2,17 +2,31 @@ trigger: none
 pr: none
 
 parameters:
+  - name: scenarioTag
+    displayName: Scenario tag filter - one tag from Test_tags, e.g. smoke (empty for all)
+    type: string
+    default: ''
   - name: runIce
-    displayName: Run ICE after Radar, on the same TestTag product filter
+    displayName: Run ICE after Radar
     type: boolean
     default: true
+  - name: iceSelection
+    displayName: Which baselines ICE checks
+    type: string
+    default: radarRun
+    values:
+      - radarRun
+      - newestPerProductScheme
 
 pool:
   vmImage: ubuntu-latest
 
-# Both stages read the TestTag variable (TEST_TAG): empty selects every product, a product code
-# selects only that Product_code. Radar compares those scenarios; ICE then checks the newest PASS
-# baseline per product/scheme within the same products. Both reports share the run's BUILD_BUILDID.
+# Radar selects scenarios with the TestTag variable (TEST_TAG: an exact Product_code, empty for all)
+# and the scenarioTag parameter (SCENARIO_TAG: one tag from Test_tags, empty for all).
+# ICE then checks, by iceSelection:
+#   radarRun               - exactly the scenarios that passed in this run's Radar report (default)
+#   newestPerProductScheme - the newest PASS baseline per product/scheme within the same filters
+# Both reports share the run's BUILD_BUILDID.
 stages:
   - stage: Radar
     displayName: Radar validation
@@ -47,6 +61,7 @@ stages:
               RADAR_MIN_THRESHOLD: $(RadarMinThreshold)
               RADAR_MAX_THRESHOLD: $(RadarMaxThreshold)
               TEST_TAG: $(TestTag)
+              SCENARIO_TAG: ${{ parameters.scenarioTag }}
               RADAR_REQUEST_DATETIME: $(RadarRequestDateTime)
 
           - task: PublishTestResults@2
@@ -85,8 +100,8 @@ stages:
       - stage: Ice
         displayName: ICE validation
         dependsOn: Radar
-        # Runs when Radar passed or reported FAIL/ERROR scenarios (ICE reads only PASS baselines,
-        # which a Radar FAIL never changes); skipped if the run is cancelled.
+        # Runs when Radar passed or reported FAIL/ERROR scenarios (ICE reads only PASS baselines);
+        # skipped if the run is cancelled. With radarRun it needs this run's RadarReports artifact.
         condition: succeededOrFailed()
         jobs:
           - job: IceValidation
@@ -97,6 +112,11 @@ stages:
                 inputs:
                   packageType: sdk
                   version: 10.0.x
+
+              - ${{ if eq(parameters.iceSelection, 'radarRun') }}:
+                  - download: current
+                    artifact: RadarReports
+                    displayName: Download this run's Radar report
 
               - pwsh: |
                   dotnet test PricingValidationFramework/PricingValidationFramework.Tests/PricingValidationFramework.Tests.csproj --configuration Release --filter "FullyQualifiedName~PricingValidationFramework.Tests.Integration.Ice.IceValidationTests" --logger "trx;LogFileName=Ice.trx" --results-directory "$(Agent.TempDirectory)/IceTestResults" -- NUnit.ExplicitMode=Relaxed
@@ -113,6 +133,9 @@ stages:
                   IceSettings__PfxCertificateBase64: $(IcePfxCertificateBase64)
                   IceSettings__CertificatePassword: $(IceCertificatePassword)
                   TEST_TAG: $(TestTag)
+                  SCENARIO_TAG: ${{ parameters.scenarioTag }}
+                  ${{ if eq(parameters.iceSelection, 'radarRun') }}:
+                    ICE_RADAR_REPORT: $(Pipeline.Workspace)/RadarReports/Reports/Radar_$(Build.BuildId).csv
 
               - task: PublishTestResults@2
                 condition: always()

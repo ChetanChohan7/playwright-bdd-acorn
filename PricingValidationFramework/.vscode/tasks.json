@@ -5,9 +5,82 @@
       "label": "build DataLoader",
       "type": "process",
       "command": "dotnet",
-      "args": ["build", "${workspaceFolder}/PricingValidationFramework.DataLoader/PricingValidationFramework.DataLoader.csproj"],
+      "args": [
+        "build",
+        "${workspaceFolder}/PricingValidationFramework.DataLoader/PricingValidationFramework.DataLoader.csproj"
+      ],
       "problemMatcher": "$msCompile",
       "group": "build"
+    },
+    {
+      "label": "Radar tests: run",
+      "type": "process",
+      "command": "dotnet",
+      "args": [
+        "test",
+        "${workspaceFolder}/PricingValidationFramework.Tests/PricingValidationFramework.Tests.csproj",
+        "--filter",
+        "FullyQualifiedName~PricingValidationFramework.Tests.Integration.Radar.RadarValidationTests",
+        "--",
+        "NUnit.ExplicitMode=Relaxed"
+      ],
+      "problemMatcher": "$msCompile",
+      "group": "test"
+    },
+    {
+      "label": "Radar tests: wait for debugger",
+      "type": "process",
+      "command": "dotnet",
+      "args": [
+        "test",
+        "${workspaceFolder}/PricingValidationFramework.Tests/PricingValidationFramework.Tests.csproj",
+        "--filter",
+        "FullyQualifiedName~PricingValidationFramework.Tests.Integration.Radar.RadarValidationTests",
+        "--",
+        "NUnit.ExplicitMode=Relaxed"
+      ],
+      "options": {
+        "env": {
+          "VSTEST_HOST_DEBUG": "1"
+        }
+      },
+      "problemMatcher": "$msCompile",
+      "group": "test"
+    },
+    {
+      "label": "ICE tests: run",
+      "type": "process",
+      "command": "dotnet",
+      "args": [
+        "test",
+        "${workspaceFolder}/PricingValidationFramework.Tests/PricingValidationFramework.Tests.csproj",
+        "--filter",
+        "FullyQualifiedName~PricingValidationFramework.Tests.Integration.Ice.IceValidationTests",
+        "--",
+        "NUnit.ExplicitMode=Relaxed"
+      ],
+      "problemMatcher": "$msCompile",
+      "group": "test"
+    },
+    {
+      "label": "ICE tests: wait for debugger",
+      "type": "process",
+      "command": "dotnet",
+      "args": [
+        "test",
+        "${workspaceFolder}/PricingValidationFramework.Tests/PricingValidationFramework.Tests.csproj",
+        "--filter",
+        "FullyQualifiedName~PricingValidationFramework.Tests.Integration.Ice.IceValidationTests",
+        "--",
+        "NUnit.ExplicitMode=Relaxed"
+      ],
+      "options": {
+        "env": {
+          "VSTEST_HOST_DEBUG": "1"
+        }
+      },
+      "problemMatcher": "$msCompile",
+      "group": "test"
     }
   ]
 }

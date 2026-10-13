@@ -6,7 +6,7 @@ using CsvHelper;
 using CsvHelper.Configuration;
 using CsvHelper.Configuration.Attributes;
 
-internal sealed record RequestCsvRow(string ScenarioId, string Xml);
+internal sealed record RequestCsvRow(string ScenarioId, string Xml, string TestTags);
 
 internal static class CsvScenarioReader
 {
@@ -15,7 +15,7 @@ internal static class CsvScenarioReader
     {
         await foreach (var row in ReadAsync<RequestRow>(path, cancellationToken))
         {
-            yield return new RequestCsvRow(row.ScenarioId, row.Xml);
+            yield return new RequestCsvRow(row.ScenarioId, row.Xml, row.TestTags ?? string.Empty);
         }
     }
 
@@ -36,11 +36,13 @@ internal static class CsvScenarioReader
         }
     }
 
-    // Same shape as the scenarios.csv the CSV loader UI produces: scenario_id + request XML.
-    // Quote_ref, Product_code and Scheme_code are read from the XML by ScenarioDataLoader.
+    // Same shape as the scenarios.csv the CSV loader UI produces: scenario_id + request XML, plus an
+    // optional test_tags column (e.g. "smoke,regression"). Quote_ref, Product_code and Scheme_code are
+    // read from the XML by ScenarioDataLoader.
     private sealed class RequestRow
     {
         [Name("scenario_id")] public string ScenarioId { get; set; } = string.Empty;
         [Name("xml")] public string Xml { get; set; } = string.Empty;
+        [Name("test_tags"), Optional] public string? TestTags { get; set; }
     }
 }

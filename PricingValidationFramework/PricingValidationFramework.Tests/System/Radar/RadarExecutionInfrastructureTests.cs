@@ -447,7 +447,7 @@ public class RadarExecutionInfrastructureTests
 	}
 
 	[Test]
-	public void Radar_setup_should_reject_a_route_to_an_unknown_endpoint_before_database_discovery()
+	public void Radar_setup_should_allow_a_route_to_an_unconfigured_endpoint_and_continue_to_discovery()
 	{
 		const string variableName = "PricingProfiles__MappingFile";
 		var originalValue = Environment.GetEnvironmentVariable(variableName);
@@ -461,9 +461,11 @@ public class RadarExecutionInfrastructureTests
 
 		try
 		{
+			// Such scenarios become EndpointResolution ERRORs at run time; setup only fails later, at the
+			// (unconfigured) database.
 			var exception = Assert.ThrowsAsync<InvalidOperationException>(async () =>
 				await RadarTestSetup.DiscoverScenariosAsync());
-			Assert.That(exception!.Message, Does.Contain("Every Radar route"));
+			Assert.That(exception!.Message, Does.Not.Contain("Every Radar route"));
 		}
 		finally
 		{

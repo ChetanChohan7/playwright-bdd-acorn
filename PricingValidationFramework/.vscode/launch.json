@@ -1,8 +1,13 @@
 {
   // Open the PricingValidationFramework folder (the one holding this .vscode folder) in VS Code,
-  // then pick a configuration in Run and Debug. Each builds the DataLoader first (tasks.json).
-  // Database and Radar settings come from data/import/local-settings.json: copy
+  // then pick a configuration in Run and Debug. 1-3 build the DataLoader first (tasks.json).
+  // Database, Radar and run settings come from data/import/local-settings.json: copy
   // data/import/examples/local-settings.example.json there and fill it in. It is ignored by Git.
+  // The Radar and ICE tests read the same file.
+  //
+  // To debug the Radar or ICE tests: Terminal > Run Task > "Radar tests: wait for debugger" (or
+  // "ICE tests: ..."). It builds, then prints "Process Id: NNNN, Name: testhost" and waits. Start
+  // "4. Attach to Radar/ICE test host" and pick that testhost process; breakpoints then hit.
   "version": "0.2.0",
   "configurations": [
     {
@@ -37,6 +42,12 @@
       "cwd": "${workspaceFolder}",
       "console": "integratedTerminal",
       "stopAtEntry": false
+    },
+    {
+      "name": "4. Attach to Radar/ICE test host",
+      "type": "coreclr",
+      "request": "attach",
+      "processId": "${command:pickProcess}"
     }
   ]
 }

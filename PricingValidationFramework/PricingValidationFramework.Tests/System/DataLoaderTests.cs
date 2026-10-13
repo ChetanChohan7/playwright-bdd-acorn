@@ -44,6 +44,59 @@ public class DataLoaderTests
     }
 
     [Test]
+    public async Task Optional_test_tags_column_should_be_normalised_and_stored_on_insert()
+    {
+        var requests = WriteCsv("requests.csv", ["scenario_id", "xml", "test_tags"],
+            [["S1", PolicyXml("Q1", "HOME", "ABC"), " smoke ; regression,Smoke "], ["S2", PolicyXml("Q2", "HOME", "ABC"), ""]]);
+        var repository = new FakeRepository();
+
+        var summary = await new ScenarioDataLoader(repository).RunAsync(new ImportOptions(requests, false));
+        var inserted = repository.Batches.Single().ToDictionary(request => request.ScenarioId);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(summary.Succeeded, Is.True);
+            Assert.That(inserted["S1"].TestTags, Is.EqualTo("smoke,regression"));
+            Assert.That(inserted["S2"].TestTags, Is.Empty);
+        });
+    }
+
+    [TestCase("smoke test")]
+    [TestCase("smoke|regression")]
+    [TestCase("%")]
+    public async Task Invalid_test_tags_should_be_reported_without_importing(string tags)
+    {
+        var requests = WriteCsv("requests.csv", ["scenario_id", "xml", "test_tags"], [["S1", PolicyXml("Q1", "HOME", "ABC"), tags]]);
+        var repository = new FakeRepository();
+
+        var summary = await new ScenarioDataLoader(repository).RunAsync(new ImportOptions(requests, false));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(summary.Succeeded, Is.False);
+            Assert.That(summary.Issues.Single().Reason, Does.Contain("Test tag"));
+            Assert.That(repository.Batches, Is.Empty);
+        });
+    }
+
+    [Test]
+    public async Task Test_tags_on_an_existing_scenario_should_not_cause_an_update()
+    {
+        var xml = PolicyXml("Q1", "HOME", "ABC");
+        var requests = WriteCsv("requests.csv", ["scenario_id", "xml", "test_tags"], [["S1", xml, "regression"]]);
+        var repository = new FakeRepository { Requests = [new("S1", "Q1", "HOME", "ABC", xml, "smoke")] };
+
+        var summary = await new ScenarioDataLoader(repository).RunAsync(new ImportOptions(requests, false));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(summary.SkippedRequests, Is.EqualTo(1));
+            Assert.That(summary.UpdatedRequests, Is.Zero);
+            Assert.That(repository.Requests.Single().TestTags, Is.EqualTo("smoke"), "tags are only set on insert");
+        });
+    }
+
+    [Test]
     public async Task Identifiers_should_be_read_from_the_policy_element_of_the_request_xml()
     {
         var xml = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Message>\n   <Policy>\n      <PolicyReference> QU07446731 </PolicyReference>\n" +

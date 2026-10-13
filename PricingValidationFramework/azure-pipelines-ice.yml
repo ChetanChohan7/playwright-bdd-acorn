@@ -6,6 +6,10 @@ parameters:
     displayName: Product_code to check (empty for every product), as TestTag in the Radar pipeline
     type: string
     default: ''
+  - name: scenarioTag
+    displayName: Scenario tag filter - one tag from Test_tags, e.g. smoke (empty for all)
+    type: string
+    default: ''
 
 pool:
   vmImage: ubuntu-latest
@@ -32,6 +36,7 @@ steps:
       IceSettings__PfxCertificateBase64: $(IcePfxCertificateBase64)
       IceSettings__CertificatePassword: $(IceCertificatePassword)
       TEST_TAG: ${{ parameters.testTag }}
+      SCENARIO_TAG: ${{ parameters.scenarioTag }}
 
   - task: PublishTestResults@2
     condition: always()

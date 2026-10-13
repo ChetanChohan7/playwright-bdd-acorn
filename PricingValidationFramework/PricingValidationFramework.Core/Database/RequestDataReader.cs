@@ -21,6 +21,15 @@ public class RequestDataReader
 		""";
 	private const string AllScenariosSql = $"SELECT {ScenarioColumns} FROM [Xml].[Request] ORDER BY row_creationdate, Scenario_id;";
 	private const string ProductScenariosSql = $"SELECT {ScenarioColumns} FROM [Xml].[Request] WHERE Product_code = @ProductCode ORDER BY row_creationdate, Scenario_id;";
+	// Radar's filters, both optional: an exact Product_code (TEST_TAG) and one tag from the comma- or
+	// semicolon-separated Test_tags (SCENARIO_TAG). CHARINDEX, not LIKE, so "_" in a tag is literal.
+	internal const string ScenarioTagMatch = "CHARINDEX(',' + @ScenarioTag + ',', ',' + REPLACE(REPLACE(ISNULL(Test_tags, ''), ';', ','), ' ', '') + ',') > 0";
+	private const string FilteredScenariosSql = $"""
+		SELECT {ScenarioColumns} FROM [Xml].[Request]
+		WHERE (@ProductCode IS NULL OR Product_code = @ProductCode)
+		  AND (@ScenarioTag IS NULL OR {ScenarioTagMatch})
+		ORDER BY row_creationdate, Scenario_id;
+		""";
 	// Scenarios the seed command still has to baseline: no [Xml].[Response] row of any status.
 	private const string ScenariosWithoutBaselineSql = $"""
 		SELECT {ScenarioColumns} FROM [Xml].[Request] AS request
@@ -44,6 +53,19 @@ public class RequestDataReader
 	public Task<IReadOnlyList<ScenarioRequest>> GetScenariosByProductCodeAsync(string productCode, CancellationToken cancellationToken = default)
 	{
 		return QueryScenariosAsync(ProductScenariosSql, new { ProductCode = productCode }, cancellationToken);
+	}
+
+	/// Scenarios matching the product and/or tag; a null or empty filter is not applied.
+	public Task<IReadOnlyList<ScenarioRequest>> GetFilteredScenariosAsync(
+		string? productCode,
+		string? scenarioTag,
+		CancellationToken cancellationToken = default)
+	{
+		return QueryScenariosAsync(FilteredScenariosSql, new
+		{
+			ProductCode = string.IsNullOrWhiteSpace(productCode) ? null : productCode,
+			ScenarioTag = string.IsNullOrWhiteSpace(scenarioTag) ? null : scenarioTag.Trim()
+		}, cancellationToken);
 	}
 
 	public Task<IReadOnlyList<ScenarioRequest>> GetScenariosWithoutBaselineAsync(CancellationToken cancellationToken = default)
