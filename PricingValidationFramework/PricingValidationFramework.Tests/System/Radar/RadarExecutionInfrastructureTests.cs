@@ -495,14 +495,14 @@ public class RadarExecutionInfrastructureTests
 		};
 
 		Assert.That(
-			() => RadarTestSetup.ValidateRadarConfiguration(radarSettings, new RadarRateLimitSettings()),
+			() => RadarSettingsValidator.Validate(radarSettings, new RadarRateLimitSettings()),
 			Throws.InvalidOperationException.With.Message.Contains("unique ignoring case"));
 	}
 
 	[Test]
 	public void Radar_configuration_should_accept_complete_endpoint_and_route_settings()
 	{
-		Assert.DoesNotThrow(() => RadarTestSetup.ValidateRadarConfiguration(
+		Assert.DoesNotThrow(() => RadarSettingsValidator.Validate(
 			CreateValidRadarSettings(),
 			new RadarRateLimitSettings()));
 	}
@@ -546,7 +546,7 @@ public class RadarExecutionInfrastructureTests
 		}
 
 		var exception = Assert.Throws<InvalidOperationException>(() =>
-			RadarTestSetup.ValidateRadarConfiguration(settings, new RadarRateLimitSettings()));
+			RadarSettingsValidator.Validate(settings, new RadarRateLimitSettings()));
 		Assert.That(exception!.Message, Does.Not.Contain(secret));
 	}
 

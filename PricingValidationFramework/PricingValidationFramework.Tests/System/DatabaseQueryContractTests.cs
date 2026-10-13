@@ -30,6 +30,7 @@ public class DatabaseQueryContractTests
     [TestCase("AllScenariosSql")]
     [TestCase("ProductScenariosSql")]
     [TestCase("ScenarioByIdSql")]
+    [TestCase("ScenariosWithoutBaselineSql")]
     public void Request_queries_should_use_the_current_table_columns(string queryName)
     {
         var sql = ReadQuery<RequestDataReader>(queryName);
@@ -42,6 +43,20 @@ public class DatabaseQueryContractTests
             Assert.That(sql, Does.Not.Contain("Create_date"));
             Assert.That(sql, Does.Not.Contain("Schem_code"));
             Assert.That(sql, Does.Not.Contain("Created_date"));
+        });
+    }
+
+    [Test]
+    public void Seed_query_should_select_only_requests_with_no_response_row_of_any_status()
+    {
+        var sql = ReadQuery<RequestDataReader>("ScenariosWithoutBaselineSql");
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(sql, Does.Contain("WHERE NOT EXISTS (SELECT 1 FROM [Xml].[Response] AS response WHERE response.Scenario_id = request.Scenario_id)"));
+            Assert.That(sql, Does.Not.Contain("Status"));
+            Assert.That(sql, Does.Contain("ORDER BY row_creationdate, Scenario_id;"));
+            Assert.That(sql, Does.Not.Match(@"\b(INSERT|UPDATE|DELETE|CREATE)\s"));
         });
     }
 
@@ -76,6 +91,7 @@ public class DatabaseQueryContractTests
     }
 
     [TestCase("PassingBaselinesSql")]
+    [TestCase("ProductPassingBaselinesSql")]
     [TestCase("BaselineByIdSql")]
     public void Baseline_queries_should_join_request_identifiers(string queryName)
     {
@@ -108,6 +124,22 @@ public class DatabaseQueryContractTests
             Assert.That(sql, Does.Contain("PARTITION BY request.Product_code, request.Scheme_code"));
             Assert.That(sql, Does.Contain("ORDER BY response.Last_updated DESC, response.Scenario_id DESC"));
             Assert.That(sql, Does.Contain("WHERE RowNumber = 1"));
+        });
+    }
+
+    [Test]
+    public void Ice_product_selection_should_be_the_same_query_with_a_parameterized_product_filter_inside_the_ranking()
+    {
+        var all = ReadQuery<BaselineDataReader>("PassingBaselinesSql");
+        var product = ReadQuery<BaselineDataReader>("ProductPassingBaselinesSql");
+        var filter = "AND request.Product_code = @ProductCode";
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(product, Does.Contain("WHERE response.Status = 'PASS'\n\t\t\t" + filter));
+            Assert.That(product.IndexOf(filter, StringComparison.Ordinal), Is.LessThan(product.IndexOf("WHERE RowNumber = 1", StringComparison.Ordinal)));
+            Assert.That(product.Replace("\n\t\t\t" + filter, string.Empty, StringComparison.Ordinal), Is.EqualTo(all));
+            Assert.That(all, Does.Not.Contain("@ProductCode"));
         });
     }
 

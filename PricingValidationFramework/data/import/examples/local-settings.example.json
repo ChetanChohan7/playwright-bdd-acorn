@@ -1,0 +1,28 @@
+{
+  "DatabaseSettings": {
+    "ConnectionString": "Server=example-servername.net;Database=DatabaseName;Authentication=Active Directory Default;Encrypt=True;",
+    "AuditUser": ""
+  },
+  "RadarSettings": {
+    "Endpoints": {
+      "Endpoint1": {
+        "BaseUrl": "https://radar-endpoint-1.example.test/quote",
+        "ApiKeyHeaderName": "X-API-KEY",
+        "ApiKeyValue": "REPLACE_WITH_ENDPOINT1_KEY"
+      },
+      "Endpoint2": {
+        "BaseUrl": "",
+        "ApiKeyHeaderName": "",
+        "ApiKeyValue": ""
+      },
+      "Endpoint3": {
+        "BaseUrl": "",
+        "ApiKeyHeaderName": "",
+        "ApiKeyValue": ""
+      }
+    }
+  },
+  "PipelineSettings": {
+    "RequestTime": "now"
+  }
+}

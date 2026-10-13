@@ -72,6 +72,17 @@ public class ResultUpdater
 
 	public async Task InsertBaselineAsync(ScenarioResponse response, CancellationToken cancellationToken = default)
 	{
+		if (!await TryInsertBaselineAsync(response, cancellationToken))
+		{
+			throw new InvalidOperationException(
+				$"A baseline already exists in [Xml].[Response] for ScenarioId '{response.ScenarioId}'; it was not replaced.");
+		}
+	}
+
+	/// False when a baseline row already exists (for example, written by a concurrent run); that
+	/// row is left unchanged.
+	public async Task<bool> TryInsertBaselineAsync(ScenarioResponse response, CancellationToken cancellationToken = default)
+	{
 		var affectedRows = await ExecuteAsync(InsertBaselineSql, new
 		{
 			response.ScenarioId,
@@ -79,11 +90,7 @@ public class ResultUpdater
 			response.Status,
 			connectionFactory.AuditUser
 		}, cancellationToken);
-		if (affectedRows != 1)
-		{
-			throw new InvalidOperationException(
-				$"A baseline already exists in [Xml].[Response] for ScenarioId '{response.ScenarioId}'; it was not replaced.");
-		}
+		return affectedRows == 1;
 	}
 
 	private async Task<int> ExecuteAsync(string sql, object parameters, CancellationToken cancellationToken)

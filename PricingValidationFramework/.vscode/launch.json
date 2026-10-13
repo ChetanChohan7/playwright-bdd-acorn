@@ -1,0 +1,42 @@
+{
+  // Open the PricingValidationFramework folder (the one holding this .vscode folder) in VS Code,
+  // then pick a configuration in Run and Debug. Each builds the DataLoader first (tasks.json).
+  // Database and Radar settings come from data/import/local-settings.json: copy
+  // data/import/examples/local-settings.example.json there and fill it in. It is ignored by Git.
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "1. DataLoader: validate (no database)",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "build DataLoader",
+      "program": "${workspaceFolder}/PricingValidationFramework.DataLoader/bin/Debug/net10.0/PricingValidationFramework.DataLoader.dll",
+      "args": ["validate", "--requests", "data/import", "--report", "TestResults/DataLoader/validation-summary.json"],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "stopAtEntry": false
+    },
+    {
+      "name": "2. DataLoader: import into [Xml].[Request]",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "build DataLoader",
+      "program": "${workspaceFolder}/PricingValidationFramework.DataLoader/bin/Debug/net10.0/PricingValidationFramework.DataLoader.dll",
+      "args": ["import", "--requests", "data/import", "--settings", "data/import/local-settings.json", "--report", "TestResults/DataLoader/import-summary.json"],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "stopAtEntry": false
+    },
+    {
+      "name": "3. DataLoader: seed baselines into [Xml].[Response]",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "build DataLoader",
+      "program": "${workspaceFolder}/PricingValidationFramework.DataLoader/bin/Debug/net10.0/PricingValidationFramework.DataLoader.dll",
+      "args": ["seed", "--settings", "data/import/local-settings.json", "--max-parallel", "1", "--report", "TestResults/DataLoader/seed-summary.json"],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "stopAtEntry": false
+    }
+  ]
+}

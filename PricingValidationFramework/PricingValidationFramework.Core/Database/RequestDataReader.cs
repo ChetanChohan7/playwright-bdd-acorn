@@ -21,6 +21,12 @@ public class RequestDataReader
 		""";
 	private const string AllScenariosSql = $"SELECT {ScenarioColumns} FROM [Xml].[Request] ORDER BY row_creationdate, Scenario_id;";
 	private const string ProductScenariosSql = $"SELECT {ScenarioColumns} FROM [Xml].[Request] WHERE Product_code = @ProductCode ORDER BY row_creationdate, Scenario_id;";
+	// Scenarios the seed command still has to baseline: no [Xml].[Response] row of any status.
+	private const string ScenariosWithoutBaselineSql = $"""
+		SELECT {ScenarioColumns} FROM [Xml].[Request] AS request
+		WHERE NOT EXISTS (SELECT 1 FROM [Xml].[Response] AS response WHERE response.Scenario_id = request.Scenario_id)
+		ORDER BY row_creationdate, Scenario_id;
+		""";
 	private const string ScenarioByIdSql = $"SELECT {ScenarioColumns} FROM [Xml].[Request] WHERE Scenario_id = @ScenarioId;";
 
 	public RequestDataReader(SqlConnectionFactory connectionFactory, RetrySettings? retrySettings = null)
@@ -38,6 +44,11 @@ public class RequestDataReader
 	public Task<IReadOnlyList<ScenarioRequest>> GetScenariosByProductCodeAsync(string productCode, CancellationToken cancellationToken = default)
 	{
 		return QueryScenariosAsync(ProductScenariosSql, new { ProductCode = productCode }, cancellationToken);
+	}
+
+	public Task<IReadOnlyList<ScenarioRequest>> GetScenariosWithoutBaselineAsync(CancellationToken cancellationToken = default)
+	{
+		return QueryScenariosAsync(ScenariosWithoutBaselineSql, null, cancellationToken);
 	}
 
 	public async Task<ScenarioRequest?> GetScenarioByIdAsync(string scenarioId, CancellationToken cancellationToken = default)

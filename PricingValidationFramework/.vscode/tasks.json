@@ -1,0 +1,13 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "build DataLoader",
+      "type": "process",
+      "command": "dotnet",
+      "args": ["build", "${workspaceFolder}/PricingValidationFramework.DataLoader/PricingValidationFramework.DataLoader.csproj"],
+      "problemMatcher": "$msCompile",
+      "group": "build"
+    }
+  ]
+}

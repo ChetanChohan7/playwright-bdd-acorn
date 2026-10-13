@@ -53,7 +53,6 @@ public sealed class RadarTestSetup : IDisposable
     public string RequestTime => settings.RequestTime;
     public decimal MinThreshold => settings.MinThreshold;
     public decimal MaxThreshold => settings.MaxThreshold;
-    public bool BaselineOnly => settings.BaselineOnly;
 
     public static RadarTestSetup Create()
     {
@@ -127,8 +126,7 @@ public sealed class RadarTestSetup : IDisposable
             MaxThreshold = ReadRequiredDecimal(configuration, "RADAR_MAX_THRESHOLD", "MaxThreshold"),
             RequestTime = RequestTimeFormatter.Resolve(
                 Environment.GetEnvironmentVariable("RADAR_REQUEST_DATETIME") ?? configuration["PipelineSettings:RequestTime"]),
-            TestTag = Environment.GetEnvironmentVariable("TEST_TAG") ?? configuration["PipelineSettings:TestTag"] ?? string.Empty,
-            BaselineOnly = ReadFlag(configuration, "RADAR_BASELINE_ONLY", "BaselineOnly")
+            TestTag = TestConfigurationLoader.ReadTestTag(configuration)
         };
         new PipelineInputValidator().Validate(pipelineSettings);
 
@@ -170,22 +168,6 @@ public sealed class RadarTestSetup : IDisposable
         throw new InvalidOperationException("BUILD_BUILDID is required outside local development.");
     }
 
-    internal static bool ReadFlag(IConfiguration configuration, string variableName, string settingName)
-    {
-        var value = Environment.GetEnvironmentVariable(variableName) ?? configuration[$"PipelineSettings:{settingName}"];
-        if (string.IsNullOrWhiteSpace(value))
-        {
-            return false;
-        }
-
-        return value.Trim().ToLowerInvariant() switch
-        {
-            "true" or "1" or "yes" => true,
-            "false" or "0" or "no" => false,
-            _ => throw new InvalidOperationException($"{variableName} must be true or false.")
-        };
-    }
-
     private static decimal ReadRequiredDecimal(IConfiguration configuration, string variableName, string settingName)
     {
         var value = Environment.GetEnvironmentVariable(variableName) ?? configuration[$"PipelineSettings:{settingName}"];
@@ -222,93 +204,9 @@ public sealed class RadarTestSetup : IDisposable
 
         var rateLimitSettings = rateLimitSection.Get<RadarRateLimitSettings>()
             ?? throw new InvalidOperationException("RadarRateLimitSettings is missing.");
-        ValidateRadarConfiguration(radarSettings, rateLimitSettings);
+        RadarSettingsValidator.Validate(radarSettings, rateLimitSettings);
 
         return new RadarRunConfiguration(radarSettings, rateLimitSettings, profiles);
-    }
-
-    internal static void ValidateRadarConfiguration(
-        RadarSettings radarSettings,
-        RadarRateLimitSettings rateLimitSettings)
-    {
-        ArgumentNullException.ThrowIfNull(radarSettings);
-        ArgumentNullException.ThrowIfNull(rateLimitSettings);
-        rateLimitSettings.Validate();
-
-        if (radarSettings.Endpoints is null || radarSettings.Endpoints.Count == 0)
-        {
-            throw new InvalidOperationException("At least one Radar logical endpoint must be configured.");
-        }
-
-        var endpointNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var endpointName in radarSettings.Endpoints.Keys)
-        {
-            if (string.IsNullOrWhiteSpace(endpointName))
-            {
-                throw new InvalidOperationException("Radar logical endpoint names must not be empty.");
-            }
-
-            if (endpointName.Any(character =>
-                !char.IsAsciiLetterOrDigit(character) && character is not ('_' or '-' or '.')))
-            {
-                throw new InvalidOperationException("Radar logical endpoint names contain unsupported characters.");
-            }
-
-            if (!endpointNames.Add(endpointName))
-            {
-                throw new InvalidOperationException("Radar logical endpoint names must be unique ignoring case.");
-            }
-
-            var endpoint = radarSettings.Endpoints[endpointName];
-            if (endpoint is null ||
-                !Uri.TryCreate(endpoint.BaseUrl, UriKind.Absolute, out var baseUri) ||
-                (baseUri.Scheme != Uri.UriSchemeHttp && baseUri.Scheme != Uri.UriSchemeHttps))
-            {
-                throw new InvalidOperationException("Every Radar endpoint must have an absolute HTTP or HTTPS BaseUrl.");
-            }
-
-            if (string.IsNullOrWhiteSpace(endpoint.ApiKeyHeaderName))
-            {
-                throw new InvalidOperationException("Every Radar endpoint must have an ApiKeyHeaderName.");
-            }
-
-            if (string.IsNullOrWhiteSpace(endpoint.ApiKeyValue))
-            {
-                throw new InvalidOperationException("Every Radar endpoint must have an ApiKeyValue.");
-            }
-        }
-
-        if (radarSettings.Routes is null)
-        {
-            throw new InvalidOperationException("Radar routes are missing.");
-        }
-
-        if (radarSettings.Routes.Count == 0)
-        {
-            throw new InvalidOperationException("At least one Radar route must be configured.");
-        }
-
-        foreach (var route in radarSettings.Routes)
-        {
-            if (string.IsNullOrWhiteSpace(route.Value?.ProductCode) ||
-                route.Value.SchemeCodes is null ||
-                route.Value.SchemeCodes.Count == 0 ||
-                route.Value.SchemeCodes.Any(string.IsNullOrWhiteSpace))
-            {
-                throw new InvalidOperationException("Every Radar route must have a ProductCode and at least one non-empty SchemeCode.");
-            }
-
-            if (string.IsNullOrWhiteSpace(route.Value.EndpointName) || !endpointNames.Contains(route.Value.EndpointName))
-            {
-                throw new InvalidOperationException("Every Radar route must reference a configured logical endpoint.");
-            }
-
-            if (string.IsNullOrWhiteSpace(route.Value.RouteKey))
-            {
-                throw new InvalidOperationException("Every Radar route must have a RouteKey.");
-            }
-        }
-
     }
 
     private sealed record RadarRunConfiguration(

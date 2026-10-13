@@ -10,7 +10,7 @@ public class BaselineDataReader : IBaselineDataReader
 	private readonly SqlConnectionFactory connectionFactory;
 	private readonly RetrySettings retrySettings;
 
-	private const string PassingBaselinesSql = """
+	private const string PassingBaselinesSelect = """
 		WITH PassingBaselines AS
 		(
 			SELECT
@@ -29,14 +29,22 @@ public class BaselineDataReader : IBaselineDataReader
 			FROM [Xml].[Response] AS response
 			INNER JOIN [Xml].[Request] AS request ON request.Scenario_id = response.Scenario_id
 			WHERE response.Status = 'PASS'
+		""";
+	private const string PassingBaselinesResult = """
 		)
 		SELECT ScenarioId, QuoteRef, ProductCode, SchemeCode, XmlResponse, Status, LastUpdated
 		FROM PassingBaselines
 		WHERE RowNumber = 1;
 		""";
+	private const string PassingBaselinesSql = PassingBaselinesSelect + "\n" + PassingBaselinesResult;
 
-	// No Status filter: Radar needs to tell "no baseline yet" (create one) apart from
-	// "baseline exists but isn't PASS" (report an error).
+	// The same selection limited to one product, matching Radar's TEST_TAG filter
+	// (RequestDataReader.ProductScenariosSql), so ICE checks the products Radar just ran.
+	private const string ProductPassingBaselinesSql =
+		PassingBaselinesSelect + "\n\t\t\tAND request.Product_code = @ProductCode\n" + PassingBaselinesResult;
+
+	// No Status filter: Radar reports "no baseline yet" (MissingBaseline: run DataLoader seed)
+	// and "baseline exists but isn't PASS" as different errors.
 	private const string BaselineByIdSql = """
 		SELECT
 			response.Scenario_id AS ScenarioId,
@@ -57,7 +65,23 @@ public class BaselineDataReader : IBaselineDataReader
 		this.retrySettings.ValidateDatabaseRetrySettings();
 	}
 
-	public async Task<IReadOnlyList<IceBaselineScenario>> GetPassingBaselineScenariosAsync(CancellationToken cancellationToken = default)
+	public Task<IReadOnlyList<IceBaselineScenario>> GetPassingBaselineScenariosAsync(CancellationToken cancellationToken = default)
+	{
+		return QueryPassingBaselinesAsync(PassingBaselinesSql, null, cancellationToken);
+	}
+
+	public Task<IReadOnlyList<IceBaselineScenario>> GetPassingBaselineScenariosByProductCodeAsync(
+		string productCode,
+		CancellationToken cancellationToken = default)
+	{
+		ArgumentException.ThrowIfNullOrWhiteSpace(productCode);
+		return QueryPassingBaselinesAsync(ProductPassingBaselinesSql, new { ProductCode = productCode }, cancellationToken);
+	}
+
+	private async Task<IReadOnlyList<IceBaselineScenario>> QueryPassingBaselinesAsync(
+		string sql,
+		object? parameters,
+		CancellationToken cancellationToken)
 	{
 		for (var attempt = 0; ; attempt++)
 		{
@@ -65,7 +89,7 @@ public class BaselineDataReader : IBaselineDataReader
 			{
 				await using var connection = connectionFactory.Create();
 				await connection.OpenAsync(cancellationToken);
-				var command = new CommandDefinition(PassingBaselinesSql, cancellationToken: cancellationToken);
+				var command = new CommandDefinition(sql, parameters, cancellationToken: cancellationToken);
 				var scenarios = await connection.QueryAsync<IceBaselineScenario>(command);
 				return scenarios.AsList();
 			}

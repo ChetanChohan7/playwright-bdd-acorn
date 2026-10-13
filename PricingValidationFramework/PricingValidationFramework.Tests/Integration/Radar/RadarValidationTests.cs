@@ -13,6 +13,8 @@ namespace PricingValidationFramework.Tests.Integration.Radar;
 [Parallelizable(ParallelScope.Children)]
 public class RadarValidationTests
 {
+    private const string MissingBaselineStage = "MissingBaseline";
+
     private readonly RadarReportCollection reportRows = new();
     private RadarTestSetup? setup;
     private Exception? setupFailure;
@@ -95,93 +97,25 @@ public class RadarValidationTests
             baseline = await setup.BaselineReader
                 .GetBaselineByScenarioIdAsync(scenario.ScenarioId, cancellationToken);
 
-            // Baseline-only runs (after a data load) create baselines for new scenarios and leave
-            // every scenario that already has an [Xml].[Response] row untouched, whatever its status.
-            if (setup.BaselineOnly && baseline is not null)
+            // Radar compares only. Baselines are created by `DataLoader seed` (the data-loader
+            // pipeline's Seed baselines stage), so a scenario without one is an error, not a PASS.
+            if (baseline is null)
             {
-                TestContext.Progress.WriteLine(
-                    $"[{scenario.ScenarioId}] Baseline already exists (Status {baseline.Status}); skipped in baseline-only mode.");
-                return;
-            }
-
-            if (baseline is not null && !string.Equals(baseline.Status, "PASS", StringComparison.Ordinal))
-            {
-                throw new InvalidDataException(
-                    $"No passing baseline was found for ScenarioId '{scenario.ScenarioId}' (Status is '{baseline.Status}').");
-            }
-
-            // A new scenario has no [Xml].[Response] row yet: Radar's response becomes its baseline
-            // and is passed without the fuzzy comparison. Otherwise compare against the baseline.
-			var run = baseline is null
-                ? await setup.PricingService.CreateBaselineAsync(scenario, setup.RequestTime, cancellationToken)
-                : await setup.PricingService.RunAsync(
-                    scenario,
-                    baseline.XmlResponse,
-                    setup.RequestTime,
-                    setup.MinThreshold,
-                    setup.MaxThreshold,
-                    cancellationToken);
-			row = RadarReportingHelper.BuildComparisonRow(
-				setup.BuildId,
-				scenario.ScenarioId,
-				scenario.QuoteRef,
-				scenario.SchemeCode,
-				scenario.ProductCode,
-				scenario.XmlRequest,
-				baseline?.XmlResponse ?? string.Empty,
-				run.RadarResponseXml,
-				setup.MinThreshold,
-				setup.MaxThreshold,
-				run.Comparison);
-            if (row.Result != ScenarioResult.Pass)
-            {
+                var missing = $"No baseline in [Xml].[Response] for ScenarioId '{scenario.ScenarioId}'. Run DataLoader seed first.";
                 setup.Logger.ExecutionFailed(
                     scenario.ScenarioId,
                     scenario.QuoteRef,
                     scenario.ProductCode,
                     scenario.SchemeCode,
-                run.RouteId,
-                row.FailureStage ?? "PricingComparison",
-                new InvalidOperationException(row.Error ?? $"Pricing comparison returned {row.Result}."),
-                safeDetail: row.Error);
+                    null,
+                    MissingBaselineStage,
+                    new InvalidOperationException(missing),
+                    safeDetail: missing);
+                row = BuildErrorRow(scenario, setup, string.Empty, string.Empty, MissingBaselineStage, missing);
             }
-
-			if (row.Result != ScenarioResult.Error && !string.IsNullOrWhiteSpace(row.RadarResponseXml))
+            else
             {
-                try
-                {
-                    if (baseline is null)
-                    {
-                        await setup.ResultUpdater.InsertBaselineAsync(new ScenarioResponse
-                        {
-                            ScenarioId = scenario.ScenarioId,
-                            QuoteRef = scenario.QuoteRef,
-                            XmlResponse = run.RadarResponseXml,
-                            Status = "PASS"
-                        }, cancellationToken);
-                    }
-                    else
-                    {
-                        await PersistResultAsync(setup, baseline, row, cancellationToken);
-                    }
-                }
-                catch (OperationCanceledException)
-                {
-                    throw;
-                }
-                catch (Exception exception)
-                {
-                    scenarioError = exception;
-                    setup.Logger.ExecutionFailed(
-                        scenario.ScenarioId,
-                        scenario.QuoteRef,
-                        scenario.ProductCode,
-                        scenario.SchemeCode,
-                        null,
-                        "ResultPersistence",
-                        exception);
-                    row = BuildErrorRow(scenario, setup, baseline?.XmlResponse ?? string.Empty, row.RadarResponseXml, "ResultPersistence", exception.Message);
-                }
+                (row, scenarioError) = await CompareAndPersistAsync(setup, scenario, baseline, cancellationToken);
             }
         }
         catch (OperationCanceledException)
@@ -247,6 +181,78 @@ public class RadarValidationTests
             reportRows.Dispose();
             setup?.Dispose();
             NLog.LogManager.Flush();
+        }
+    }
+
+    private static async Task<(RadarValidationReportRow Row, Exception? Error)> CompareAndPersistAsync(
+        RadarTestSetup setup,
+        ScenarioRequest scenario,
+        ScenarioResponse baseline,
+        CancellationToken cancellationToken)
+    {
+        if (!string.Equals(baseline.Status, "PASS", StringComparison.Ordinal))
+        {
+            throw new InvalidDataException(
+                $"No passing baseline was found for ScenarioId '{scenario.ScenarioId}' (Status is '{baseline.Status}').");
+        }
+
+        var run = await setup.PricingService.RunAsync(
+            scenario,
+            baseline.XmlResponse,
+            setup.RequestTime,
+            setup.MinThreshold,
+            setup.MaxThreshold,
+            cancellationToken);
+        var row = RadarReportingHelper.BuildComparisonRow(
+            setup.BuildId,
+            scenario.ScenarioId,
+            scenario.QuoteRef,
+            scenario.SchemeCode,
+            scenario.ProductCode,
+            scenario.XmlRequest,
+            baseline.XmlResponse,
+            run.RadarResponseXml,
+            setup.MinThreshold,
+            setup.MaxThreshold,
+            run.Comparison);
+        if (row.Result != ScenarioResult.Pass)
+        {
+            setup.Logger.ExecutionFailed(
+                scenario.ScenarioId,
+                scenario.QuoteRef,
+                scenario.ProductCode,
+                scenario.SchemeCode,
+                run.RouteId,
+                row.FailureStage ?? "PricingComparison",
+                new InvalidOperationException(row.Error ?? $"Pricing comparison returned {row.Result}."),
+                safeDetail: row.Error);
+        }
+
+        if (row.Result == ScenarioResult.Error || string.IsNullOrWhiteSpace(row.RadarResponseXml))
+        {
+            return (row, null);
+        }
+
+        try
+        {
+            await PersistResultAsync(setup, baseline, row, cancellationToken);
+            return (row, null);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            setup.Logger.ExecutionFailed(
+                scenario.ScenarioId,
+                scenario.QuoteRef,
+                scenario.ProductCode,
+                scenario.SchemeCode,
+                null,
+                "ResultPersistence",
+                exception);
+            return (BuildErrorRow(scenario, setup, baseline.XmlResponse, row.RadarResponseXml, "ResultPersistence", exception.Message), exception);
         }
     }
 

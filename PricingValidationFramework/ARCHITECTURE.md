@@ -15,6 +15,7 @@ PricingValidationFramework.Core/
 │   ├── RadarEndpointSettings.cs
 │   ├── RadarRouteSettings.cs
 │   ├── RadarSettings.cs
+│   ├── RadarSettingsValidator.cs
 │   └── RetrySettings.cs
 ├── Database/
 │   ├── SqlConnectionFactory.cs
@@ -59,6 +60,8 @@ NUnit ICE test
 │   └── Enums/
 ├── Reporting/
 │   └── CsvReportWriter.cs
+├── Seeding/
+│   └── BaselineSeeder.cs
 └── Validation/
     ├── PipelineInputValidator.cs
     ├── PricingComparisonService.cs
@@ -162,7 +165,7 @@ row_creationdate
 
 `IBaselineDataReader` is the database boundary for baseline retrieval and supports isolated tests with a fake reader. `BaselineDataReader.GetPassingBaselineScenariosAsync()` reads `[Xml].[Response]`, filters `Status = 'PASS'`, and returns the latest `IceBaselineScenario` per `ProductCode` and `SchemeCode`, ordered by `Last_updated DESC` and `Scenario_id`. Filtering, grouping, and ranking are performed in SQL.
 
-`ResultUpdater.InsertBaselineAsync()` inserts a new scenario's first Radar response as its `PASS` baseline, guarded so it never replaces an existing row. `ResultUpdater.UpdateResultAsync()` updates `[Xml].[Response]` by unique `Scenario_id`, preserving `row_creationdate`/`row_createdby` and requiring exactly one affected row. On PASS it updates `Status`, `Last_updated` and `XML_Response`, so the Radar response becomes the new baseline. On FAIL it updates `Status` only, so the existing baseline XML is never overwritten. Both also set `row_modifieddate` and `row_modifiedby`.
+`ResultUpdater.TryInsertBaselineAsync()` (used by `DataLoader seed`) inserts a new scenario's first Radar response as its `PASS` baseline, guarded with `NOT EXISTS ... WITH (UPDLOCK, HOLDLOCK)` so it never replaces an existing row; it returns false when a row already exists. `InsertBaselineAsync()` is the throwing form. `RequestDataReader.GetScenariosWithoutBaselineAsync()` selects the `[Xml].[Request]` rows with no `[Xml].[Response]` row of any status. `ResultUpdater.UpdateResultAsync()` updates `[Xml].[Response]` by unique `Scenario_id`, preserving `row_creationdate`/`row_createdby` and requiring exactly one affected row. On PASS it updates `Status`, `Last_updated` and `XML_Response`, so the Radar response becomes the new baseline. On FAIL it updates `Status` only, so the existing baseline XML is never overwritten. Both also set `row_modifieddate` and `row_modifiedby`.
 
 Audit columns: both tables have `row_creationdate`, `row_createdby`, `row_modifieddate` and `row_modifiedby` (there is no `Create_date`). Inserts set all four; updates set the two `row_modified*` columns. Dates are `SYSUTCDATETIME()`. The user is `DatabaseSettings:AuditUser` when configured (e.g. `testuser`), otherwise SQL Server's `SUSER_SNAME()`, the login running the statement. Reads expose `row_creationdate` as `CreatedDate`, and Radar's scenario list is ordered by it. `BuildId` is supplied at runtime for reporting and logging; `[Xml].[Response]` does not require a build-ID column.
 
@@ -315,7 +318,6 @@ Sources:
 - `RequestTime`: `PipelineSettings:RequestTime` or the `RADAR_REQUEST_DATETIME` pipeline override.
 - `MinThreshold`: `PipelineSettings:MinThreshold` or the `RADAR_MIN_THRESHOLD` pipeline override.
 - `MaxThreshold`: `PipelineSettings:MaxThreshold` or the `RADAR_MAX_THRESHOLD` pipeline override.
-- `BaselineOnly`: `PipelineSettings:BaselineOnly` or the `RADAR_BASELINE_ONLY` pipeline override (`true`/`false`, default false). When true, scenarios with an existing `[Xml].[Response]` row are skipped and only missing baselines are created.
 
 Environment overrides take precedence over appsettings. Thresholds must be supplied for live runs; empty tag and request time select all scenarios and generate UTC request time respectively.
 
@@ -402,7 +404,7 @@ Baseline XML + Radar response XML
   -> Flat CSV field rows, with payloads only on the first row per scenario
 ```
 
-Pricing comparison and XPath extraction live in Core. NUnit loads the baseline, invokes the service, persists eligible PASS/FAIL results and asserts the outcome. There is no whole-document schema validation. Initial-baseline creation still stores the API response without extraction or comparison.
+Pricing comparison and XPath extraction live in Core. NUnit loads the baseline, invokes the service, persists eligible PASS/FAIL results and asserts the outcome. There is no whole-document schema validation. Radar never creates baselines: a missing `[Xml].[Response]` row is an ERROR (`MissingBaseline`). Initial baselines come from `Core/Seeding/BaselineSeeder` (run by `DataLoader seed`), which stores the API response without extraction or comparison.
 
 ICE comparison remains in the ICE test and is unchanged.
 
@@ -782,7 +784,7 @@ These report and log names are mandatory. Radar and ICE output remains separate.
 
 ### Extraction failure handling
 
-Baseline extraction fails before the Radar call. Response extraction errors occur after the call. Both are technical ERROR results: log the field/path diagnostics, report the scenario, do not update the baseline, and continue with other cases. Initial-baseline creation deliberately bypasses extraction.
+Baseline extraction fails before the Radar call. Response extraction errors occur after the call. Both are technical ERROR results: log the field/path diagnostics, report the scenario, do not update the baseline, and continue with other cases. Baseline seeding (`DataLoader seed`) deliberately bypasses extraction.
 
 Local outputs are written under the test output's `TestResults` directory. Both pipelines stage Reports and Logs and publish them with `always()` conditions, including after test failures. Missing outputs are surfaced after available files are staged. Cancellation publication is best-effort; process/agent loss cannot guarantee files. Routine logs exclude credentials and XML; restrict access to the CSV payloads.
 
@@ -953,7 +955,7 @@ Ice reads the shared product/scheme mappings but does not use Radar credentials 
 
 ICE uses `BaselineDataReader` as its only database reader, obtains identifiers through the `[Xml].[Request]` join without loading request XML, and performs comparison/assertion logic directly in the NUnit test.
 
-ICE uses one named `TestCaseSource` case per selected baseline and remains explicitly `[NonParallelizable]`. Discovery loads only database/retry configuration and passing baseline data, without creating the API client or loading its certificate. Empty discovery, duplicate IDs, and discovery exceptions produce a failing discovery case. One-time setup creates the shared execution resources; each scenario records PASS/FAIL/ERROR before its independent assertion, and subsequent cases continue after a failed case. Teardown uses a non-cancelled reporting token to write one combined report, including completed rows after cancellation, and disposes resources in `finally`. Baseline selection, exact comparison, authentication, and retries are unchanged; ICE tag filtering remains pending.
+ICE uses one named `TestCaseSource` case per selected baseline and remains explicitly `[NonParallelizable]`. Discovery loads only database/retry configuration and passing baseline data, without creating the API client or loading its certificate. Empty discovery, duplicate IDs, and discovery exceptions produce a failing discovery case. One-time setup creates the shared execution resources; each scenario records PASS/FAIL/ERROR before its independent assertion, and subsequent cases continue after a failed case. Teardown uses a non-cancelled reporting token to write one combined report, including completed rows after cancellation, and disposes resources in `finally`. Baseline selection, exact comparison, authentication, and retries are unchanged. ICE shares Radar's `TEST_TAG` product filter (`TestConfigurationLoader.ReadTestTag`, `BaselineDataReader.GetPassingBaselineScenariosByProductCodeAsync`), so the Radar pipeline's ICE stage checks the products its Radar stage ran.
 
 ## 20. Final Design Decisions
 

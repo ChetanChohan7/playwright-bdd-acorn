@@ -20,6 +20,11 @@ internal static class TestConfigurationLoader
             configuration["PricingProfiles:MappingFile"], TestContext.CurrentContext.TestDirectory));
     }
 
+    /// The product filter shared by Radar and ICE: TEST_TAG, then PipelineSettings:TestTag; empty means all.
+    /// It matches [Xml].[Request].Product_code exactly, so both stages of a Radar run select the same products.
+    public static string ReadTestTag(IConfiguration configuration) =>
+        Environment.GetEnvironmentVariable("TEST_TAG") ?? configuration["PipelineSettings:TestTag"] ?? string.Empty;
+
     public static IConfiguration Load()
     {
         var environmentName = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT")

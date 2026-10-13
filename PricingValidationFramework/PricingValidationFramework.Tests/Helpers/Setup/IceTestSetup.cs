@@ -56,7 +56,19 @@ public sealed class IceTestSetup : IDisposable
             ?? throw new InvalidOperationException("RetrySettings is missing.");
         retrySettings.ValidateDatabaseRetrySettings();
         var reader = new BaselineDataReader(new SqlConnectionFactory(databaseSettings), retrySettings);
-        return await reader.GetPassingBaselineScenariosAsync(cancellationToken);
+        return await DiscoverScenariosAsync(reader, TestConfigurationLoader.ReadTestTag(configuration), cancellationToken);
+    }
+
+    /// Newest PASS baseline per product/scheme, limited to the TEST_TAG product when one is set
+    /// (the same filter as the Radar stage before it).
+    internal static Task<IReadOnlyList<IceBaselineScenario>> DiscoverScenariosAsync(
+        IBaselineDataReader reader,
+        string testTag,
+        CancellationToken cancellationToken = default)
+    {
+        return string.IsNullOrWhiteSpace(testTag)
+            ? reader.GetPassingBaselineScenariosAsync(cancellationToken)
+            : reader.GetPassingBaselineScenariosByProductCodeAsync(testTag, cancellationToken);
     }
 
     public static IceTestSetup Create()

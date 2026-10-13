@@ -4,7 +4,11 @@ using PricingValidationFramework.Core.Configuration;
 using PricingValidationFramework.Core.Database;
 using PricingValidationFramework.DataLoader;
 
-const string Usage = "Usage: DataLoader <validate|import> --requests <csv-or-folder> [--batch-size <1-1000>] [--settings <json>] [--report <json>] [--request-time <now|yyyy-MM-ddZHH:mm:ss>]";
+const string Usage = """
+    Usage:
+      DataLoader <validate|import> --requests <csv-or-folder> [--batch-size <1-1000>] [--settings <json>] [--report <json>] [--request-time <now|yyyy-MM-ddZHH:mm:ss>]
+      DataLoader seed [--settings <json>] [--report <json>] [--request-time <now|yyyy-MM-ddZHH:mm:ss>] [--max-parallel <1-16>]
+    """;
 if (args.Length == 0 || args[0] is "--help" or "-h")
 {
     Console.WriteLine(Usage);
@@ -17,6 +21,12 @@ Console.CancelKeyPress += (_, eventArgs) =>
     eventArgs.Cancel = true;
     cancellation.Cancel();
 };
+if (args[0] == "seed")
+{
+    // Creates the first [Xml].[Response] baseline for every scenario that has none, via Radar.
+    return await SeedCommand.RunAsync(args[1..], cancellation.Token);
+}
+
 var reportPath = Path.Combine("TestResults", "DataLoader", "import-summary.json");
 ImportSummary summary;
 try

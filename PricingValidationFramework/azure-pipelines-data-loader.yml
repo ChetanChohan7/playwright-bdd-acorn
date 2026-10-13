@@ -27,141 +27,157 @@ parameters:
     type: number
     default: 100
   - name: requestDateTime
-    displayName: Radar request date/time for new baselines (UTC, yyyy-MM-ddZHH:mm:ss, or now)
+    displayName: Radar request date/time for seeded baselines (UTC, yyyy-MM-ddZHH:mm:ss, or now)
     type: string
     default: now
-  - name: createBaselines
-    displayName: Create Radar baselines for newly loaded scenarios after the import
+  - name: seedBaselines
+    displayName: Seed Radar baselines for scenarios without one after the import
     type: boolean
     default: true
+  - name: seedOnly
+    displayName: Seed baselines only - skip Validate and Import (seeds scenarios already in the database)
+    type: boolean
+    default: false
+  - name: seedMaxParallel
+    displayName: Scenarios seeded at once (1-16; Radar's rate limit still applies)
+    type: number
+    default: 4
 
 pool:
   name: ${{ parameters.agentPool }}
 
 stages:
-  - stage: Validate
-    displayName: Validate importer and CSV dataset
-    jobs:
-      - job: ValidateDataset
-        timeoutInMinutes: 30
-        workspace:
-          clean: all
-        steps:
-          - checkout: self
-          - task: UseDotNet@2
-            displayName: Use .NET 10
-            inputs:
-              packageType: sdk
-              version: 10.0.x
-          - pwsh: |
-              dotnet restore PricingValidationFramework/PricingValidationFramework.Tests/PricingValidationFramework.Tests.csproj --disable-parallel
-              if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-              dotnet test PricingValidationFramework/PricingValidationFramework.Tests/PricingValidationFramework.Tests.csproj --configuration Release --no-restore --filter "FullyQualifiedName~DataLoaderTests|FullyQualifiedName~DatabaseQueryContractTests" --logger "trx;LogFileName=DataLoader.trx" --results-directory "$(Agent.TempDirectory)/DataLoaderTests"
-              if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-            displayName: Test loader and repository contracts
-          - ${{ if eq(parameters.datasetSource, 'repository') }}:
-              - task: CopyFiles@2
-                displayName: Stage repository dataset
-                inputs:
-                  SourceFolder: '$(Build.SourcesDirectory)/${{ parameters.datasetPath }}'
-                  Contents: |
-                    requests.csv
-                    scenarios-*.csv
-                  TargetFolder: '$(Pipeline.Workspace)/scenario-data'
-                  CleanTargetFolder: true
-          - ${{ if eq(parameters.datasetSource, 'artifact') }}:
-              - task: DownloadPipelineArtifact@2
-                displayName: Download selected dataset version
-                inputs:
-                  buildType: specific
-                  project: '$(System.TeamProject)'
-                  definition: '${{ parameters.datasetPipelineId }}'
-                  buildVersionToDownload: specific
-                  pipelineId: '${{ parameters.datasetRunId }}'
-                  artifactName: scenario-data
-                  targetPath: '$(Pipeline.Workspace)/scenario-data'
-          - pwsh: |
-              $reportDirectory = '$(Build.ArtifactStagingDirectory)/DataLoaderValidation'
-              New-Item -ItemType Directory -Force -Path $reportDirectory | Out-Null
-              $importArguments = @('--requests', "$(Pipeline.Workspace)/scenario-data", '--batch-size', '${{ parameters.batchSize }}', '--request-time', '${{ parameters.requestDateTime }}', '--report', "$reportDirectory/validation-summary.json")
-              dotnet run --project PricingValidationFramework/PricingValidationFramework.DataLoader --configuration Release --no-build -- validate @importArguments
-              if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-              # Resolved once here ("now" = this moment's UTC hour) so the baseline stage uses the same time.
-              $requestTime = (Get-Content "$reportDirectory/validation-summary.json" -Raw | ConvertFrom-Json).RequestTime
-              Write-Host "Radar request time for new baselines: $requestTime"
-              Write-Host "##vso[task.setvariable variable=requestTime;isOutput=true]$requestTime"
-            name: validateDataset
-            displayName: Validate CSV and XML without database writes
-          - task: PublishTestResults@2
-            condition: succeededOrFailed()
-            inputs:
-              testResultsFormat: VSTest
-              testResultsFiles: '$(Agent.TempDirectory)/DataLoaderTests/DataLoader.trx'
-              testRunTitle: Data loader
-              failTaskOnMissingResultsFile: true
-          - task: PublishPipelineArtifact@1
-            condition: succeeded()
-            displayName: Pin validated dataset for the import stage
-            inputs:
-              targetPath: '$(Pipeline.Workspace)/scenario-data'
-              artifact: scenario-import-data
-          - task: PublishPipelineArtifact@1
-            condition: succeededOrFailed()
-            displayName: Publish validation summary
-            inputs:
-              targetPath: '$(Build.ArtifactStagingDirectory)/DataLoaderValidation'
-              artifact: DataLoaderValidation
-
-  - stage: Import
-    displayName: Import validated dataset
-    dependsOn: Validate
-    lockBehavior: sequential
-    jobs:
-      - deployment: ImportDataset
-        timeoutInMinutes: 120
-        environment: ${{ parameters.importEnvironment }}
-        workspace:
-          clean: all
-        strategy:
-          runOnce:
-            deploy:
-              steps:
-                - download: none
-                - checkout: self
-                - task: UseDotNet@2
-                  inputs:
-                    packageType: sdk
-                    version: 10.0.x
-                - download: current
-                  artifact: scenario-import-data
-                - pwsh: |
-                    $reportDirectory = '$(Build.ArtifactStagingDirectory)/DataLoaderImport'
-                    New-Item -ItemType Directory -Force -Path $reportDirectory | Out-Null
-                    $importArguments = @('--requests', "$(Pipeline.Workspace)/scenario-import-data", '--batch-size', '${{ parameters.batchSize }}', '--report', "$reportDirectory/import-summary.json")
-                    dotnet restore PricingValidationFramework/PricingValidationFramework.DataLoader --disable-parallel
-                    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-                    dotnet run --project PricingValidationFramework/PricingValidationFramework.DataLoader --configuration Release --no-restore -- import @importArguments
-                    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-                  displayName: Import through Core repository
-                  env:
-                    DatabaseSettings__ConnectionString: $(DataLoaderDatabaseConnectionString)
-                - task: PublishPipelineArtifact@1
-                  condition: succeededOrFailed()
-                  displayName: Publish import summary
-                  inputs:
-                    targetPath: '$(Build.ArtifactStagingDirectory)/DataLoaderImport'
-                    artifact: DataLoaderImport
-
-  - ${{ if eq(parameters.createBaselines, true) }}:
-      - stage: CreateBaselines
-        displayName: Create Radar baselines for new scenarios
-        dependsOn:
-          - Validate
-          - Import
-        variables:
-          requestTime: $[ stageDependencies.Validate.ValidateDataset.outputs['validateDataset.requestTime'] ]
+  - ${{ if eq(parameters.seedOnly, false) }}:
+      - stage: Validate
+        displayName: Validate importer and CSV dataset
         jobs:
-          - job: RadarBaselines
+          - job: ValidateDataset
+            timeoutInMinutes: 30
+            workspace:
+              clean: all
+            steps:
+              - checkout: self
+              - task: UseDotNet@2
+                displayName: Use .NET 10
+                inputs:
+                  packageType: sdk
+                  version: 10.0.x
+              - pwsh: |
+                  dotnet restore PricingValidationFramework/PricingValidationFramework.Tests/PricingValidationFramework.Tests.csproj --disable-parallel
+                  if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+                  dotnet test PricingValidationFramework/PricingValidationFramework.Tests/PricingValidationFramework.Tests.csproj --configuration Release --no-restore --filter "FullyQualifiedName~DataLoaderTests|FullyQualifiedName~DatabaseQueryContractTests|FullyQualifiedName~SeedCommandTests|FullyQualifiedName~BaselineSeederTests" --logger "trx;LogFileName=DataLoader.trx" --results-directory "$(Agent.TempDirectory)/DataLoaderTests"
+                  if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+                displayName: Test loader and repository contracts
+              - ${{ if eq(parameters.datasetSource, 'repository') }}:
+                  - task: CopyFiles@2
+                    displayName: Stage repository dataset
+                    inputs:
+                      SourceFolder: '$(Build.SourcesDirectory)/${{ parameters.datasetPath }}'
+                      Contents: |
+                        requests.csv
+                        scenarios-*.csv
+                      TargetFolder: '$(Pipeline.Workspace)/scenario-data'
+                      CleanTargetFolder: true
+              - ${{ if eq(parameters.datasetSource, 'artifact') }}:
+                  - task: DownloadPipelineArtifact@2
+                    displayName: Download selected dataset version
+                    inputs:
+                      buildType: specific
+                      project: '$(System.TeamProject)'
+                      definition: '${{ parameters.datasetPipelineId }}'
+                      buildVersionToDownload: specific
+                      pipelineId: '${{ parameters.datasetRunId }}'
+                      artifactName: scenario-data
+                      targetPath: '$(Pipeline.Workspace)/scenario-data'
+              - pwsh: |
+                  $reportDirectory = '$(Build.ArtifactStagingDirectory)/DataLoaderValidation'
+                  New-Item -ItemType Directory -Force -Path $reportDirectory | Out-Null
+                  $importArguments = @('--requests', "$(Pipeline.Workspace)/scenario-data", '--batch-size', '${{ parameters.batchSize }}', '--request-time', '${{ parameters.requestDateTime }}', '--report', "$reportDirectory/validation-summary.json")
+                  dotnet run --project PricingValidationFramework/PricingValidationFramework.DataLoader --configuration Release --no-build -- validate @importArguments
+                  if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+                  # Resolved once here ("now" = this moment's UTC hour) so the baseline stage uses the same time.
+                  $requestTime = (Get-Content "$reportDirectory/validation-summary.json" -Raw | ConvertFrom-Json).RequestTime
+                  Write-Host "Radar request time for new baselines: $requestTime"
+                  Write-Host "##vso[task.setvariable variable=requestTime;isOutput=true]$requestTime"
+                name: validateDataset
+                displayName: Validate CSV and XML without database writes
+              - task: PublishTestResults@2
+                condition: succeededOrFailed()
+                inputs:
+                  testResultsFormat: VSTest
+                  testResultsFiles: '$(Agent.TempDirectory)/DataLoaderTests/DataLoader.trx'
+                  testRunTitle: Data loader
+                  failTaskOnMissingResultsFile: true
+              - task: PublishPipelineArtifact@1
+                condition: succeeded()
+                displayName: Pin validated dataset for the import stage
+                inputs:
+                  targetPath: '$(Pipeline.Workspace)/scenario-data'
+                  artifact: scenario-import-data
+              - task: PublishPipelineArtifact@1
+                condition: succeededOrFailed()
+                displayName: Publish validation summary
+                inputs:
+                  targetPath: '$(Build.ArtifactStagingDirectory)/DataLoaderValidation'
+                  artifact: DataLoaderValidation
+
+      - stage: Import
+        displayName: Import validated dataset
+        dependsOn: Validate
+        lockBehavior: sequential
+        jobs:
+          - deployment: ImportDataset
+            timeoutInMinutes: 120
+            environment: ${{ parameters.importEnvironment }}
+            workspace:
+              clean: all
+            strategy:
+              runOnce:
+                deploy:
+                  steps:
+                    - download: none
+                    - checkout: self
+                    - task: UseDotNet@2
+                      inputs:
+                        packageType: sdk
+                        version: 10.0.x
+                    - download: current
+                      artifact: scenario-import-data
+                    - pwsh: |
+                        $reportDirectory = '$(Build.ArtifactStagingDirectory)/DataLoaderImport'
+                        New-Item -ItemType Directory -Force -Path $reportDirectory | Out-Null
+                        $importArguments = @('--requests', "$(Pipeline.Workspace)/scenario-import-data", '--batch-size', '${{ parameters.batchSize }}', '--report', "$reportDirectory/import-summary.json")
+                        dotnet restore PricingValidationFramework/PricingValidationFramework.DataLoader --disable-parallel
+                        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+                        dotnet run --project PricingValidationFramework/PricingValidationFramework.DataLoader --configuration Release --no-restore -- import @importArguments
+                        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+                      displayName: Import through Core repository
+                      env:
+                        DatabaseSettings__ConnectionString: $(DataLoaderDatabaseConnectionString)
+                    - task: PublishPipelineArtifact@1
+                      condition: succeededOrFailed()
+                      displayName: Publish import summary
+                      inputs:
+                        targetPath: '$(Build.ArtifactStagingDirectory)/DataLoaderImport'
+                        artifact: DataLoaderImport
+
+  - ${{ if or(eq(parameters.seedBaselines, true), eq(parameters.seedOnly, true)) }}:
+      - stage: SeedBaselines
+        displayName: Seed Radar baselines for scenarios without one
+        ${{ if eq(parameters.seedOnly, true) }}:
+          # Seed only: no import, so seed resolves requestDateTime itself ("now" = the current UTC hour).
+          dependsOn: []
+          variables:
+            requestTime: ${{ parameters.requestDateTime }}
+        ${{ else }}:
+          # After an import: use the time Validate resolved, so the whole run shares one hour.
+          dependsOn:
+            - Validate
+            - Import
+          variables:
+            requestTime: $[ stageDependencies.Validate.ValidateDataset.outputs['validateDataset.requestTime'] ]
+        jobs:
+          - job: SeedBaselines
             timeoutInMinutes: 360
             workspace:
               clean: all
@@ -173,14 +189,13 @@ stages:
                   packageType: sdk
                   version: 10.0.x
               - pwsh: |
-                  Write-Host "Creating baselines with Radar request time $(requestTime)"
-                  dotnet test PricingValidationFramework/PricingValidationFramework.Tests/PricingValidationFramework.Tests.csproj --configuration Release --filter "FullyQualifiedName~PricingValidationFramework.Tests.Integration.Radar.RadarValidationTests" --logger "trx;LogFileName=RadarBaselines.trx" --results-directory "$(Agent.TempDirectory)/RadarBaselineResults" -- NUnit.ExplicitMode=Relaxed
-                  if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-                  [xml]$results = Get-Content '$(Agent.TempDirectory)/RadarBaselineResults/RadarBaselines.trx'
-                  if ([int]$results.TestRun.ResultSummary.Counters.executed -eq 0) { throw 'No Radar scenarios executed.' }
-                displayName: Create baselines for scenarios without one
+                  # Creates the first [Xml].[Response] baseline for every scenario that has none, at the
+                  # request time Validate resolved. Scenarios that already have one are not touched.
+                  Write-Host "Seeding baselines with Radar request time $(requestTime)"
+                  dotnet run --project PricingValidationFramework/PricingValidationFramework.DataLoader --configuration Release -- seed --request-time '$(requestTime)' --max-parallel ${{ parameters.seedMaxParallel }} --report '$(Build.ArtifactStagingDirectory)/SeedSummary/seed-summary.json'
+                  exit $LASTEXITCODE
+                displayName: Seed baselines
                 env:
-                  DOTNET_ENVIRONMENT: Uat
                   DatabaseSettings__ConnectionString: $(RadarDatabaseConnectionString)
                   RadarSettings__Endpoints__Endpoint1__BaseUrl: $(RadarEndpoint1Url)
                   RadarSettings__Endpoints__Endpoint1__ApiKeyHeaderName: $(RadarEndpoint1KeyHeader)
@@ -191,37 +206,10 @@ stages:
                   RadarSettings__Endpoints__Endpoint3__BaseUrl: $(RadarEndpoint3Url)
                   RadarSettings__Endpoints__Endpoint3__ApiKeyHeaderName: $(RadarEndpoint3KeyHeader)
                   RadarSettings__Endpoints__Endpoint3__ApiKeyValue: $(RadarEndpoint3ApiKey)
-                  RADAR_MIN_THRESHOLD: $(RadarMinThreshold)
-                  RADAR_MAX_THRESHOLD: $(RadarMaxThreshold)
-                  RADAR_REQUEST_DATETIME: $(requestTime)
-                  RADAR_BASELINE_ONLY: 'true'
-                  TEST_TAG: ''
-
-              - task: PublishTestResults@2
-                condition: always()
-                displayName: Publish baseline test results
-                inputs:
-                  testResultsFormat: VSTest
-                  testResultsFiles: '$(Agent.TempDirectory)/RadarBaselineResults/RadarBaselines.trx'
-                  testRunTitle: Radar baselines
-                  failTaskOnMissingResultsFile: true
-
-              - pwsh: |
-                  # No report just means no new scenario needed a baseline, so missing files are not an error here.
-                  $resultDirectory = '$(Build.SourcesDirectory)/PricingValidationFramework/PricingValidationFramework.Tests/bin/Release/net10.0/TestResults'
-                  $artifactDirectory = '$(Build.ArtifactStagingDirectory)/RadarBaselineReports'
-                  foreach ($output in @(@{ Folder = 'Reports'; Pattern = 'Radar_*.csv' }, @{ Folder = 'Logs'; Pattern = 'Radar_*.log' })) {
-                    $source = Join-Path $resultDirectory $output.Folder
-                    $target = Join-Path $artifactDirectory $output.Folder
-                    New-Item -ItemType Directory -Force -Path $target | Out-Null
-                    if (Test-Path $source) { Get-ChildItem $source -Filter $output.Pattern -File | Copy-Item -Destination $target }
-                  }
-                condition: always()
-                displayName: Stage baseline reports and logs
 
               - task: PublishPipelineArtifact@1
                 condition: always()
-                displayName: Publish baseline reports and logs
+                displayName: Publish seed summary
                 inputs:
-                  targetPath: '$(Build.ArtifactStagingDirectory)/RadarBaselineReports'
-                  artifact: RadarBaselineReports
+                  targetPath: '$(Build.ArtifactStagingDirectory)/SeedSummary'
+                  artifact: SeedSummary
