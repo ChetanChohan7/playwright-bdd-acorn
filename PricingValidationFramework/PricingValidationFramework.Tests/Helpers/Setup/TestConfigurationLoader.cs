@@ -13,11 +13,6 @@ internal static class TestConfigurationLoader
 {
     public static PricingProfileConfiguration LoadProfiles(IConfiguration configuration)
     {
-        if (configuration.GetSection("RadarSettings:Routes").Exists() ||
-            configuration.GetSection("RadarSettings:ResponseXsdMappings").Exists())
-        {
-            throw new InvalidOperationException("Move RadarSettings routes and schema mappings to PricingProfiles:MappingFile.");
-        }
         return PricingProfileConfiguration.Load(PricingProfileConfiguration.ResolveMappingPath(
             configuration["PricingProfiles:MappingFile"], TestContext.CurrentContext.TestDirectory));
     }

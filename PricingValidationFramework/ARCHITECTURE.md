@@ -187,7 +187,7 @@ API clients own HTTP communication only. `RadarApiClient` acquires a permit for 
 
 - `RadarPricingService`: resolves the API route, verifies a product/scheme pricing profile exists, validates the baseline before the HTTP call, calls Radar, then delegates the two-XML comparison to Core.
 - `PricingComparisonService`: resolves a product/scheme profile, extracts both documents using the same named XPaths, and returns field-level and overall outcomes. Ice reuses its profile lookup and single-field baseline extraction.
-- `XmlValueExtractor`: parses stored/raw XML safely and extracts exactly one decimal element or attribute per configured field. No XSD validation remains.
+- `XmlValueExtractor`: parses stored/raw XML safely and extracts exactly one decimal element or attribute per configured field.
 - `RadarTestRunLogger`: writes Radar-specific logs.
 
 ### Matching
