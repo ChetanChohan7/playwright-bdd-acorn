@@ -34,7 +34,8 @@ public sealed class PricingComparisonService
 	public decimal ExtractIceBaseline(string productCode, string schemeCode, string xml)
 	{
 		var profile = GetProfile(productCode, schemeCode);
-		return extractor.ExtractValue(xml, profile.IceField, profile.Fields[profile.IceField]);
+		return extractor.ExtractValue(xml, profile.IceField, profile.Fields[profile.IceField],
+			profile.SumFields.Contains(profile.IceField));
 	}
 
 	public PricingBaselineValidationResult ValidateBaseline(string productCode, string schemeCode, string baselineXml)
@@ -46,7 +47,7 @@ public sealed class PricingComparisonService
 				Error: $"No pricing profile is configured for ProductCode '{productCode}' and SchemeCode '{schemeCode}'.");
 		}
 		var profile = GetProfile(productCode, schemeCode);
-		var extraction = extractor.Extract(baselineXml, profile.Fields);
+		var extraction = extractor.Extract(baselineXml, profile.Fields, profile.SumFields);
 		return extraction.IsValid
 			? new PricingBaselineValidationResult(true, profile.ProfileId, extraction.Document)
 			: new PricingBaselineValidationResult(false, profile.ProfileId,
@@ -70,7 +71,7 @@ public sealed class PricingComparisonService
 			throw new ArgumentException("Minimum delta must be less than or equal to maximum delta.", nameof(minDelta));
 		}
 		var profile = GetProfile(productCode, schemeCode);
-		var response = extractor.Extract(responseXml, profile.Fields);
+		var response = extractor.Extract(responseXml, profile.Fields, profile.SumFields);
 		if (!response.IsValid)
 		{
 			return new PricingComparisonResult([], string.Join(" | ", response.Errors),

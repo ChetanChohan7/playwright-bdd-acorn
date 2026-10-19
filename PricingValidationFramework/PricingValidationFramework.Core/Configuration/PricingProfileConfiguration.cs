@@ -12,16 +12,16 @@ public sealed class PricingProfileConfiguration
 	public static PricingProfileConfiguration Load(string mappingPath)
 	{
 		var (configuration, fullPath) = ReadMappings(mappingPath, requireExtractionFields: true);
-		var files = new Dictionary<string, Dictionary<string, string>>(StringComparer.Ordinal);
+		var files = new Dictionary<string, LoadedPricingPaths>(StringComparer.Ordinal);
 		foreach (var profile in configuration.Profiles)
 		{
 			var pathsFile = Path.GetFullPath(Path.Combine(Path.GetDirectoryName(fullPath)!, profile.PathsFile
 				.Replace('\\', Path.DirectorySeparatorChar).Replace('/', Path.DirectorySeparatorChar)));
-			if (!files.TryGetValue(pathsFile, out var fields))
+			if (!files.TryGetValue(pathsFile, out var loadedPaths))
 			{
 				var paths = JsonSerializer.Deserialize<PricingPaths>(File.ReadAllText(pathsFile), JsonOptions)
 					?? throw new InvalidDataException($"Paths file for '{profile.ProfileId}' must contain an object.");
-				fields = paths.Fields;
+				var fields = paths.Fields;
 				if (fields is null || fields.Count == 0 || fields.Any(field =>
 					string.IsNullOrWhiteSpace(field.Key) || string.IsNullOrWhiteSpace(field.Value)))
 				{
@@ -38,13 +38,21 @@ public sealed class PricingProfileConfiguration
 						throw new InvalidDataException($"Profile '{profile.ProfileId}', field '{field.Key}' has an invalid XPath '{field.Value}'.", exception);
 					}
 				}
-				files.Add(pathsFile, fields);
+				var sumFields = paths.SumFields ?? [];
+				if (sumFields.Any(field => string.IsNullOrWhiteSpace(field) || !fields.ContainsKey(field)) ||
+					sumFields.Count != sumFields.Distinct(StringComparer.Ordinal).Count())
+				{
+					throw new InvalidDataException($"Profile '{profile.ProfileId}' sumFields must contain unique names defined in fields.");
+				}
+				loadedPaths = new LoadedPricingPaths(fields, new HashSet<string>(sumFields, StringComparer.Ordinal));
+				files.Add(pathsFile, loadedPaths);
 			}
-			if (!fields.ContainsKey(profile.IceField))
+			if (!loadedPaths.Fields.ContainsKey(profile.IceField))
 			{
 				throw new InvalidDataException($"Profile '{profile.ProfileId}' Ice field '{profile.IceField}' is not defined in its paths file.");
 			}
-			profile.Fields = fields;
+			profile.Fields = loadedPaths.Fields;
+			profile.SumFields = loadedPaths.SumFields;
 		}
 		return configuration;
 	}
@@ -128,7 +136,12 @@ public sealed class PricingProfileConfiguration
 	private sealed class PricingPaths
 	{
 		public Dictionary<string, string> Fields { get; set; } = new(StringComparer.Ordinal);
+		public List<string>? SumFields { get; set; } = [];
 	}
+
+	private sealed record LoadedPricingPaths(
+		IReadOnlyDictionary<string, string> Fields,
+		IReadOnlySet<string> SumFields);
 }
 
 public sealed class PricingProfile
@@ -141,6 +154,8 @@ public sealed class PricingProfile
 	public string IceField { get; set; } = string.Empty;
 	[JsonIgnore]
 	public IReadOnlyDictionary<string, string> Fields { get; set; } = new Dictionary<string, string>();
+	[JsonIgnore]
+	public IReadOnlySet<string> SumFields { get; set; } = new HashSet<string>(StringComparer.Ordinal);
 }
 
 public sealed class PricingRadarRoute
