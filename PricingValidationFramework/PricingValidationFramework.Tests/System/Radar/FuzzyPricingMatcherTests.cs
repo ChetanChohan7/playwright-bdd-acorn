@@ -156,6 +156,83 @@ public class FuzzyPricingMatcherTests
         Assert.That(result.Result, Is.EqualTo(ScenarioResult.Pass));
     }
 
+    // Percentage: (Radar − baseline) ÷ |baseline| × 100, checked against the same min/max, here −2 … +2 (%).
+    [TestCase(500, 505, 1, ScenarioResult.Pass)]       // +1%
+    [TestCase(500, 490, -2, ScenarioResult.Pass)]      // −2%: on the limit, inclusive
+    [TestCase(500, 515, 3, ScenarioResult.Fail)]       // +3%: above max
+    [TestCase(500, 485, -3, ScenarioResult.Fail)]      // −3%: below min
+    [TestCase(60, 61.80, 3, ScenarioResult.Fail)]      // Tax +3%
+    [TestCase(-10, -10.1, -1, ScenarioResult.Pass)]    // negative baseline: Radar lower is still negative
+    [TestCase(-10, -12, -20, ScenarioResult.Fail)]
+    public void Percentage_should_compare_the_percentage_change_against_the_thresholds(
+        decimal baseline, decimal radar, decimal expectedPercent, ScenarioResult expected)
+    {
+        var result = matcher.Compare(Document(("/Premium", baseline)), Document(("/Premium", radar)), -2m, 2m, ThresholdType.Percentage);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Fields.Single().Delta, Is.EqualTo(expectedPercent));
+            Assert.That(result.Fields.Single().Result, Is.EqualTo(expected));
+        });
+    }
+
+    [Test]
+    public void Percentage_from_a_zero_baseline_should_pass_only_when_radar_is_also_zero()
+    {
+        var result = matcher.Compare(
+            Document(("/AdminFee", 0m), ("/Discount", 0m)),
+            Document(("/AdminFee", 0m), ("/Discount", 1.50m)),
+            -2m, 2m, ThresholdType.Percentage);
+        var adminFee = result.Fields.Single(field => field.FieldKey == "/AdminFee");
+        var discount = result.Fields.Single(field => field.FieldKey == "/Discount");
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(adminFee.Delta, Is.Zero);
+            Assert.That(adminFee.Result, Is.EqualTo(ScenarioResult.Pass));
+            Assert.That(discount.Delta, Is.Null, "no % change can be calculated from zero");
+            Assert.That(discount.Result, Is.EqualTo(ScenarioResult.Fail));
+            Assert.That(result.Result, Is.EqualTo(ScenarioResult.Fail));
+        });
+    }
+
+    [Test]
+    public void The_same_prices_should_be_judged_in_pounds_or_percent_by_the_threshold_type()
+    {
+        // Premium moved £5: outside ±2 as pounds, but only +1% of £500, so inside ±2 as percent.
+        var baseline = Document(("/Premium", 500m), ("/Tax", 60m));
+        var radar = Document(("/Premium", 505m), ("/Tax", 61.80m));
+
+        var pound = matcher.Compare(baseline, radar, -2m, 2m);
+        var percentage = matcher.Compare(baseline, radar, -2m, 2m, ThresholdType.Percentage);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(pound.Fields.Select(field => (field.FieldKey, field.Delta, field.Result)), Is.EqualTo(new[]
+            {
+                ("/Premium", (decimal?)5m, ScenarioResult.Fail),
+                ("/Tax", (decimal?)1.80m, ScenarioResult.Pass)
+            }));
+            Assert.That(percentage.Fields.Select(field => (field.FieldKey, field.Delta, field.Result)), Is.EqualTo(new[]
+            {
+                ("/Premium", (decimal?)1m, ScenarioResult.Pass),
+                ("/Tax", (decimal?)3m, ScenarioResult.Fail)
+            }));
+        });
+    }
+
+    [Test]
+    public void Pound_should_stay_the_default_and_subtract_as_before()
+    {
+        var result = matcher.Compare(Document(("/Tax", 60m)), Document(("/Tax", 59.40m)), -0.50m, 0.50m);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Fields.Single().Delta, Is.EqualTo(-0.60m));
+            Assert.That(result.Fields.Single().Result, Is.EqualTo(ScenarioResult.Fail));
+        });
+    }
+
     private static PricingDocument Document(params (string Path, decimal Value)[] values)
     {
         return new PricingDocument(values.Select(value => new PricingDecimalValue(value.Path, value.Value)));

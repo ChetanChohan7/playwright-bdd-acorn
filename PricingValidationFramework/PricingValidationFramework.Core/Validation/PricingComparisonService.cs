@@ -4,6 +4,7 @@ using System.Collections.Frozen;
 using PricingValidationFramework.Core.Configuration;
 using PricingValidationFramework.Core.Extraction;
 using PricingValidationFramework.Core.Matching;
+using PricingValidationFramework.Core.Models.Enums;
 using PricingValidationFramework.Core.Models.Reporting;
 
 public sealed class PricingComparisonService
@@ -55,16 +56,17 @@ public sealed class PricingComparisonService
 	}
 
 	public PricingComparisonResult Compare(string productCode, string schemeCode, string baselineXml,
-		string responseXml, decimal minDelta, decimal maxDelta)
+		string responseXml, decimal minDelta, decimal maxDelta, ThresholdType thresholdType = ThresholdType.Pound)
 	{
 		var baseline = ValidateBaseline(productCode, schemeCode, baselineXml);
 		return baseline.IsValid
-			? CompareExtractedBaseline(productCode, schemeCode, baseline.Document!, responseXml, minDelta, maxDelta)
+			? CompareExtractedBaseline(productCode, schemeCode, baseline.Document!, responseXml, minDelta, maxDelta, thresholdType)
 			: new PricingComparisonResult([], baseline.Error, baseline.FailureStage, profileId: baseline.ProfileId);
 	}
 
 	public PricingComparisonResult CompareExtractedBaseline(string productCode, string schemeCode,
-		PricingDocument baseline, string responseXml, decimal minDelta, decimal maxDelta)
+		PricingDocument baseline, string responseXml, decimal minDelta, decimal maxDelta,
+		ThresholdType thresholdType = ThresholdType.Pound)
 	{
 		if (minDelta > maxDelta)
 		{
@@ -77,7 +79,7 @@ public sealed class PricingComparisonService
 			return new PricingComparisonResult([], string.Join(" | ", response.Errors),
 				"ResponseExtraction", profileId: profile.ProfileId);
 		}
-		var comparison = matcher.Compare(baseline, response.Document!, minDelta, maxDelta);
+		var comparison = matcher.Compare(baseline, response.Document!, minDelta, maxDelta, thresholdType);
 		return new PricingComparisonResult(comparison.Fields, comparison.Error, comparison.FailureStage,
 			comparison.Result, profile.ProfileId);
 	}

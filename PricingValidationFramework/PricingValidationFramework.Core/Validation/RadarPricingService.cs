@@ -34,6 +34,7 @@ public sealed class RadarPricingService
 		string requestTime,
 		decimal minDelta,
 		decimal maxDelta,
+		ThresholdType thresholdType = ThresholdType.Pound,
 		CancellationToken cancellationToken = default)
 	{
 		ArgumentNullException.ThrowIfNull(scenario);
@@ -77,7 +78,8 @@ public sealed class RadarPricingService
 			baselineValidation.Document!,
 			responseXml,
 			minDelta,
-			maxDelta);
+			maxDelta,
+			thresholdType);
 		return new RadarPricingRunResult(target.RouteId, responseXml, comparison);
 	}
 

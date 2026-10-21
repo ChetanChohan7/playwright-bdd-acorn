@@ -11,6 +11,7 @@ using PricingValidationFramework.Core.ExternalAPIAccess.UrlBuilders;
 using PricingValidationFramework.Core.Logging;
 using PricingValidationFramework.Core.Models.Common;
 using PricingValidationFramework.Core.Models.Database;
+using PricingValidationFramework.Core.Models.Enums;
 using PricingValidationFramework.Core.Validation;
 
 namespace PricingValidationFramework.Tests.Helpers.Setup;
@@ -53,6 +54,7 @@ public sealed class RadarTestSetup : IDisposable
     public string RequestTime => settings.RequestTime;
     public decimal MinThreshold => settings.MinThreshold;
     public decimal MaxThreshold => settings.MaxThreshold;
+    public ThresholdType ThresholdType => settings.ThresholdType;
 
     /// <param name="includeLocalSettings">True from the live fixture: also reads data/import/local-settings.json.</param>
     public static RadarTestSetup Create(bool includeLocalSettings = false)
@@ -130,6 +132,7 @@ public sealed class RadarTestSetup : IDisposable
             BuildId = ReadRequiredBuildId(configuration),
             MinThreshold = ReadRequiredDecimal(configuration, "RADAR_MIN_THRESHOLD", "MinThreshold"),
             MaxThreshold = ReadRequiredDecimal(configuration, "RADAR_MAX_THRESHOLD", "MaxThreshold"),
+            ThresholdType = ReadThresholdType(configuration),
             RequestTime = RequestTimeFormatter.Resolve(
                 Environment.GetEnvironmentVariable("RADAR_REQUEST_DATETIME") ?? configuration["PipelineSettings:RequestTime"]),
             TestTag = TestConfigurationLoader.ReadTestTag(configuration),
@@ -173,6 +176,22 @@ public sealed class RadarTestSetup : IDisposable
         }
 
         throw new InvalidOperationException("BUILD_BUILDID is required outside local development.");
+    }
+
+    /// RADAR_THRESHOLD_TYPE, then PipelineSettings:ThresholdType: Pound or Percentage (any case); Pound when not set.
+    internal static ThresholdType ReadThresholdType(IConfiguration configuration)
+    {
+        var value = Environment.GetEnvironmentVariable("RADAR_THRESHOLD_TYPE") ?? configuration["PipelineSettings:ThresholdType"];
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return ThresholdType.Pound;
+        }
+
+        // Names only: Enum.TryParse would also accept numbers such as "1".
+        var name = Enum.GetNames<ThresholdType>().FirstOrDefault(name => name.Equals(value.Trim(), StringComparison.OrdinalIgnoreCase));
+        return name is not null
+            ? Enum.Parse<ThresholdType>(name)
+            : throw new InvalidOperationException("RADAR_THRESHOLD_TYPE must be Pound or Percentage.");
     }
 
     private static decimal ReadRequiredDecimal(IConfiguration configuration, string variableName, string settingName)

@@ -9,7 +9,8 @@ public sealed class FuzzyPricingMatcher
 		PricingDocument expected,
 		PricingDocument actual,
 		decimal minDelta,
-		decimal maxDelta)
+		decimal maxDelta,
+		ThresholdType thresholdType = ThresholdType.Pound)
 	{
 		ArgumentNullException.ThrowIfNull(expected);
 		ArgumentNullException.ThrowIfNull(actual);
@@ -22,7 +23,7 @@ public sealed class FuzzyPricingMatcher
 		foreach (var field in expected.Values)
 		{
 			var hasActual = actual.Values.TryGetValue(field.Key, out var actualValue);
-			decimal? delta = hasActual ? actualValue - field.Value : null;
+			decimal? delta = hasActual ? Difference(field.Value, actualValue, thresholdType) : null;
 			comparisons.Add(new DecimalFieldComparison(
 				field.Key,
 				expected.Paths[field.Key],
@@ -45,5 +46,24 @@ public sealed class FuzzyPricingMatcher
 		return comparisons.Count == 0
 			? new PricingComparisonResult(comparisons, "No decimal fields were available to compare.")
 			: new PricingComparisonResult(comparisons);
+	}
+
+	/// Pound: Radar − baseline. Percentage: (Radar − baseline) ÷ |baseline| × 100, so a negative value
+	/// always means Radar is lower, even for a negative baseline such as a discount. A % change from a
+	/// zero baseline can't be calculated: 0 → 0 is no change (0), and 0 → anything else has no
+	/// difference (null), which never falls within the thresholds, so the field fails.
+	internal static decimal? Difference(decimal baseline, decimal actual, ThresholdType thresholdType)
+	{
+		if (thresholdType == ThresholdType.Pound)
+		{
+			return actual - baseline;
+		}
+
+		if (baseline == 0)
+		{
+			return actual == 0 ? 0m : null;
+		}
+
+		return Math.Round((actual - baseline) / Math.Abs(baseline) * 100m, 4);
 	}
 }

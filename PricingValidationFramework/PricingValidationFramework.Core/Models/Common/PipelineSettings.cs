@@ -1,5 +1,7 @@
 namespace PricingValidationFramework.Core.Models.Common;
 
+using PricingValidationFramework.Core.Models.Enums;
+
 public class PipelineSettings
 {
     public string BuildId { get; set; } = string.Empty;
@@ -11,4 +13,7 @@ public class PipelineSettings
     public string RequestTime { get; set; } = string.Empty;
     public decimal MinThreshold { get; set; }
     public decimal MaxThreshold { get; set; }
+
+    /// How MinThreshold/MaxThreshold are applied (RADAR_THRESHOLD_TYPE): Pound (default) or Percentage.
+    public ThresholdType ThresholdType { get; set; } = ThresholdType.Pound;
 }

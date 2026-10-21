@@ -2,6 +2,13 @@ trigger: none
 pr: none
 
 parameters:
+  - name: thresholdType
+    displayName: Threshold type - Pound compares the £ difference, Percentage the % change, against RadarMinThreshold/RadarMaxThreshold
+    type: string
+    default: Pound
+    values:
+      - Pound
+      - Percentage
   - name: scenarioTag
     displayName: Scenario tag filter - one tag from Test_tags, e.g. smoke (empty for all)
     type: string
@@ -60,6 +67,7 @@ stages:
               RadarSettings__Endpoints__Endpoint3__ApiKeyValue: $(RadarEndpoint3ApiKey)
               RADAR_MIN_THRESHOLD: $(RadarMinThreshold)
               RADAR_MAX_THRESHOLD: $(RadarMaxThreshold)
+              RADAR_THRESHOLD_TYPE: ${{ parameters.thresholdType }}
               TEST_TAG: $(TestTag)
               SCENARIO_TAG: ${{ parameters.scenarioTag }}
               RADAR_REQUEST_DATETIME: $(RadarRequestDateTime)

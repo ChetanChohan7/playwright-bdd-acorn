@@ -26,6 +26,7 @@
     "RequestTime": "now",
     "MinThreshold": "0",
     "MaxThreshold": "0",
+    "ThresholdType": "Pound",
     "TestTag": "",
     "ScenarioTag": "",
     "IceRadarReport": ""

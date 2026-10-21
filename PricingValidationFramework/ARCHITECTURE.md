@@ -421,7 +421,7 @@ Delta <= MaxThreshold
 
 Both bounds are inclusive. All compared fields must pass. An empty comparison or an extraction failure is ERROR, not PASS/FAIL persistence. Repeated elements require explicit one-based positions or identifying predicates in the mapping. Each XPath must select exactly one element or attribute.
 
-No percentage difference or zero-baseline special rule is used. A baseline value of zero is valid because the comparison is subtraction-based.
+`Delta` depends on the run's threshold type (`ThresholdType`, from `RADAR_THRESHOLD_TYPE`): **Pound** (default) is `Radar - Baseline`; **Percentage** is `(Radar - Baseline) / |Baseline| x 100`, rounded to 4 decimal places, so the thresholds are percentages and a negative delta always means Radar is lower, even for negative baselines. In Percentage mode a zero baseline has no % change: zero to zero is a delta of 0 (PASS), zero to anything else has no delta and FAILs. The calculation is `FuzzyPricingMatcher.Difference`; the range check is the same for both types.
 
 Retries are infrastructure concerns only. A retry must not convert a threshold mismatch, extraction error or configuration error into a pass.
 
@@ -788,7 +788,7 @@ These report and log names are mandatory. Radar and ICE output remains separate.
 
 Baseline extraction fails before the Radar call. Response extraction errors occur after the call. Both are technical ERROR results: log the field/path diagnostics, report the scenario, do not update the baseline, and continue with other cases. Baseline seeding (`DataLoader seed`) deliberately bypasses extraction.
 
-Local outputs are written under the test output's `TestResults` directory. Both pipelines stage Reports and Logs and publish them with `always()` conditions, including after test failures. Missing outputs are surfaced after available files are staged. Cancellation publication is best-effort; process/agent loss cannot guarantee files. Routine logs exclude credentials and XML; restrict access to the CSV payloads.
+Local outputs are written under the test output's `TestResults` directory. The Radar pipeline's Radar and ICE stages each stage Reports and Logs and publish them with `always()` conditions, including after test failures. ICE has no pipeline of its own; it always runs as the second stage of `azure-pipelines-radar.yml`. Missing outputs are surfaced after available files are staged. Cancellation publication is best-effort; process/agent loss cannot guarantee files. Routine logs exclude credentials and XML; restrict access to the CSV payloads.
 
 ## 12. Pricing Mapping Storage
 

@@ -202,6 +202,7 @@ public class RadarValidationTests
             setup.RequestTime,
             setup.MinThreshold,
             setup.MaxThreshold,
+            setup.ThresholdType,
             cancellationToken);
         var row = RadarReportingHelper.BuildComparisonRow(
             setup.BuildId,
