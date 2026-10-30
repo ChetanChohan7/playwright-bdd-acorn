@@ -82,16 +82,18 @@ public static class RadarReportingHelper
     public static Task WriteReportAsync(
         string buildId,
         IReadOnlyCollection<RadarValidationReportRow> reportRows,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        ThresholdType thresholdType = ThresholdType.Pound)
     {
         return WriteReportAsync(buildId,
-            reportRows.OrderBy(row => row.ScenarioId, StringComparer.Ordinal), cancellationToken);
+            reportRows.OrderBy(row => row.ScenarioId, StringComparer.Ordinal), cancellationToken, thresholdType);
     }
 
     public static Task WriteReportAsync(
         string buildId,
         IEnumerable<RadarValidationReportRow> sortedRows,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        ThresholdType thresholdType = ThresholdType.Pound)
     {
         var reportDirectory = Path.Combine(
             TestContext.CurrentContext.TestDirectory,
@@ -102,7 +104,8 @@ public static class RadarReportingHelper
 
         return AtomicReportWriter.WriteAsync(
             reportPath,
-            temporaryPath => new CsvReportWriter().WriteRadarReportRowsAsync(temporaryPath, buildId, sortedRows, cancellationToken));
+            temporaryPath => new CsvReportWriter().WriteRadarReportRowsAsync(
+                temporaryPath, buildId, sortedRows, cancellationToken, thresholdType));
     }
 
     private static string SanitizeBuildId(string buildId)
