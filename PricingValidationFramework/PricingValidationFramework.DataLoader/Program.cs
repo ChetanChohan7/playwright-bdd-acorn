@@ -8,6 +8,7 @@ const string Usage = """
     Usage:
       DataLoader <validate|import> --requests <csv-or-folder> [--batch-size <1-1000>] [--settings <json>] [--report <json>] [--request-time <now|yyyy-MM-ddZHH:mm:ss>]
       DataLoader seed [--settings <json>] [--report <json>] [--request-time <now|yyyy-MM-ddZHH:mm:ss>] [--max-parallel <1-16>]
+      DataLoader set-status --status <PASS|FAIL> --scenarios <id,id,...> [--scenarios-file <path>] [--settings <json>] [--report <json>] [--markdown <md>]
     """;
 if (args.Length == 0 || args[0] is "--help" or "-h")
 {
@@ -25,6 +26,12 @@ if (args[0] == "seed")
 {
     // Creates the first [Xml].[Response] baseline for every scenario that has none, via Radar.
     return await SeedCommand.RunAsync(args[1..], cancellation.Token);
+}
+
+if (args[0] == "set-status")
+{
+    // Sets [Xml].[Response].Status to PASS or FAIL for the given scenario IDs (status and audit columns only).
+    return await SetStatusCommand.RunAsync(args[1..], cancellation.Token);
 }
 
 var reportPath = Path.Combine("TestResults", "DataLoader", "import-summary.json");

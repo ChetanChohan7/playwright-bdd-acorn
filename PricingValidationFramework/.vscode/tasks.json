@@ -13,6 +13,17 @@
       "group": "build"
     },
     {
+      "label": "build ControlPanel",
+      "type": "process",
+      "command": "dotnet",
+      "args": [
+        "build",
+        "${workspaceFolder}/PricingValidationFramework.ControlPanel/PricingValidationFramework.ControlPanel.csproj"
+      ],
+      "problemMatcher": "$msCompile",
+      "group": "build"
+    },
+    {
       "label": "Radar tests: run",
       "type": "process",
       "command": "dotnet",

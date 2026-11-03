@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pricing Validation Control Panel</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header class="top">
+  <div>
+    <h1>Pricing Validation Control Panel</h1>
+    <p class="muted">Runs each step on this machine with <code id="settingsPath">data/import/local-settings.json</code>. One step runs at a time.</p>
+  </div>
+  <div class="state" id="state" aria-live="polite">Loading…</div>
+</header>
+
+<main class="layout">
+  <section class="steps" aria-label="Steps">
+
+    <form class="card" id="csvForm">
+      <h2><span class="num">1</span> Choose scenarios CSV</h2>
+      <p class="muted">The CSV saved by the scenario loader (<code>scenario_id,xml</code>). It's copied into <code>data/import</code> and checked; nothing is written to the database.</p>
+      <label for="csvFile">CSV file</label>
+      <input type="file" id="csvFile" name="file" accept=".csv" required>
+      <button type="submit">Check CSV</button>
+    </form>
+
+    <form class="card" id="importForm">
+      <h2><span class="num">2</span> Import into [Xml].[Request]</h2>
+      <p class="muted">Imports the CSV chosen in step 1: new scenarios are added, changed XML is updated.</p>
+      <div class="row">
+        <div><label for="importRequestTime">Request time</label><input id="importRequestTime" name="requestTime" placeholder="now"></div>
+        <div><label for="importBatchSize">Batch size</label><input id="importBatchSize" name="batchSize" inputmode="numeric" placeholder="100"></div>
+      </div>
+      <button type="submit">Import</button>
+    </form>
+
+    <form class="card" id="seedForm">
+      <h2><span class="num">3</span> Seed baselines into [Xml].[Response]</h2>
+      <p class="muted">Calls Radar for every scenario with no baseline and stores the response as its PASS baseline. Existing baselines are left alone.</p>
+      <div class="row">
+        <div><label for="seedRequestTime">Request time</label><input id="seedRequestTime" name="requestTime" placeholder="now"></div>
+        <div><label for="seedMaxParallel">Scenarios at once</label><input id="seedMaxParallel" name="maxParallel" inputmode="numeric" placeholder="4"></div>
+      </div>
+      <button type="submit">Seed baselines</button>
+    </form>
+
+    <form class="card" id="radarForm">
+      <h2><span class="num">4</span> Radar compare</h2>
+      <p class="muted">Calls Radar and compares each scenario with its baseline. A PASS updates the baseline; a FAIL sets its status to FAIL. Leave a box empty to use the value in the settings file.</p>
+      <div class="row">
+        <div>
+          <label for="thresholdType">Threshold type</label>
+          <select id="thresholdType" name="thresholdType">
+            <option value="">From settings (Pound if not set)</option>
+            <option value="Pound">Pound (£ difference)</option>
+            <option value="Percentage">Percentage (% change)</option>
+          </select>
+        </div>
+        <div><label for="minThreshold">Minimum</label><input id="minThreshold" name="minThreshold" inputmode="decimal" placeholder="e.g. -0.50"></div>
+        <div><label for="maxThreshold">Maximum</label><input id="maxThreshold" name="maxThreshold" inputmode="decimal" placeholder="e.g. 0.50"></div>
+      </div>
+      <div class="row">
+        <div><label for="radarProduct">Product code</label><input id="radarProduct" name="productCode" placeholder="All products"></div>
+        <div><label for="radarTag">Scenario tag</label><input id="radarTag" name="scenarioTag" placeholder="All tags"></div>
+        <div><label for="radarRequestTime">Request time</label><input id="radarRequestTime" name="requestTime" placeholder="now"></div>
+      </div>
+      <button type="submit">Run Radar compare</button>
+    </form>
+
+    <form class="card" id="iceForm">
+      <h2><span class="num">5</span> ICE check</h2>
+      <p class="muted">Calls ICE and checks its premium equals the baseline: the newest PASS scenario per product and scheme, or exactly the scenarios that passed in the latest Radar run.</p>
+      <div class="row">
+        <div><label for="iceProduct">Product code</label><input id="iceProduct" name="productCode" placeholder="All products"></div>
+        <div><label for="iceTag">Scenario tag</label><input id="iceTag" name="scenarioTag" placeholder="All tags"></div>
+      </div>
+      <label class="check"><input type="checkbox" id="useLatestRadarReport" name="useLatestRadarReport"> Only the scenarios that passed in the latest Radar run (filters ignored)</label>
+      <button type="submit">Run ICE check</button>
+    </form>
+
+    <form class="card" id="statusForm">
+      <h2><span class="num">6</span> Set status</h2>
+      <p class="muted">Sets the baseline status of every listed scenario. Only the status changes; the baseline XML is kept, so it can be set back.</p>
+      <div class="row">
+        <div>
+          <label for="status">New status</label>
+          <select id="status" name="status" required>
+            <option value="PASS">PASS</option>
+            <option value="FAIL">FAIL</option>
+          </select>
+        </div>
+        <div><label for="statusFile">File of IDs (optional)</label><input type="file" id="statusFile" name="file" accept=".csv,.txt"></div>
+      </div>
+      <label for="scenarioIds">Scenario IDs (comma-separated or one per line)</label>
+      <textarea id="scenarioIds" name="scenarioIds" rows="3" placeholder="Carrot_CarrotTD_54798554, Carrot_CarrotTD_99185883"></textarea>
+      <button type="submit">Set status</button>
+    </form>
+  </section>
+
+  <section class="output" aria-label="Output">
+    <div class="output-head">
+      <h2 id="jobTitle">No step run yet</h2>
+      <span class="badge" id="jobStatus" hidden></span>
+      <button type="button" class="secondary" id="cancelButton" hidden>Cancel</button>
+    </div>
+    <p class="error" id="formError" role="alert" hidden></p>
+    <ul class="summary" id="summary"></ul>
+    <ul class="files" id="files"></ul>
+    <pre class="log" id="log" aria-label="Command output"></pre>
+  </section>
+</main>
+<script src="app.js"></script>
+</body>
+</html>

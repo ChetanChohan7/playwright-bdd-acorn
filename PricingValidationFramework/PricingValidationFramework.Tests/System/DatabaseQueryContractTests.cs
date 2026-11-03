@@ -404,6 +404,28 @@ public class DatabaseQueryContractTests
         Assert.Throws<ArgumentOutOfRangeException>(() => ScenarioImportRepository.BuildUpdateSql(rowCount));
     }
 
+    [Test]
+    public void Status_update_should_change_only_status_and_audit_columns_and_never_add_or_remove_rows()
+    {
+        var update = ReadQuery<ScenarioStatusUpdater>("UpdateStatusSql");
+        var read = ReadQuery<ScenarioStatusUpdater>("ReadStatusSql");
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(update, Does.StartWith("UPDATE [Xml].[Response]"));
+            Assert.That(update, Does.Contain("SET Status = @Status,"));
+            Assert.That(update, Does.Contain("row_modifieddate = SYSUTCDATETIME()"));
+            Assert.That(update, Does.Contain("row_modifiedby = COALESCE(@AuditUser, SUSER_SNAME())"));
+            Assert.That(update, Does.Contain("WHERE Scenario_id IN @ScenarioIds"));
+            Assert.That(update, Does.Contain("AND (Status IS NULL OR Status <> @Status)"), "rows already at the status keep their audit columns");
+            Assert.That(update, Does.Not.Contain("XML_Response"), "the baseline XML is never changed");
+            Assert.That(update, Does.Not.Contain("Last_updated"), "ICE picks its baseline by Last_updated");
+            Assert.That(update + read, Does.Not.Match(@"\b(INSERT|DELETE|MERGE|CREATE|DROP)\s").IgnoreCase);
+            Assert.That(read, Does.Contain("FROM [Xml].[Response] WITH (UPDLOCK, HOLDLOCK)"));
+            Assert.That(ScenarioStatusUpdater.MaxScenarioIdsPerStatement, Is.LessThanOrEqualTo(2000), "IN expands to one parameter per ID");
+        });
+    }
+
     private static string ReadQuery<TReader>(string fieldName)
     {
         var field = typeof(TReader).GetField(fieldName, BindingFlags.NonPublic | BindingFlags.Static);

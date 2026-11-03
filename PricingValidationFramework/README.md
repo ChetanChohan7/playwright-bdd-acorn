@@ -1,5 +1,25 @@
 # Pricing Validation Framework
 
+## Control panel
+
+`PricingValidationFramework.ControlPanel` is a local web page that runs each step with a button, on this machine, so nobody has to type commands:
+
+| Step | What it runs |
+|---|---|
+| 1. Choose scenarios CSV | Copies the chosen file into `data/import` as the newest `scenarios-{timestamp}.csv` and checks it offline (`DataLoader validate`) |
+| 2. Import | `DataLoader import` of that CSV into `[Xml].[Request]` |
+| 3. Seed baselines | `DataLoader seed` into `[Xml].[Response]` |
+| 4. Radar compare | The Radar tests, with the threshold type, min/max, product, tag and request time from the form |
+| 5. ICE check | The ICE tests: the newest PASS baseline per product/scheme, or exactly the scenarios that passed in the latest Radar run |
+| 6. Set status | `DataLoader set-status` to PASS or FAIL, for typed IDs and/or a file of IDs |
+
+To start it, open the `PricingValidationFramework` folder in VS Code and run **Control panel (opens http://localhost:5080)** in Run and Debug, or run `dotnet run --project PricingValidationFramework.ControlPanel` and open http://localhost:5080. Every step uses `data/import/local-settings.json` (copy `data/import/examples/local-settings.example.json`), as the VS Code launch configurations do; a box left empty on the page falls back to that file. The results are the same as running the commands yourself: Radar PASS updates the baseline, and FAIL sets the status.
+
+- One step runs at a time; the page shows its live output, a short result, and links to its summary and report files (`TestResults/ControlPanel` for DataLoader summaries; the Radar and ICE reports are named after the run, e.g. `Radar_local-20261021-093000-000.csv`).
+- It listens on `localhost` only and accepts changes only from its own page, so other websites open in the same browser can't trigger a step.
+- Settings are in `PricingValidationFramework.ControlPanel/appsettings.json`: the port, the settings file, and the build configuration.
+- The steps go through `IStepRunner`. `LocalStepRunner` runs them on this machine; a pipeline runner can implement the same interface later, queuing the Azure DevOps pipelines with the same inputs, without changing the page.
+
 ## Run the test suite
 
 ```bash
@@ -68,7 +88,7 @@ ScenarioId,QuoteRef,ProductCode,SchemeCode,ProfileId,FieldName,XPath,BaselineVal
 
 The Ice CSV retains its single-value result columns and adds `ProfileId,FieldName,XPath,Error`. Setup/discovery failures produce ERROR rows and logs. Reports are atomic and logs are flushed in teardown.
 
-Local runs automatically write beneath `PricingValidationFramework.Tests/bin/<Configuration>/net10.0/TestResults/{Reports,Logs}`. The Radar pipeline's two stages publish these two folders as the `RadarReports` and `IceReports` artifacts after success or failure. `always()` tasks attempt publication on cancellation while the agent remains available; process termination or agent loss cannot guarantee outputs. Missing outputs fail staging after available files are staged. TRX results are published separately. Local execution does not upload to Azure. Reports contain XML payloads: restrict artifact access and retention; routine logs must not contain credentials or full XML.
+Local runs automatically write beneath `PricingValidationFramework.Tests/bin/<Configuration>/net10.0/TestResults/{Reports,Logs}`. The Radar pipeline's Radar and ICE stages publish these two folders as the `RadarReports` and `IceReports` artifacts after success or failure. `always()` tasks attempt publication on cancellation while the agent remains available; process termination or agent loss cannot guarantee outputs. Missing outputs fail staging after available files are staged. TRX results are published separately. Local execution does not upload to Azure. Reports contain XML payloads: restrict artifact access and retention; routine logs must not contain credentials or full XML.
 
 The live workload is explicit and requires configured database access, Radar endpoints and credentials, real XPath mappings, and pipeline inputs:
 
@@ -100,13 +120,32 @@ To debug the Radar or ICE tests in VS Code, run the task **Radar tests: wait for
 
 ### Azure DevOps integration pipelines
 
-Register `PricingValidationFramework/azure-pipelines-radar.yml` from the repository root. It is manual-run only and has two stages. **Radar** runs `RadarValidationTests`; **ICE** (when the `runIce` parameter is true, the default) then runs `IceValidationTests`. Radar selects scenarios with the `TestTag` variable (product) and the `scenarioTag` parameter (tag). The `iceSelection` parameter chooses what ICE checks: `radarRun` (the default) takes exactly the scenarios that passed in this run's Radar report, downloaded from the `RadarReports` artifact and passed as `ICE_RADAR_REPORT`; `newestPerProductScheme` takes the newest PASS baseline per product/scheme within the same product and tag filters. ICE runs after Radar whether or not Radar reported FAIL or ERROR scenarios, because a Radar FAIL never changes a PASS baseline; it is skipped only if the run is cancelled. Both reports share the run's `BUILD_BUILDID` (`Radar_<id>.csv`, `Ice_<id>.csv`). There is no separate ICE pipeline: ICE always runs as this second stage, after Radar. Set `runIce` to false to run Radar alone. Each stage publishes NUnit TRX results to the Tests tab and its CSV report and logs as a `RadarReports` or `IceReports` artifact, including when tests fail after report creation. No system or unit tests run in these pipelines.
+Register `PricingValidationFramework/azure-pipelines-radar.yml` from the repository root. It is manual-run only and has three stages. **Build** compiles the test project once and publishes it as the `test-build` artifact; Radar and ICE download it and run `dotnet test` on `PricingValidationFramework.Tests.dll`, so they run exactly that build, without checking out or compiling the repository, and their reports and logs are written under the downloaded folder's `TestResults`. The run form asks for the **threshold type** (Pound or Percentage), the **minimum and maximum thresholds** (in £ or % accordingly; left empty, the `RadarMinThreshold`/`RadarMaxThreshold` variables are used), the **scenario tag** (one tag from `Test_tags`, empty for all) and which baselines ICE checks. The thresholds are checked before any Radar call. The run's **Summary** tab shows the threshold type, min/max and filters used, the PASS/FAIL/ERROR counts, and each scenario's result with its failing fields' differences in £ or %. **Radar** runs `RadarValidationTests`; **ICE** then runs `IceValidationTests`, but only after someone approves it: its job targets the `pricing-ice-validation` environment, so the stage waits for that environment's approval. Rejecting the approval skips ICE and runs Radar alone. Radar selects scenarios with the `TestTag` variable (product) and the `scenarioTag` parameter (tag). The `iceSelection` parameter chooses what ICE checks: `radarRun` (the default) takes exactly the scenarios that passed in this run's Radar report, downloaded from the `RadarReports` artifact and passed as `ICE_RADAR_REPORT`; `newestPerProductScheme` takes the newest PASS baseline per product/scheme within the same product and tag filters. ICE runs after Radar whether or not Radar reported FAIL or ERROR scenarios, because a Radar FAIL never changes a PASS baseline; it is skipped only if the build failed or the run is cancelled. Both reports share the run's `BUILD_BUILDID` (`Radar_<id>.csv`, `Ice_<id>.csv`). There is no separate ICE pipeline: ICE always runs as the last stage, after Radar and its approval. Before the first run, create the `pricing-ice-validation` environment (Pipelines > Environments) and add an **Approvals** check listing who may approve ICE; without that check the ICE stage runs straight away. Each stage publishes NUnit TRX results to the Tests tab and its CSV report and logs as a `RadarReports` or `IceReports` artifact, including when tests fail after report creation. No system or unit tests run in these pipelines.
 
-Create the referenced pipeline variables in Azure DevOps before running it. The Radar stage uses the `RadarDatabaseConnectionString` database connection string and the ICE stage `IceDatabaseConnectionString` (both secrets; they can be the same database, and ICE only needs SELECT). Radar requires `RadarEndpoint1Url`, `RadarEndpoint1KeyHeader`, `RadarEndpoint1ApiKey` through `RadarEndpoint3Url`, `RadarEndpoint3KeyHeader`, `RadarEndpoint3ApiKey`, plus `RadarMinThreshold`, `RadarMaxThreshold`, `TestTag`, and `RadarRequestDateTime`. Define `TestTag` and `RadarRequestDateTime` as empty to select all scenarios and use the current UTC time. Keep endpoint API keys secret. ICE requires `IceEndpoint`, `IceApiKeyHeaderName`, `IceApiKeyHeaderValue`, `IcePfxCertificateBase64`, and `IceCertificatePassword`; keep the API key, PFX and password secret. Azure DevOps supplies `BUILD_BUILDID` automatically.
+Create the referenced pipeline variables in Azure DevOps before running it. The Radar stage uses the `RadarDatabaseConnectionString` database connection string and the ICE stage `IceDatabaseConnectionString` (both secrets; they can be the same database, and ICE only needs SELECT). Radar requires `RadarEndpoint1Url`, `RadarEndpoint1KeyHeader`, `RadarEndpoint1ApiKey` through `RadarEndpoint3Url`, `RadarEndpoint3KeyHeader`, `RadarEndpoint3ApiKey`, plus `TestTag` and `RadarRequestDateTime`. `RadarMinThreshold` and `RadarMaxThreshold` are needed only as defaults for runs that leave the thresholds empty on the run form. Define `TestTag` and `RadarRequestDateTime` as empty to select all scenarios and use the current UTC time. Keep endpoint API keys secret. ICE requires `IceEndpoint`, `IceApiKeyHeaderName`, `IceApiKeyHeaderValue`, `IcePfxCertificateBase64`, and `IceCertificatePassword`; keep the API key, PFX and password secret. Azure DevOps supplies `BUILD_BUILDID` automatically.
 
 The chosen agent must reach the database and external endpoints. Replace the template pricing mappings and paths before live runs; the pipeline does not infer them. Use an agent pool with the required network access if the hosted pool cannot reach those services.
 
 The Radar job timeout is 360 minutes. At the configured overall limit of two request starts per second, 20,000 API calls across any combination of endpoints require approximately 2 hours 47 minutes, before latency and retries. NUnit still has four scenario workers; the remaining scenarios wait to be scheduled rather than entering the limiter together. Ensure the agent entitlement permits a job of this duration; a free hosted job capped at 60 minutes cannot complete that workload even with the YAML timeout increased. Longer runs may require a self-hosted agent and a larger timeout. Local regression timings exclude SQL and live API calls and are not an end-to-end throughput guarantee.
+
+## Set a baseline's status
+
+Once someone has reviewed a Radar FAIL, they can set the scenario's baseline status back to PASS (or mark one FAIL) without touching the database themselves. Register `PricingValidationFramework/azure-pipelines-set-status.yml` as a manual pipeline. Its **Build** stage runs the set-status tests and publishes the data loader once as the `dataloader` artifact; the **SetStatus** stage runs that build with only the .NET 10 runtime. To use it:
+
+1. Open the pipeline and click **Run pipeline**.
+2. Commit a CSV of the scenario IDs to the repository and enter its path (required), e.g. `PricingValidationFramework/data/status/ids.csv`. The CSV can have a `scenario_id` header (other columns are ignored, so a loader CSV works too) or just one ID per row.
+3. Choose the new status, **PASS** or **FAIL**, and click **Run**. Every ID in the CSV is set to that one status.
+
+The run's **Summary** tab shows each ID with its status before and after, and whether it was updated, already at that status, or not found. The same summary is published as the `SetStatusSummary` artifact. The run fails if any ID wasn't found, so typos are noticed; the IDs that were found are still updated. To undo a change, run it again with the other status.
+
+Only `Status`, `row_modifieddate` and `row_modifiedby` change. The baseline XML and `Last_updated` are never changed, and no rows are added or removed. The person who started the run (their Azure DevOps e-mail address) is recorded in `row_modifiedby`. Setting a FAIL back to PASS keeps the old baseline XML, so the next Radar run compares against it again.
+
+Set-up:
+- Add a secret pipeline variable `StatusUpdateDatabaseConnectionString`, using a login that doesn't need MFA and has SELECT and UPDATE on `[Xml].[Response]`. Nothing is created in the database.
+- The agent pool (`agentPool` in the YAML's `variables` block, default `Default`) must be able to reach the database.
+- Give "Queue builds" permission on this pipeline only to the people who should change statuses. To require a second person to approve each run, add an approval check (an Azure DevOps environment) in front of it.
+
+The same change can be made locally: `dotnet run --project PricingValidationFramework.DataLoader -- set-status --status PASS --scenarios "id1,id2" --settings data/import/local-settings.json`. See the DataLoader README.
 
 ## Load scenario data
 

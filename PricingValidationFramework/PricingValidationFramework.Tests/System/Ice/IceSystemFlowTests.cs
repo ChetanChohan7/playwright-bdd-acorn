@@ -150,8 +150,8 @@ public class IceSystemFlowTests
         Assert.That(value, Is.EqualTo(100.00m));
     }
 
-    [TestCase("{\"technicalPrice\":{\"grossPremiumAmountIncTax\":{\"amount\":100.00}}}", ScenarioResult.Pass, 100)]
-    [TestCase("{\"technicalPrice\":{\"grossPremiumAmountIncTax\":{\"amount\":120.00}}}", ScenarioResult.Fail, 120)]
+    [TestCase("{\"wrttenoptions\":[{\"hi\":\"happy\"}],\"technicalPrice\":{\"grossPremiumAmountIncTax\":{\"amount\":100.00}}}", ScenarioResult.Pass, 100)]
+    [TestCase("{\"wrttenoptions\":[{\"hi\":\"happy\"}],\"technicalPrice\":{\"grossPremiumAmountIncTax\":{\"amount\":120.00}}}", ScenarioResult.Fail, 120)]
     [TestCase("{invalid-json", ScenarioResult.Error, null)]
     public async Task Ice_system_flow_should_record_and_assert_individual_scenarios(
         string response,

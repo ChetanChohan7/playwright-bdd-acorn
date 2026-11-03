@@ -1,0 +1,44 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Dependencies</title>
+<style>
+  html, body { margin: 0; background: #fff; }
+  table { border-collapse: collapse; font-family: Arial, Helvetica, sans-serif; font-size: 15px; color: #000; }
+  th, td { border: 1px solid #d4d4d4; height: 23px; padding: 0 5px; white-space: nowrap; }
+  th { background: #1f4e79; color: #fff; font-weight: bold; text-align: center; position: relative; padding-right: 28px; border-color: #fff; }
+  th::after {
+    content: ""; position: absolute; right: 4px; top: 3px; width: 17px; height: 17px;
+    background: #fff; border: 1px solid #a6a6a6; box-sizing: border-box;
+  }
+  th::before {
+    content: ""; position: absolute; right: 8px; top: 10px; z-index: 1;
+    border-left: 4.5px solid transparent; border-right: 4.5px solid transparent; border-top: 5px solid #000;
+  }
+  td { text-align: center; }
+  td.left { text-align: left; }
+  .high { background: #ffc7ce; color: #9c0006; }
+  .medium { background: #ffeb9c; color: #9c5700; }
+  .low { background: #c6efce; color: #006100; }
+</style>
+</head>
+<body>
+<table>
+  <colgroup>
+    <col style="width:98px"><col style="width:140px"><col style="width:850px"><col style="width:142px">
+    <col style="width:154px"><col style="width:100px"><col style="width:100px"><col style="width:155px">
+  </colgroup>
+  <tr><th>ID</th><th>Category</th><th>Description</th><th>Owner</th><th>Probability</th><th>Impact</th><th>Status</th><th>Target Date</th></tr>
+  <tr><td class="left">D-001</td><td>Dependency</td><td class="left">Azure DevOps project available to host automation assets, documentation and reporting.</td><td>Acorn</td><td class="high">High</td><td class="high">High</td><td>Closed</td><td>22-Sep-26</td></tr>
+  <tr><td class="left">D-002</td><td>Dependency</td><td class="left">Databases available with appropriate write access for pricing DB</td><td>Acorn</td><td class="high">High</td><td class="high">High</td><td>Closed</td><td>22-Sep-26</td></tr>
+  <tr><td class="left">D-003</td><td>Dependency</td><td class="left">Service account is created and access to databases assigned (Pricing)</td><td>Acorn</td><td class="medium">Medium</td><td class="high">High</td><td>Open</td><td>25-Sep-26</td></tr>
+  <tr><td class="left">D-004</td><td>Dependency</td><td class="left">Azure DevOps agents available to execute automated tests.</td><td>Acorn</td><td class="medium">Medium</td><td class="high">High</td><td>Open</td><td>25-Sep-26</td></tr>
+  <tr><td class="left">D-005</td><td>Dependency</td><td class="left">Required system, repository, database and Azure DevOps permissions granted for testers</td><td>Acorn</td><td class="high">High</td><td class="high">High</td><td>Closed</td><td>22-Sep-26</td></tr>
+  <tr><td class="left">D-007</td><td>Dependency</td><td class="left">CI/CD pipelines configured and operational.</td><td>Acorn</td><td class="medium">Medium</td><td class="high">High</td><td>Open</td><td>25-Sep-26</td></tr>
+  <tr><td class="left">D-008</td><td>Dependency</td><td class="left">Pricing team to provide XPaths and Scenarios for loading</td><td>Acorn</td><td class="low">Low</td><td class="medium">Medium</td><td>Closed</td><td>30-Sep-26</td></tr>
+  <tr><td class="left">D-009</td><td>Dependency</td><td class="left">XML Loader UI Cloud hosting</td><td>Acorn</td><td class="low">Low</td><td class="medium">Medium</td><td>Open</td><td>21-Sep-26</td></tr>
+  <tr><td class="left">D-010</td><td>Dependency</td><td class="left">ICE to Radar API to fetch pricing details</td><td>Inspired</td><td class="medium">Medium</td><td class="medium">Medium</td><td>Closed</td><td>21-Sep-26</td></tr>
+</table>
+</body>
+</html>

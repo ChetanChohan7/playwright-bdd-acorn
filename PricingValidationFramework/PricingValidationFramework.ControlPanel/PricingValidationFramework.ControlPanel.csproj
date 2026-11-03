@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <!--
+    Local control panel: a single web page (http://localhost:5080) with a button per step - choose a
+    scenarios CSV, import, seed, Radar compare, ICE check, set status. Each step runs the same command
+    the VS Code launch configurations run (the DataLoader CLI or dotnet test), on this machine, with
+    data/import/local-settings.json. Behind IStepRunner, so a pipeline runner can replace it later.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="PricingValidationFramework.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The page (index.html, app.js, styles.css), served from the build output. -->
+    <None Include="ui\**\*" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\PricingValidationFramework.Core\PricingValidationFramework.Core.csproj" />
+  </ItemGroup>
+</Project>

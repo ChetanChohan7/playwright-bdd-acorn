@@ -8,6 +8,8 @@
   // To debug the Radar or ICE tests: Terminal > Run Task > "Radar tests: wait for debugger" (or
   // "ICE tests: ..."). It builds, then prints "Process Id: NNNN, Name: testhost" and waits. Start
   // "4. Attach to Radar/ICE test host" and pick that testhost process; breakpoints then hit.
+  //
+  // "Control panel" starts the local page (http://localhost:5080) that runs steps 1-6 with buttons.
   "version": "0.2.0",
   "configurations": [
     {
@@ -42,6 +44,22 @@
       "cwd": "${workspaceFolder}",
       "console": "integratedTerminal",
       "stopAtEntry": false
+    },
+    {
+      "name": "Control panel (opens http://localhost:5080)",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "build ControlPanel",
+      "program": "${workspaceFolder}/PricingValidationFramework.ControlPanel/bin/Debug/net10.0/PricingValidationFramework.ControlPanel.dll",
+      "cwd": "${workspaceFolder}",
+      "env": { "ASPNETCORE_ENVIRONMENT": "Development" },
+      "console": "integratedTerminal",
+      "stopAtEntry": false,
+      "serverReadyAction": {
+        "action": "openExternally",
+        "pattern": "Control panel: (http://localhost:\\d+)",
+        "uriFormat": "%s"
+      }
     },
     {
       "name": "4. Attach to Radar/ICE test host",

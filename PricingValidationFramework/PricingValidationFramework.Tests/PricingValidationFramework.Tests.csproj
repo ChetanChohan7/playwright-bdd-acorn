@@ -24,6 +24,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\PricingValidationFramework.ControlPanel\PricingValidationFramework.ControlPanel.csproj" />
     <ProjectReference Include="..\PricingValidationFramework.Core\PricingValidationFramework.Core.csproj" />
     <ProjectReference Include="..\PricingValidationFramework.DataLoader\PricingValidationFramework.DataLoader.csproj" />
   </ItemGroup>

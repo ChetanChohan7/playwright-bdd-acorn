@@ -1,0 +1,100 @@
+# Sets the baseline status ([Xml].[Response].Status) to PASS or FAIL for a list of scenario IDs, e.g. after
+# someone has reviewed a Radar FAIL. Manual only: open the pipeline, click Run pipeline, fill in the form.
+# The IDs come from a CSV committed to this repository; every ID in it is set to the one status chosen
+# in the form.
+# Only Status and the row_modifieddate/row_modifiedby audit columns change; the baseline XML, Last_updated
+# and every other row are untouched. The person who starts the run is recorded in row_modifiedby.
+# The Build stage tests and publishes the data loader once; the SetStatus stage runs that build.
+trigger: none
+pr: none
+
+parameters:
+  # No default, so the run form requires it.
+  - name: scenarioIdsFile
+    displayName: CSV of scenario IDs in this repository, e.g. PricingValidationFramework/data/status/ids.csv
+    type: string
+  - name: status
+    displayName: New status
+    type: string
+    default: PASS
+    values:
+      - PASS
+      - FAIL
+variables:
+  # Must be able to reach the database. Needed when the run is compiled, so it is set here.
+  agentPool: Default
+
+pool:
+  name: ${{ variables.agentPool }}
+
+stages:
+  - stage: Build
+    displayName: Build and test the data loader
+    jobs:
+      - job: BuildDataLoader
+        timeoutInMinutes: 20
+        workspace:
+          clean: all
+        steps:
+          - checkout: self
+          - task: UseDotNet@2
+            displayName: Use .NET 10 SDK
+            inputs:
+              packageType: sdk
+              version: 10.0.x
+          - pwsh: |
+              dotnet test PricingValidationFramework/PricingValidationFramework.Tests/PricingValidationFramework.Tests.csproj --configuration Release --filter "FullyQualifiedName~SetStatusCommandTests"
+              if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+              dotnet publish PricingValidationFramework/PricingValidationFramework.DataLoader/PricingValidationFramework.DataLoader.csproj --configuration Release --output '$(Build.ArtifactStagingDirectory)/dataloader'
+              exit $LASTEXITCODE
+            displayName: Test set-status and publish data loader
+          - task: PublishPipelineArtifact@1
+            displayName: Publish dataloader artifact
+            inputs:
+              targetPath: '$(Build.ArtifactStagingDirectory)/dataloader'
+              artifact: dataloader
+
+  - stage: SetStatus
+    displayName: Set baseline status
+    dependsOn: Build
+    jobs:
+      - job: SetStatus
+        displayName: Set baseline status
+        timeoutInMinutes: 20
+        workspace:
+          clean: all
+        steps:
+          # Checked out for the scenario ID CSV; the loader comes from the Build stage.
+          - checkout: self
+          - download: current
+            artifact: dataloader
+          - task: UseDotNet@2
+            displayName: Use .NET 10 runtime
+            inputs:
+              packageType: runtime
+              version: 10.0.x
+
+          - pwsh: |
+              $output = '$(Build.ArtifactStagingDirectory)/SetStatus'
+              New-Item -ItemType Directory -Force -Path $output | Out-Null
+              # The file path comes in through an environment variable, never pasted into the script, so its content can't run as code.
+              if ([string]::IsNullOrWhiteSpace($env:SCENARIO_IDS_FILE)) { Write-Host "##vso[task.logissue type=error]Enter the path of a scenario ID CSV in this repository."; exit 1 }
+              $idFile = Join-Path '$(Build.SourcesDirectory)' $env:SCENARIO_IDS_FILE.Trim()
+              if (-not (Test-Path -LiteralPath $idFile)) { Write-Host "##vso[task.logissue type=error]Scenario ID file not found in the repository: $($env:SCENARIO_IDS_FILE.Trim())"; exit 1 }
+              dotnet '$(Pipeline.Workspace)/dataloader/PricingValidationFramework.DataLoader.dll' set-status --status '${{ parameters.status }}' --scenarios-file $idFile --report "$output/set-status-summary.json" --markdown "$output/set-status-summary.md"
+              $exitCode = $LASTEXITCODE
+              # Show the before/after table on the run's Summary tab.
+              if (Test-Path "$output/set-status-summary.md") { Write-Host "##vso[task.uploadsummary]$output/set-status-summary.md" }
+              exit $exitCode
+            displayName: Set status to ${{ parameters.status }}
+            env:
+              SCENARIO_IDS_FILE: ${{ parameters.scenarioIdsFile }}
+              DatabaseSettings__ConnectionString: $(StatusUpdateDatabaseConnectionString)
+              DatabaseSettings__AuditUser: $(Build.RequestedForEmail)
+
+          - task: PublishPipelineArtifact@1
+            condition: always()
+            displayName: Publish status summary
+            inputs:
+              targetPath: '$(Build.ArtifactStagingDirectory)/SetStatus'
+              artifact: SetStatusSummary
